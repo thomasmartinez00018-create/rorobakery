@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Roro's Bakery — Pastelería Artesanal · San Miguel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Jost:wght@200;300;400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─── VARIABLES ─────────────────────────────────────────── */
+    :root {
+      --cream:      #F2F7F9;
+      --warm:       #EAF2F6;
+      --espresso:   #0D1F28;
+      --mocha:      #1A3A4A;
+      --caramel:    #7AAFC4;
+      --blush:      #B8D8E8;
+      --dusty:      #8FBDCE;
+      --sage:       #5A8FA4;
+      --text:       #0D1F28;
+      --text-light: #4A7A8C;
+
+      --font-display: 'Cormorant Garamond', Georgia, serif;
+      --font-body: 'Jost', sans-serif;
+
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* ─── RESET ──────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; font-size: 16px; }
+    body {
+      background: var(--cream);
+      color: var(--text);
+      font-family: var(--font-body);
+      font-weight: 300;
+      overflow-x: hidden;
+      cursor: none;
+    }
+    img { display: block; width: 100%; }
+    a { color: inherit; text-decoration: none; }
+
+    /* ─── CURSOR ─────────────────────────────────────────────── */
+    .cursor {
+      width: 10px; height: 10px;
+      background: var(--caramel);
+      border-radius: 50%;
+      position: fixed; top: 0; left: 0;
+      pointer-events: none; z-index: 9999;
+      transform: translate(-50%, -50%);
+      transition: transform 0.08s var(--ease-out), width 0.3s var(--ease-out), height 0.3s var(--ease-out), background 0.3s;
+    }
+    .cursor-ring {
+      width: 36px; height: 36px;
+      border: 1px solid var(--caramel);
+      border-radius: 50%;
+      position: fixed; top: 0; left: 0;
+      pointer-events: none; z-index: 9998;
+      transform: translate(-50%, -50%);
+      transition: transform 0.18s var(--ease-out), width 0.3s var(--ease-out), height 0.3s var(--ease-out);
+      opacity: 0.6;
+    }
+    body:has(a:hover) .cursor-ring,
+    body:has(button:hover) .cursor-ring {
+      width: 56px; height: 56px; opacity: 1;
+    }
+
+    /* ─── NAV ────────────────────────────────────────────────── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.5rem 3rem;
+      transition: background 0.4s, padding 0.4s;
+    }
+    nav.scrolled {
+      background: rgba(242, 247, 249, 0.92);
+      backdrop-filter: blur(12px);
+      padding: 1rem 3rem;
+      border-bottom: 1px solid rgba(122,175,196,0.18);
+    }
+    .nav-logo {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      font-weight: 400;
+      letter-spacing: 0.04em;
+      color: var(--espresso);
+    }
+    .nav-logo span { color: var(--caramel); font-style: italic; }
+    .nav-links {
+      display: flex; gap: 2.5rem;
+      list-style: none;
+      font-size: 0.7rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      font-weight: 400;
+    }
+    .nav-links a {
+      position: relative;
+      color: var(--mocha);
+      transition: color 0.3s;
+    }
+    .nav-links a::after {
+      content: '';
+      position: absolute; bottom: -3px; left: 0;
+      width: 0; height: 1px;
+      background: var(--caramel);
+      transition: width 0.35s var(--ease-out);
+    }
+    .nav-links a:hover { color: var(--caramel); }
+    .nav-links a:hover::after { width: 100%; }
+
+    /* ─── HERO ───────────────────────────────────────────────── */
+    .hero {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-left {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 8rem 4rem 4rem 3rem;
+      position: relative;
+      z-index: 2;
+    }
+    .hero-eyebrow {
+      font-size: 0.65rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--caramel);
+      font-weight: 500;
+      margin-bottom: 2rem;
+      opacity: 0;
+      animation: fadeUp 0.9s 0.2s var(--ease-out) forwards;
+    }
+    .hero-title {
+      font-family: var(--font-display);
+      font-size: clamp(3.5rem, 6vw, 6.5rem);
+      font-weight: 300;
+      line-height: 1.0;
+      letter-spacing: -0.01em;
+      color: var(--espresso);
+      margin-bottom: 1.5rem;
+      opacity: 0;
+      animation: fadeUp 0.9s 0.4s var(--ease-out) forwards;
+    }
+    .hero-title em {
+      font-style: italic;
+      color: var(--caramel);
+    }
+    .hero-sub {
+      font-size: 0.9rem;
+      line-height: 1.8;
+      color: var(--text-light);
+      max-width: 340px;
+      font-weight: 300;
+      margin-bottom: 3rem;
+      opacity: 0;
+      animation: fadeUp 0.9s 0.6s var(--ease-out) forwards;
+    }
+    .hero-ctas {
+      display: flex; gap: 1.2rem; align-items: center;
+      opacity: 0;
+      animation: fadeUp 0.9s 0.8s var(--ease-out) forwards;
+    }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 0.6rem;
+      background: var(--espresso);
+      color: var(--cream);
+      padding: 0.9rem 2rem;
+      font-family: var(--font-body);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      border: none; cursor: none;
+      transition: background 0.3s, transform 0.3s;
+    }
+    .btn-primary:hover { background: var(--caramel); transform: translateY(-2px); }
+    .btn-ghost {
+      font-size: 0.7rem;
+      font-weight: 400;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-light);
+      border-bottom: 1px solid currentColor;
+      padding-bottom: 2px;
+      transition: color 0.3s;
+    }
+    .btn-ghost:hover { color: var(--caramel); }
+    .hero-badges {
+      margin-top: 4rem;
+      display: flex; gap: 2rem;
+      opacity: 0;
+      animation: fadeUp 0.9s 1s var(--ease-out) forwards;
+    }
+    .badge {
+      display: flex; flex-direction: column;
+      gap: 0.2rem;
+    }
+    .badge-num {
+      font-family: var(--font-display);
+      font-size: 2rem; font-weight: 300;
+      color: var(--caramel);
+      line-height: 1;
+    }
+    .badge-label {
+      font-size: 0.6rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-light);
+    }
+
+    .hero-right {
+      position: relative;
+      overflow: hidden;
+      opacity: 0;
+      animation: fadeIn 1.2s 0.3s var(--ease-out) forwards;
+    }
+    .hero-img-wrap {
+      position: absolute; inset: 0;
+    }
+    .hero-img-wrap img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transform-origin: center;
+      transition: transform 8s ease;
+    }
+    .hero-right:hover .hero-img-wrap img { transform: scale(1.04); }
+    .hero-img-overlay {
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(250,245,238,0.15) 0%, transparent 60%);
+    }
+    .hero-img-tag {
+      position: absolute;
+      bottom: 2.5rem; left: -1.5rem;
+      background: var(--cream);
+      padding: 1rem 1.5rem;
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      font-weight: 500;
+      color: var(--mocha);
+      box-shadow: 0 8px 40px rgba(26,13,8,0.15);
+    }
+    /* placeholder visual for hero when no img */
+    .hero-placeholder {
+      width: 100%; height: 100%;
+      background:
+        radial-gradient(ellipse at 70% 30%, #B8D8E8 0%, transparent 50%),
+        radial-gradient(ellipse at 30% 70%, #7AAFC4 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, #3A7A9A 0%, transparent 40%),
+        #0D1F28;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .hero-placeholder-text {
+      font-family: var(--font-display);
+      font-size: 8rem; font-weight: 300;
+      color: rgba(250,245,238,0.08);
+      letter-spacing: -0.02em;
+      user-select: none;
+    }
+
+    /* ─── TICKER ─────────────────────────────────────────────── */
+    .ticker {
+      background: var(--espresso);
+      padding: 0.85rem 0;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .ticker-track {
+      display: inline-flex;
+      gap: 0;
+      animation: ticker 28s linear infinite;
+    }
+    .ticker-item {
+      display: inline-flex; align-items: center; gap: 1.5rem;
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      font-weight: 500;
+      color: var(--blush);
+      padding: 0 2rem;
+    }
+    .ticker-dot {
+      width: 4px; height: 4px;
+      background: var(--caramel);
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    @keyframes ticker {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-50%); }
+    }
+
+    /* ─── SECTION LABELS ─────────────────────────────────────── */
+    .section-label {
+      font-size: 0.6rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      font-weight: 500;
+      color: var(--caramel);
+      display: flex; align-items: center; gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .section-label::before {
+      content: '';
+      width: 32px; height: 1px;
+      background: var(--caramel);
+    }
+
+    /* ─── CREACIONES ─────────────────────────────────────────── */
+    .creaciones {
+      padding: 8rem 3rem;
+      max-width: 1400px; margin: 0 auto;
+    }
+    .creaciones-header {
+      display: flex; justify-content: space-between; align-items: flex-end;
+      margin-bottom: 4rem;
+    }
+    .creaciones-title {
+      font-family: var(--font-display);
+      font-size: clamp(2.5rem, 4vw, 4rem);
+      font-weight: 300;
+      line-height: 1.1;
+      color: var(--espresso);
+    }
+    .creaciones-title em { font-style: italic; color: var(--caramel); }
+    .creaciones-desc {
+      max-width: 280px;
+      font-size: 0.85rem;
+      line-height: 1.8;
+      color: var(--text-light);
+      text-align: right;
+    }
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr 1fr;
+      grid-template-rows: 340px 260px;
+      gap: 12px;
+    }
+    .gallery-item {
+      position: relative;
+      overflow: hidden;
+      cursor: none;
+    }
+    .gallery-item:nth-child(1) { grid-row: 1 / 3; }
+    .gallery-item img,
+    .gallery-ph {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transition: transform 0.7s var(--ease-out);
+    }
+    .gallery-item:hover img,
+    .gallery-item:hover .gallery-ph { transform: scale(1.06); }
+    .gallery-ph {
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ph-1 { background: linear-gradient(160deg, #8FBDCE, #1A4A60); }
+    .ph-2 { background: linear-gradient(160deg, #B8D8E8, #4A8FA8); }
+    .ph-3 { background: linear-gradient(160deg, #5A8FA4, #0D2A38); }
+    .ph-4 { background: linear-gradient(160deg, #7AAFC4, #1A3A4A); }
+    .ph-5 { background: linear-gradient(160deg, #C8E4F0, #5A9AB8); }
+    .ph-6 { background: linear-gradient(160deg, #3A7A9A, #0D1F28); }
+    .gallery-caption {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 2rem 1.5rem 1.2rem;
+      background: linear-gradient(transparent, rgba(26,13,8,0.65));
+      color: white;
+      transform: translateY(8px);
+      opacity: 0;
+      transition: all 0.4s var(--ease-out);
+    }
+    .gallery-item:hover .gallery-caption { opacity: 1; transform: translateY(0); }
+    .gallery-caption-name {
+      font-family: var(--font-display);
+      font-size: 1.3rem; font-weight: 400; font-style: italic;
+    }
+    .gallery-caption-tag {
+      font-size: 0.6rem; letter-spacing: 0.15em; text-transform: uppercase;
+      color: var(--blush); margin-top: 0.2rem;
+    }
+
+    /* ─── PROCESS ────────────────────────────────────────────── */
+    .process {
+      background: var(--espresso);
+      padding: 7rem 3rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .process::before {
+      content: 'RC';
+      position: absolute; right: -2rem; top: 50%; transform: translateY(-50%);
+      font-family: var(--font-display);
+      font-size: 28rem; font-weight: 300;
+      color: rgba(122,175,196,0.06);
+      line-height: 1; user-select: none;
+    }
+    .process-inner {
+      max-width: 1400px; margin: 0 auto;
+      position: relative; z-index: 2;
+    }
+    .process-header {
+      display: flex; justify-content: space-between; align-items: flex-end;
+      margin-bottom: 5rem;
+    }
+    .process-title {
+      font-family: var(--font-display);
+      font-size: clamp(2.5rem, 4vw, 4rem);
+      font-weight: 300;
+      color: var(--cream);
+      line-height: 1.1;
+    }
+    .process-title em { font-style: italic; color: var(--caramel); }
+    .process-note {
+      max-width: 220px;
+      font-size: 0.8rem;
+      line-height: 1.7;
+      color: var(--dusty);
+      text-align: right;
+    }
+    .process-steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 3rem;
+    }
+    .step {
+      position: relative;
+      padding-top: 1.5rem;
+      border-top: 1px solid rgba(122,175,196,0.3);
+    }
+    .step-num {
+      font-family: var(--font-display);
+      font-size: 5rem; font-weight: 300;
+      color: rgba(185,122,72,0.2);
+      line-height: 1;
+      position: absolute; top: -0.5rem; right: 0;
+    }
+    .step-icon {
+      width: 42px; height: 42px;
+      border: 1px solid rgba(122,175,196,0.5);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 1.5rem;
+      color: var(--caramel);
+      font-size: 1.1rem;
+    }
+    .step-title {
+      font-family: var(--font-display);
+      font-size: 1.5rem; font-weight: 400; font-style: italic;
+      color: var(--cream);
+      margin-bottom: 0.8rem;
+    }
+    .step-body {
+      font-size: 0.82rem;
+      line-height: 1.8;
+      color: var(--dusty);
+      font-weight: 300;
+    }
+
+    /* ─── PRODUCTOS ──────────────────────────────────────────── */
+    .productos {
+      padding: 8rem 3rem;
+      max-width: 1400px; margin: 0 auto;
+    }
+    .productos-header { margin-bottom: 4rem; }
+    .productos-title {
+      font-family: var(--font-display);
+      font-size: clamp(2.5rem, 4vw, 4rem);
+      font-weight: 300; line-height: 1.1;
+      color: var(--espresso);
+    }
+    .productos-title em { font-style: italic; color: var(--caramel); }
+    .productos-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 2px;
+    }
+    .producto-card {
+      position: relative;
+      background: var(--warm);
+      padding: 2.5rem 2rem;
+      border: 1px solid rgba(122,175,196,0.15);
+      transition: background 0.3s, border-color 0.3s, transform 0.3s;
+      cursor: none;
+    }
+    .producto-card:hover {
+      background: var(--espresso);
+      border-color: var(--espresso);
+      transform: translateY(-4px);
+    }
+    .producto-icon {
+      font-size: 1.8rem; margin-bottom: 1.5rem;
+    }
+    .producto-cat {
+      font-size: 0.58rem; letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--caramel); font-weight: 500;
+      margin-bottom: 0.5rem;
+      transition: color 0.3s;
+    }
+    .producto-name {
+      font-family: var(--font-display);
+      font-size: 1.4rem; font-weight: 400;
+      color: var(--espresso);
+      margin-bottom: 0.8rem;
+      transition: color 0.3s;
+    }
+    .producto-desc {
+      font-size: 0.8rem; line-height: 1.7;
+      color: var(--text-light);
+      font-weight: 300;
+      transition: color 0.3s;
+    }
+    .producto-card:hover .producto-cat { color: var(--blush); }
+    .producto-card:hover .producto-name { color: var(--cream); }
+    .producto-card:hover .producto-desc { color: var(--dusty); }
+
+    /* ─── ABOUT ──────────────────────────────────────────────── */
+    .about {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: 60vh;
+    }
+    .about-img {
+      position: relative;
+      overflow: hidden;
+    }
+    .about-img-ph {
+      width: 100%; height: 100%; min-height: 480px;
+      background: linear-gradient(150deg, #B8D8E8 0%, #7AAFC4 40%, #1A3A4A 100%);
+      position: relative;
+    }
+    .about-img-ph::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+    .about-content {
+      display: flex; flex-direction: column; justify-content: center;
+      padding: 6rem 5rem;
+      background: var(--warm);
+    }
+    .about-title {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 3.5vw, 3.5rem);
+      font-weight: 300; line-height: 1.15;
+      color: var(--espresso);
+      margin-bottom: 1.5rem;
+    }
+    .about-title em { font-style: italic; color: var(--caramel); }
+    .about-body {
+      font-size: 0.9rem; line-height: 1.9;
+      color: var(--text-light); font-weight: 300;
+      margin-bottom: 2.5rem;
+      max-width: 420px;
+    }
+    .about-details {
+      display: flex; flex-direction: column; gap: 0.8rem;
+    }
+    .about-detail {
+      display: flex; align-items: center; gap: 1rem;
+      font-size: 0.75rem; font-weight: 400;
+      color: var(--mocha); letter-spacing: 0.05em;
+    }
+    .about-detail-icon {
+      color: var(--caramel);
+      font-size: 0.9rem;
+      flex-shrink: 0;
+    }
+
+    /* ─── CTA ────────────────────────────────────────────────── */
+    .cta {
+      padding: 8rem 3rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      background: var(--cream);
+    }
+    .cta::before {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse at 20% 50%, rgba(122,175,196,0.10) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 50%, rgba(184,216,232,0.07) 0%, transparent 60%);
+    }
+    .cta-inner { position: relative; z-index: 2; }
+    .cta-pre {
+      font-size: 0.65rem; letter-spacing: 0.25em; text-transform: uppercase;
+      color: var(--caramel); font-weight: 500; margin-bottom: 1.5rem;
+    }
+    .cta-title {
+      font-family: var(--font-display);
+      font-size: clamp(3rem, 5vw, 5.5rem);
+      font-weight: 300; line-height: 1.05;
+      color: var(--espresso); margin-bottom: 1.5rem;
+    }
+    .cta-title em { font-style: italic; color: var(--caramel); }
+    .cta-sub {
+      font-size: 0.9rem; line-height: 1.8;
+      color: var(--text-light); max-width: 380px;
+      margin: 0 auto 3rem;
+    }
+    .cta-buttons {
+      display: flex; gap: 1rem; justify-content: center;
+      align-items: center;
+    }
+    .btn-whatsapp {
+      display: inline-flex; align-items: center; gap: 0.7rem;
+      background: #25D366;
+      color: white;
+      padding: 1rem 2.2rem;
+      font-family: var(--font-body);
+      font-size: 0.75rem; font-weight: 500;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      border: none; cursor: none;
+      transition: background 0.3s, transform 0.3s;
+    }
+    .btn-whatsapp:hover { background: #1da851; transform: translateY(-3px); }
+    .btn-instagram {
+      display: inline-flex; align-items: center; gap: 0.7rem;
+      background: transparent;
+      color: var(--mocha);
+      border: 1px solid var(--caramel);
+      padding: 1rem 2.2rem;
+      font-family: var(--font-body);
+      font-size: 0.75rem; font-weight: 500;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      cursor: none;
+      transition: background 0.3s, color 0.3s, transform 0.3s;
+    }
+    .btn-instagram:hover {
+      background: var(--mocha); color: var(--cream);
+      transform: translateY(-3px);
+    }
+
+    /* ─── FOOTER ─────────────────────────────────────────────── */
+    footer {
+      background: var(--espresso);
+      padding: 3rem;
+      display: flex; justify-content: space-between; align-items: center;
+      color: var(--dusty);
+    }
+    .footer-logo {
+      font-family: var(--font-display);
+      font-size: 1.3rem; font-weight: 400;
+      color: var(--cream);
+      letter-spacing: 0.04em;
+    }
+    .footer-logo span { color: var(--caramel); font-style: italic; }
+    .footer-info {
+      font-size: 0.7rem; letter-spacing: 0.08em;
+      text-align: center; line-height: 1.8;
+      color: var(--dusty);
+    }
+    .footer-links {
+      display: flex; gap: 2rem;
+      list-style: none;
+      font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase;
+    }
+    .footer-links a {
+      color: var(--dusty); transition: color 0.3s;
+    }
+    .footer-links a:hover { color: var(--caramel); }
+
+    /* ─── ANIMATIONS ─────────────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(32px);
+      transition: opacity 0.8s var(--ease-out), transform 0.8s var(--ease-out);
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.2s; }
+    .reveal-delay-3 { transition-delay: 0.3s; }
+    .reveal-delay-4 { transition-delay: 0.4s; }
+
+    /* ─── RESPONSIVE ─────────────────────────────────────────── */
+    @media (max-width: 1024px) {
+      .gallery-grid {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto;
+      }
+      .gallery-item:nth-child(1) { grid-row: auto; }
+      .productos-grid { grid-template-columns: repeat(2, 1fr); }
+      .about { grid-template-columns: 1fr; }
+      .about-img-ph { min-height: 320px; }
+      .about-content { padding: 4rem 3rem; }
+    }
+
+    @media (max-width: 768px) {
+      nav { padding: 1.2rem 1.5rem; }
+      nav.scrolled { padding: 0.8rem 1.5rem; }
+      .nav-links { display: none; }
+      .hero { grid-template-columns: 1fr; min-height: auto; }
+      .hero-left { padding: 7rem 1.5rem 3rem; }
+      .hero-right { height: 60vw; }
+      .creaciones, .productos, .cta { padding: 5rem 1.5rem; }
+      .process { padding: 5rem 1.5rem; }
+      .creaciones-header { flex-direction: column; gap: 1rem; align-items: flex-start; }
+      .creaciones-desc { text-align: left; max-width: 100%; }
+      .gallery-grid { grid-template-columns: 1fr 1fr; grid-template-rows: auto; }
+      .process-header { flex-direction: column; gap: 1rem; align-items: flex-start; }
+      .process-steps { grid-template-columns: 1fr; gap: 2rem; }
+      .productos-grid { grid-template-columns: 1fr 1fr; }
+      .cta-buttons { flex-direction: column; }
+      footer { flex-direction: column; gap: 1.5rem; text-align: center; }
+      .footer-links { justify-content: center; }
+      body { cursor: auto; }
+      .cursor, .cursor-ring { display: none; }
+      .btn-primary, .btn-whatsapp, .btn-instagram { cursor: pointer; }
+      .producto-card { cursor: pointer; }
+    }
+
+    @media (max-width: 480px) {
+      .productos-grid { grid-template-columns: 1fr; }
+      .gallery-grid { grid-template-columns: 1fr; }
+      .hero-badges { gap: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- CURSOR -->
+  <div class="cursor" id="cursor"></div>
+  <div class="cursor-ring" id="cursorRing"></div>
+
+  <!-- NAV -->
+  <nav id="mainNav">
+    <div class="nav-logo">Roro's <span>Bakery</span></div>
+    <ul class="nav-links">
+      <li><a href="#creaciones">Creaciones</a></li>
+      <li><a href="#productos">Productos</a></li>
+      <li><a href="#proceso">Cómo pedir</a></li>
+      <li><a href="#contacto">Contacto</a></li>
+    </ul>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-left">
+      <p class="hero-eyebrow">Pastelería Artesanal · San Miguel, Bs.As.</p>
+      <h1 class="hero-title">
+        Tortas que<br>
+        <em>cuentan</em><br>
+        historias
+      </h1>
+      <p class="hero-sub">
+        Cada creación es única, hecha a mano con ingredientes seleccionados.
+        Tortas personalizadas para tus momentos más especiales.
+      </p>
+      <div class="hero-ctas">
+        <a href="https://wa.me/541100000000?text=Hola!%20Quiero%20consultar%20por%20una%20torta%20%F0%9F%8E%82" class="btn-primary" target="_blank">
+          <span>&#9825;</span> Hacer un pedido
+        </a>
+        <a href="#creaciones" class="btn-ghost">Ver creaciones</a>
+      </div>
+      <div class="hero-badges">
+        <div class="badge">
+          <span class="badge-num">100%</span>
+          <span class="badge-label">Artesanal</span>
+        </div>
+        <div class="badge">
+          <span class="badge-num">48h</span>
+          <span class="badge-label">Anticipación</span>
+        </div>
+        <div class="badge">
+          <span class="badge-num">∞</span>
+          <span class="badge-label">Diseños únicos</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-right">
+      <div class="hero-img-wrap">
+        <img src="torta-chocolate.jpg" alt="Torta artesanal Roro's Bakery" />
+      </div>
+      <div class="hero-img-overlay"></div>
+      <div class="hero-img-tag">✦ Diseños únicos para cada ocasión</div>
+    </div>
+  </section>
+
+  <!-- TICKER -->
+  <div class="ticker">
+    <div class="ticker-track">
+      <span class="ticker-item"><span class="ticker-dot"></span> Tortas Personalizadas</span>
+      <span class="ticker-item"><span class="ticker-dot"></span> Mesa Dulce</span>
+      <span class="ticker-item"><span class="ticker-dot"></span> Tartas Artesanales</span>
+      <span class="ticker-item"><span class="ticker-dot"></span> Postres</span>
+      <span class="ticker-item"><span class="ticker-dot"></span> Cookies</span>
+      <span class="ticker-item"><span class="ticker-dot"></span> Pedidos 48/72 hs</span>
+      <span class="ticker-item"><span class="ticker-dot"></span> San Miguel · Bs. As.</span>
+      <span class="ticker-item"><span class="ticker-dot"></span> Zona Noroeste GBA</span>
+      <!-- Repeat for seamless loop -->
+      <span class="ticker-item"><span class="ticker-dot"></span> Tortas Personalizadas</span>
+      <span class="ticker-item"><span class="ticker-dot"></span> Mesa Dulce</span>
+      <span class="ticker-item"><span class="ticker-dot"></span> Tartas Artesanales</span>
+      <span class="ticker-item"><span class="ticker-dot"></span> Postres</span>
+      <span class="ticker-item"><span class="ticker-dot"></span> Cookies</span>
+      <span class="ticker-item"><span class="ticker-dot"></span> Pedidos 48/72 hs</span>
+      <span class="ticker-item"><span class="ticker-dot"></span> San Miguel · Bs. As.</span>
+      <span class="ticker-item"><span class="ticker-dot"></span> Zona Noroeste GBA</span>
+    </div>
+  </div>
+
+  <!-- CREACIONES -->
+  <section class="creaciones" id="creaciones">
+    <div class="creaciones-header reveal">
+      <div>
+        <div class="section-label">Galería</div>
+        <h2 class="creaciones-title">
+          Nuestras<br><em>Creaciones</em>
+        </h2>
+      </div>
+      <p class="creaciones-desc">
+        Cada torta es una obra única, diseñada
+        especialmente para vos. Del concepto
+        a la mesa, con amor artesanal.
+      </p>
+    </div>
+
+    <div class="gallery-grid">
+      <div class="gallery-item reveal">
+        <img src="torta-lila.jpg" alt="Torta floral violeta" />
+        <div class="gallery-caption">
+          <div class="gallery-caption-name">Floral Violeta</div>
+          <div class="gallery-caption-tag">Diseño floral · Artesanal</div>
+        </div>
+      </div>
+      <div class="gallery-item reveal reveal-delay-1">
+        <img src="torta-baby.jpg" alt="Torta baby shower osito" />
+        <div class="gallery-caption">
+          <div class="gallery-caption-name">Baby Shower</div>
+          <div class="gallery-caption-tag">Temática · Osito marinero</div>
+        </div>
+      </div>
+      <div class="gallery-item reveal reveal-delay-2">
+        <img src="tarta-limon.jpg" alt="Tarta de limón con merengue" />
+        <div class="gallery-caption">
+          <div class="gallery-caption-name">Tarta Limón</div>
+          <div class="gallery-caption-tag">Merengue · Clásica</div>
+        </div>
+      </div>
+      <div class="gallery-item reveal reveal-delay-1">
+        <img src="bizcochuelo.jpg" alt="Bizcochuelo artesanal" />
+        <div class="gallery-caption">
+          <div class="gallery-caption-name">Bizcochuelo</div>
+          <div class="gallery-caption-tag">Casero · Azúcar impalpable</div>
+        </div>
+      </div>
+      <div class="gallery-item reveal reveal-delay-2">
+        <img src="torta-chocolate.jpg" alt="Torta chocolate drip" />
+        <div class="gallery-caption">
+          <div class="gallery-caption-name">Chocolate Drip</div>
+          <div class="gallery-caption-tag">Chocolate · Artesanal</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROCESO -->
+  <section class="process" id="proceso">
+    <div class="process-inner">
+      <div class="process-header reveal">
+        <div>
+          <div class="section-label" style="color:var(--caramel)">Proceso</div>
+          <h2 class="process-title">
+            Así hacemos<br><em>tu pedido</em>
+          </h2>
+        </div>
+        <p class="process-note">
+          Simple y rápido. Coordinamos cada
+          detalle para que tu torta sea exactamente
+          lo que imaginaste.
+        </p>
+      </div>
+
+      <div class="process-steps">
+        <div class="step reveal">
+          <span class="step-num">01</span>
+          <div class="step-icon">✦</div>
+          <h3 class="step-title">Consultá por WhatsApp</h3>
+          <p class="step-body">
+            Escribinos con el tipo de torta que tenés en mente:
+            sabor, tamaño, fecha y cualquier detalle especial.
+            Te respondemos rápido.
+          </p>
+        </div>
+        <div class="step reveal reveal-delay-2">
+          <span class="step-num">02</span>
+          <div class="step-icon">◎</div>
+          <h3 class="step-title">Diseñamos juntos</h3>
+          <p class="step-body">
+            Coordinamos el diseño, colores y acabados
+            a tu gusto. Podés traer referencias o dejarte
+            sorprender por nuestra propuesta.
+          </p>
+        </div>
+        <div class="step reveal reveal-delay-4">
+          <span class="step-num">03</span>
+          <div class="step-icon">♡</div>
+          <h3 class="step-title">Retirás o recibís</h3>
+          <p class="step-body">
+            Tu torta lista con 48/72 hs de anticipación.
+            Podés retirar en San Miguel o coordinar
+            entrega en zona noroeste del GBA.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRODUCTOS -->
+  <section class="productos" id="productos">
+    <div class="productos-header reveal">
+      <div class="section-label">Menú</div>
+      <h2 class="productos-title">
+        Todo lo que<br><em>elaboramos</em>
+      </h2>
+    </div>
+
+    <div class="productos-grid">
+      <div class="producto-card reveal">
+        <div class="producto-icon">🎂</div>
+        <div class="producto-cat">Estrella</div>
+        <div class="producto-name">Tortas Personalizadas</div>
+        <div class="producto-desc">
+          El corazón de Roro's Bakery. Cada torta diseñada
+          especialmente para la ocasión que merece.
+          Cumpleaños, aniversarios, baby shower y más.
+        </div>
+      </div>
+      <div class="producto-card reveal reveal-delay-1">
+        <div class="producto-icon">🍰</div>
+        <div class="producto-cat">Clásico</div>
+        <div class="producto-name">Tartas Artesanales</div>
+        <div class="producto-desc">
+          Tartas dulces y saladas elaboradas con
+          masa casera y rellenos de temporada.
+          Perfectas para cualquier reunión.
+        </div>
+      </div>
+      <div class="producto-card reveal reveal-delay-2">
+        <div class="producto-icon">🍪</div>
+        <div class="producto-cat">Mesa dulce</div>
+        <div class="producto-name">Cookies & Petit Fours</div>
+        <div class="producto-desc">
+          Cookies clásicas, de chocolate, rellenas.
+          Ideales para mesas dulces, regalos y
+          momentos de mimo propio.
+        </div>
+      </div>
+      <div class="producto-card reveal reveal-delay-3">
+        <div class="producto-icon">✨</div>
+        <div class="producto-cat">Servicio completo</div>
+        <div class="producto-name">Mesa Dulce</div>
+        <div class="producto-desc">
+          Armamos una mesa dulce completa para tu evento:
+          torta central, cookies, muffins, macarons
+          y más. Todo artesanal.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ABOUT -->
+  <section class="about">
+    <div class="about-img">
+      <img src="tarta-limon.jpg" alt="Tarta de limón artesanal" style="width:100%;height:100%;object-fit:cover;" />
+    </div>
+    <div class="about-content">
+      <div class="section-label reveal">Nuestra historia</div>
+      <h2 class="about-title reveal">
+        Hecho con <em>amor</em><br>
+        desde San Miguel
+      </h2>
+      <p class="about-body reveal">
+        Roro's Bakery nació de la pasión por la repostería artesanal
+        y el deseo de crear momentos únicos a través del sabor.
+        Cada creación sale de nuestras manos con dedicación,
+        ingredientes de calidad y el cariño que merecen tus
+        celebraciones más importantes.
+      </p>
+      <div class="about-details">
+        <div class="about-detail reveal">
+          <span class="about-detail-icon">📍</span>
+          San Miguel, Buenos Aires · Zona Noroeste
+        </div>
+        <div class="about-detail reveal reveal-delay-1">
+          <span class="about-detail-icon">⏱</span>
+          Pedidos con 48/72 hs de anticipación
+        </div>
+        <div class="about-detail reveal reveal-delay-2">
+          <span class="about-detail-icon">🚗</span>
+          Retiro en local o envío coordinado
+        </div>
+        <div class="about-detail reveal reveal-delay-3">
+          <span class="about-detail-icon">💬</span>
+          Atención por WhatsApp e Instagram
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta" id="contacto">
+    <div class="cta-inner">
+      <p class="cta-pre reveal">¿Tenés una ocasión especial?</p>
+      <h2 class="cta-title reveal">
+        Tu torta<br>te <em>espera</em>
+      </h2>
+      <p class="cta-sub reveal">
+        Escribinos y empezamos a crear juntos.
+        Respondemos rápido y sin compromiso.
+      </p>
+      <div class="cta-buttons reveal">
+        <a
+          href="https://wa.me/541100000000?text=Hola%20Roro!%20Quiero%20hacer%20un%20pedido%20%F0%9F%8E%82"
+          class="btn-whatsapp"
+          target="_blank"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+          </svg>
+          Hacer un pedido
+        </a>
+        <a
+          href="https://instagram.com/_rorobakery_"
+          class="btn-instagram"
+          target="_blank"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+          </svg>
+          Ver Instagram
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-logo">Roro's <span>Bakery</span></div>
+    <div class="footer-info">
+      Pastelería artesanal · San Miguel, Bs. As.<br>
+      © 2026 Roro's Bakery — Todos los derechos reservados
+    </div>
+    <ul class="footer-links">
+      <li><a href="https://instagram.com/_rorobakery_" target="_blank">Instagram</a></li>
+      <li><a href="https://wa.me/541100000000" target="_blank">WhatsApp</a></li>
+    </ul>
+  </footer>
+
+  <script>
+    // ── Cursor
+    const cursor = document.getElementById('cursor');
+    const ring   = document.getElementById('cursorRing');
+    let mx = 0, my = 0, rx = 0, ry = 0;
+    document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+    (function loop() {
+      rx += (mx - rx) * 0.12;
+      ry += (my - ry) * 0.12;
+      cursor.style.left = mx + 'px';
+      cursor.style.top  = my + 'px';
+      ring.style.left   = rx + 'px';
+      ring.style.top    = ry + 'px';
+      requestAnimationFrame(loop);
+    })();
+
+    // ── Nav scroll
+    const nav = document.getElementById('mainNav');
+    window.addEventListener('scroll', () => {
+      nav.classList.toggle('scrolled', window.scrollY > 60);
+    });
+
+    // ── Scroll reveal
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          observer.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.12 });
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+  </script>
+</body>
+</html>
