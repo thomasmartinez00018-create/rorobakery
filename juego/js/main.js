@@ -3,10 +3,13 @@ import * as A from "./actors.js";
 import { World } from "./world.js";
 import { Net, makeCode, cleanCode } from "./net.js";
 import { sfx } from "./sfx.js";
+import { music } from "./music.js";
 import { soleSVG, glyphSVG } from "./draw2d.js";
 import { genCase, hashSeed, clueText, normPhrase, VEH_TXT, MANOS, ESTATS } from "./casegen.js";
 
 const gsap = window.gsap;
+// sin "lag smoothing": las animaciones duran lo mismo en los dos dispositivos aunque uno vaya más lento
+gsap.ticker.lagSmoothing(0);
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = s => { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
@@ -45,6 +48,7 @@ let lastSec = -1, quitArm = false;
 const ui = $("#ui"), stageEl = $("#stage");
 const world = new World($("#canvas-wrap"), $("#bubbles"));
 world.setPlace("casa");
+let started = false;
 
 const hostNow = () => Date.now() + (me.side === "guest" ? me.offset : 0);
 const myRole = () => S.roles[me.side];
@@ -251,6 +255,29 @@ function leaveRoom() {
   render();
 }
 
+/* ---------------- transiciones ---------------- */
+const irisEl = $("#iris"), irisState = { r: 150 };
+function setIris(r) { irisEl.style.setProperty("--r", r + "vmax"); }
+function iris(mid) {
+  sfx.iris();
+  irisEl.classList.add("on");
+  gsap.killTweensOf(irisState);
+  return gsap.timeline()
+    .to(irisState, { r: 0, duration: 0.55, ease: "steps(12)", onUpdate: () => setIris(irisState.r) })
+    .add(() => { mid && mid(); })
+    .to(irisState, { r: 150, duration: 0.8, ease: "steps(16)", delay: 0.15, onUpdate: () => setIris(irisState.r), onComplete: () => irisEl.classList.remove("on") });
+}
+function cinema(sec) {
+  document.body.classList.add("cine");
+  clearTimeout(cinema.t); cinema.t = setTimeout(() => document.body.classList.remove("cine"), sec * 1000);
+}
+function musicFor(scr) {
+  if (!started) return;
+  if (scr === "play") music.setMode(remaining() <= 60 ? "tense" : "play");
+  else if (scr === "end") music.setMode(S.end === "win" ? "win" : "lose");
+  else music.setMode("calm");
+}
+
 /* ---------------- reacciones a cambios de estado ---------------- */
 function react() {
   ensureCase();
@@ -259,25 +286,33 @@ function react() {
     const prev = lastPhase;
     lastPhase = S.phase; lastSeed = S.seed;
     if (S.phase === "brief") {
-      world.setView("place"); world.setPlace(C.place.k); world.intro({ villain: C.P.villain });
-      sfx.sting(); if (C.P.villain) setTimeout(() => sfx.evil(), 4000);
+      const cc = C;
+      iris(() => {
+        world.setView("place");
+        const amb = world.setPlace(cc.place.k, { rain: cc.rain });
+        world.intro({ villain: cc.P.villain });
+        music.setAmbience(amb.sound, amb.rain);
+        if (amb.horn) setTimeout(() => music.horn(), 900);
+        cinema(cc.P.villain ? 9.4 : 6.2);
+      });
+      sfx.sting(); if (C.P.villain) setTimeout(() => sfx.evil(), 7000);
       if (S.solo) lsSet("soloLevel", S.level);
     }
     if (S.phase === "play" && prev === "brief") { world.camIdle(); sfx.whoosh(); }
-    if (S.phase === "lobby") { world.setView("place"); if (world.placeKey !== "casa") world.setPlace("casa"); world.camIdle(); }
+    if (S.phase === "lobby") { world.setView("place"); if (world.placeKey !== "casa") { const amb = world.setPlace("casa"); music.setAmbience(amb.sound, false); } world.camIdle(); }
   }
   if (S.fx && S.fx.id !== lastFx) {
     const f = S.fx; lastFx = f.id;
     const mine = f.by === me.side;
-    if (f.kind === "ok") { sfx.ok(); flash = { k: f.k, ok: true, t: mine ? "¡Bien! Pista desbloqueada." : `${partnerName()} resolvió esta pista.` }; }
+    if (f.kind === "ok") { sfx.ok(); world.react("ok"); popClue = f.k; flash = { k: f.k, ok: true, t: mine ? "¡Bien! Pista desbloqueada." : `${partnerName()} resolvió esta pista.` }; }
     if (f.kind === "err") {
-      sfx.err(); hitTimer(f.secs);
+      sfx.err(); hitTimer(f.secs); world.react("err");
       const txt = f.k === "accuse" ? `${C.sus[f.i].name} tiene coartada. −${f.secs} s` : `${mine ? "No es eso" : partnerName() + " se equivocó"}. −${f.secs} s`;
       flash = { k: f.k, ok: false, t: txt };
     }
     if (f.kind === "juli") { sfx.meow(); hitTimer(f.secs); world.juliHint(`Miau. ${C.sus[f.i].name.split(" ")[0]} es inocente.`); flash = { k: "accuse", ok: true, t: `Juli descartó a ${C.sus[f.i].name}. −${f.secs} s` }; }
     if (f.kind === "romero-ok") { sfx.ok(); world.endRomero(true); }
-    if (f.kind === "romero-miss") { sfx.err(); hitTimer(f.secs); world.endRomero(false); }
+    if (f.kind === "romero-miss") { sfx.err(); hitTimer(f.secs); world.endRomero(false); world.react("err"); }
     if (f.kind === "win") { sfx.win(); world.setView("place"); world.celebrate(); }
     if (f.kind === "lose") { sfx.lose(); world.setView("place"); world.defeat(); setTimeout(() => sfx.evil(), 600); }
     if (flash) { const fl = flash; setTimeout(() => { if (flash === fl) { flash = null; render(); } }, 3000); }
@@ -506,7 +541,7 @@ function viewPlay() {
   <div class="hud">
     <div class="hl"><b>Nivel ${S.level}</b><span>${RNAME[myRole()]} ${net}</span></div>
     <div class="timer${remaining() <= 60 ? " low" : ""}" id="timer">${fmt(remaining())}</div>
-    <div class="hr"><button class="mute" data-act="mute">${sfx.muted ? "Sin sonido" : "Sonido"}</button></div>
+    <div class="hr"><button class="mute" data-act="music" aria-pressed="${music.on}">♪</button><button class="mute" data-act="mute" aria-pressed="${!sfx.muted}">${sfx.muted ? "Mudo" : "Sonido"}</button></div>
   </div>
   ${me.side === "guest" && me.netStatus === "closed" ? `<div class="banner bad">Se cortó la conexión. <button class="ghost small" data-act="rejoin">Reconectar</button></div>` : ""}
   ${me.side === "host" && !S.solo && me.netStatus === "closed" ? `<div class="banner bad">${esc(partnerName())} se desconectó. Cuando vuelva a entrar con el código ${esc(S.code)}, sigue la partida.</div>` : ""}
@@ -540,7 +575,19 @@ function viewEnd() {
   </section>`;
 }
 
+function viewTitle() {
+  return `
+  <section class="title" data-act="start">
+    <p class="eyebrow">Un juego para Thomas y Rocío</p>
+    <h1 class="logo"><span>Expediente</span><span>a Dos</span></h1>
+    <p class="tagline">Casos policiales en Malvinas Argentinas y San Miguel</p>
+    <button class="press" data-act="start">Tocá para empezar</button>
+    <p class="hint small">Con sonido. Mejor con auriculares o en llamada.</p>
+  </section>`;
+}
+
 function screen() {
+  if (!started) return "title";
   if (!me.inRoom) return "lobby";
   if (S.phase === "lobby" || !C) return "room";
   return S.phase;
@@ -551,19 +598,36 @@ function render() {
   document.body.dataset.screen = scr;
   world.setShift(scr === "play" ? 0 : scr === "brief" ? 0.12 : window.innerWidth < 700 ? 0.2 : 0.16);
   const a = document.activeElement, id = a && a.id, ss = a && a.selectionStart;
-  ui.innerHTML = scr === "lobby" ? viewLobby() : scr === "room" ? viewRoom() : scr === "brief" ? viewBrief() : scr === "play" ? viewPlay() : viewEnd();
+  const prevScr = document.body.dataset.prev;
+  document.body.dataset.prev = scr;
+  musicFor(scr);
+  ui.innerHTML = scr === "title" ? viewTitle() : scr === "lobby" ? viewLobby() : scr === "room" ? viewRoom() : scr === "brief" ? viewBrief() : scr === "play" ? viewPlay() : viewEnd();
   if (id) { const el = document.getElementById(id); if (el) { el.focus({ preventScroll: true }); try { if (ss != null) el.setSelectionRange(ss, ss); } catch (e) {} } }
   if (scr === "brief") animateBrief();
+  if (scr === "end" && prevScr !== "end") { gsap.fromTo(".endcard", { y: 80, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, delay: 1.2, ease: "back.out(1.4)" }); setTimeout(() => sfx.stamp(), 1500); }
+  if (scr === "play" && prevScr !== "play") gsap.fromTo("#ui > *", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, stagger: 0.05, ease: "power2.out" });
+  if (scr === "play" && tabAnim) { tabAnim = false; gsap.fromTo(".station", { x: 30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.28, ease: "power2.out" }); }
+  if (popClue) { const el = document.querySelector(".clue"); if (el && tab === popClue) gsap.fromTo(el, { scale: 0.6, rotate: -6, opacity: 0 }, { scale: 1, rotate: 0, opacity: 1, duration: 0.55, ease: "back.out(2.2)" }); popClue = null; }
+  if ((scr === "lobby" || scr === "room") && prevScr !== scr) gsap.fromTo("#ui > *", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, stagger: 0.07, ease: "power2.out" });
   if (scr !== "play" || tab !== "rueda" || myRole() !== "archivo") { if (world.view === "lineup") world.setView("place"); }
 }
+let tabAnim = false, popClue = null;
 // la tarjeta del caso aparece cuando termina la cinemática, aunque la pantalla se redibuje en el medio
 let briefSeed = null, briefT0 = 0;
 function animateBrief() {
   const el = $("#briefcard"); if (!el) return;
   if (briefSeed !== S.seed) { briefSeed = S.seed; briefT0 = performance.now(); }
-  const wait = (C.P.villain ? 6.8 : 3.4) - (performance.now() - briefT0) / 1000;
-  if (wait <= -0.8) { el.style.opacity = 1; return; }
-  gsap.fromTo(el, { y: 60, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, delay: Math.max(0, wait), ease: "power3.out" });
+  const wait = (C.P.villain ? 9.6 : 6.4) - (performance.now() - briefT0) / 1000;
+  const h2 = el.querySelector("h2"), full = C.place.t;
+  if (wait <= -1.5) { el.style.opacity = 1; return; }
+  h2.textContent = "";
+  gsap.fromTo(el, { y: 60, opacity: 0 }, {
+    y: 0, opacity: 1, duration: 0.7, delay: Math.max(0, wait), ease: "power3.out",
+    onComplete: () => {
+      let i = 0;
+      const iv = setInterval(() => { if (!document.body.contains(h2)) return clearInterval(iv); h2.textContent = full.slice(0, ++i); if (i % 2) sfx.typeKey(); if (i >= full.length) clearInterval(iv); }, 45);
+    }
+  });
 }
 
 /* ---------------- eventos ---------------- */
@@ -585,7 +649,7 @@ ui.addEventListener("click", e => {
     case "open": act({ type: "open" }); break;
     case "go": act({ type: "go" }); break;
     case "tab":
-      tab = v; quitArm = false;
+      tab = v; quitArm = false; tabAnim = true;
       world.setView(v === "rueda" && myRole() === "archivo" && !(S.romero && S.romero.active) ? "lineup" : "place");
       if (v === "rueda" && myRole() === "archivo") world.buildLineup(C.sus, S.wrong);
       render(); ui.scrollTo({ top: 0 }); break;
@@ -604,6 +668,13 @@ ui.addEventListener("click", e => {
     case "next": act({ type: "next" }); break;
     case "swapnext": act({ type: "swap" }); act({ type: "next" }); break;
     case "mute": sfx.toggle(); render(); break;
+    case "music": music.toggle(); render(); break;
+    case "start":
+      if (started) break;
+      sfx.init(); music.start(); sfx.start();
+      music.setAmbience(world.ambience ? world.ambience.sound : "indoor", false);
+      iris(() => { started = true; render(); if (joinDraft.length === 4 && me.who) joinRoom(joinDraft); });
+      break;
     case "quit":
       if (!quitArm) { quitArm = true; render(); setTimeout(() => { quitArm = false; if (screen() === "play") render(); }, 4000); return; }
       quitArm = false;
@@ -639,8 +710,10 @@ function toast(t) {
 /* ---------------- reloj ---------------- */
 setInterval(() => {
   if (me.side === "host") hostTick();
-  if (screen() !== "play") return;
+  if (screen() !== "play") { world.setDanger(0); return; }
   const left = remaining();
+  world.setDanger(left <= 60 && !S.end ? 0.25 + 0.55 * (1 - left / 60) : 0);
+  if (started) music.setMode(left <= 60 ? "tense" : "play");
   const t = $("#timer");
   if (t) {
     const txt = fmt(left);
@@ -651,8 +724,6 @@ setInterval(() => {
   if (sec !== lastSec) { if (left <= 30 && left > 0) sfx.tick(); lastSec = sec; }
 }, 250);
 
-// entrar directo por link
-if (joinDraft.length === 4 && me.who) joinRoom(joinDraft);
 render();
 
 // ganchos para pruebas automáticas (?debug)

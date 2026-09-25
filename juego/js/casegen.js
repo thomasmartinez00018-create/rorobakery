@@ -159,7 +159,7 @@ export function genCase(seed, level) {
   const wit = items;
   const registry = sh(items);
 
-  return { seed, level, P, place, sus, cul, c, catalog, phrase, keyList, msg, wit, registry, romeroFrac: 0.3 + r() * 0.3 };
+  return { seed, level, P, place, sus, cul, c, catalog, phrase, keyList, msg, wit, registry, romeroFrac: 0.3 + r() * 0.3, rain: r() < (place.k === "cancha" ? 0.55 : 0.33) };
 }
 
 export function normPhrase(s) {

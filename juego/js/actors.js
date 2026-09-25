@@ -333,3 +333,10 @@ export function runCycle(a, t, speed = 14) {
   u.legs.forEach((l, i) => { l.rotation.x = Math.sin(t * speed + (i % 2 ? Math.PI : 0) + (i > 1 ? Math.PI / 2 : 0)) * 0.7; });
   if (u.kind === "human" && u.arms) { u.arms[0].rotation.x = Math.sin(t * speed) * 0.8; u.arms[1].rotation.x = -Math.sin(t * speed) * 0.8; }
 }
+
+// expresión de la boca: "happy" sonrisa, "sad" boca para abajo
+export function expr(a, mode) {
+  const m = a.userData && a.userData.mouth; if (!m) return;
+  if (mode === "sad") { m.rotation.z = 0; m.position.y = -0.16; }
+  else { m.rotation.z = Math.PI; m.position.y = -0.12; }
+}
