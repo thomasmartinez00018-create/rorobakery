@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Expediente a Dos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Karla:ital,wght@0,400;0,500;0,700;1,400&family=Limelight&display=swap">
+<style>
+:root{
+  color-scheme:dark;
+  --night:#0F1A2E; --night2:#16243C; --night3:#1E3050; --line:#2C3F63;
+  --paper:#DCE2EA; --paper2:#C4CDD9; --ink:#18202F;
+  --text:#E6E9EF; --muted:#8FA0BC;
+  --amber:#F2B134; --amber-ink:#1A1204;
+  --red:#FF6166; --green:#4ED39A;
+  --mud1:#5E4a35; --mud2:#3A2C1E;
+  --display:"Limelight", Didot, "Bodoni 72", Georgia, serif;
+  --body:"Karla", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"Courier Prime", "Courier New", ui-monospace, monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; color:var(--text); font:16px/1.5 var(--body);
+  background-color:var(--night);
+  background-image:radial-gradient(110% 55% at 50% -12%, rgba(242,177,52,.17), rgba(242,177,52,0) 62%);
+  background-repeat:no-repeat;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.wrap{max-width:680px;margin:0 auto;padding-inline:16px;padding-block:20px 56px;display:flex;flex-direction:column;gap:20px}
+.eyebrow{font:700 12px/1.3 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0}
+h1,h2,h3{margin:0;text-wrap:balance;font-weight:400}
+h1{font-family:var(--display);color:var(--amber);font-size:clamp(52px,15vw,92px);line-height:.9;letter-spacing:.01em}
+h2{font-family:var(--display);color:var(--amber);font-size:clamp(28px,7vw,38px);line-height:1.05}
+h3{font-family:var(--display);color:var(--amber);font-size:22px;line-height:1.1}
+p{margin:0}
+.lede{font-size:18px;max-width:34em;color:var(--text)}
+.muted{color:var(--muted)}
+.hint{font-size:14px;color:var(--muted)}
+.brand{display:flex;flex-direction:column;gap:14px;padding-top:12px}
+
+.panel{background:var(--night2);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:16px}
+.field{display:flex;flex-direction:column;gap:8px}
+.field label{font:700 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}
+input.code{font:700 30px var(--mono);font-variant-numeric:tabular-nums;letter-spacing:.12em;width:7ch;min-width:0;background:var(--night);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:8px 12px}
+input.text{font:700 20px var(--mono);letter-spacing:.08em;text-transform:uppercase;width:100%;background:var(--night);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:12px 14px}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.role{text-align:left;background:var(--night);border:1.5px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px}
+.role p{font-size:14px;color:var(--muted)}
+.role[aria-pressed="true"]{border-color:var(--amber);background:rgba(242,177,52,.08)}
+.role .taken{font:700 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--green)}
+.cta{background:var(--amber);color:var(--amber-ink);border:0;border-radius:12px;padding:15px 18px;font-weight:700;font-size:17px;width:100%}
+.cta:disabled{opacity:.35;cursor:not-allowed}
+.ghost{background:transparent;border:1px solid var(--line);border-radius:12px;padding:12px 16px;color:var(--text)}
+.ghost.small{padding:8px 12px;font-size:14px}
+.btnrow{display:flex;gap:10px;flex-wrap:wrap}
+.btnrow>*{flex:1 1 180px}
+
+.how ol{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px}
+.how li::marker{font-family:var(--mono);color:var(--amber)}
+.rules{display:flex;gap:10px;flex-wrap:wrap}
+.pill{font:700 13px var(--mono);padding:6px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);font-variant-numeric:tabular-nums}
+.pill.red{color:var(--red);border-color:rgba(255,97,102,.4)}
+
+.banner{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between;background:rgba(78,211,154,.08);border:1px solid rgba(78,211,154,.35);border-radius:12px;padding:12px 14px}
+.banner p{flex:1 1 220px}
+.sync{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.dot.on{background:var(--green);box-shadow:0 0 0 3px rgba(78,211,154,.18)}
+
+/* HUD */
+.hud{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;margin-inline:-16px;padding:10px 16px;background:rgba(15,26,46,.94);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line);display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px}
+.hud .l{font:700 12px/1.3 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.hud .l b{color:var(--amber);font-weight:700}
+.hud .r{display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-size:12px;color:var(--muted)}
+.timer{position:relative;font:700 34px/1 var(--mono);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.timer.low{color:var(--red);animation:pulse 1s ease-in-out infinite}
+.timer.hit{animation:shake .45s}
+.penfx{position:absolute;left:50%;top:100%;transform:translateX(-50%);font:700 14px var(--mono);color:var(--red);white-space:nowrap;animation:rise 1.4s forwards;pointer-events:none}
+@keyframes pulse{50%{opacity:.55}}
+@keyframes shake{20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+@keyframes rise{from{opacity:1;transform:translate(-50%,0)}to{opacity:0;transform:translate(-50%,-26px)}}
+.mute{background:none;border:1px solid var(--line);border-radius:8px;padding:3px 8px;font-size:12px;color:var(--muted)}
+
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.tab{background:none;border:1px solid var(--line);border-radius:10px;color:var(--muted);padding:9px 4px;font-size:14px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.2}
+.tab small{font:400 11px var(--mono);letter-spacing:.06em;text-transform:uppercase}
+.tab[aria-selected="true"]{color:var(--text);border-color:var(--amber);background:var(--night2)}
+.tab.done small{color:var(--green)}
+
+.station{display:flex;flex-direction:column;gap:14px}
+.station .intro{color:var(--muted);max-width:36em}
+.clue{border:1.5px dashed var(--green);color:var(--green);font:700 16px var(--mono);padding:12px 14px;border-radius:10px}
+.clue span{display:block;font-weight:400;font-size:13px;color:var(--muted);margin-top:4px}
+.flash{font-weight:700;color:var(--red)}
+
+/* huella */
+.mud{background:radial-gradient(circle at 45% 40%, var(--mud1), var(--mud2) 75%);border-radius:14px;display:grid;place-items:center;padding:22px 16px}
+svg.sole-big{width:min(190px,58%);height:auto;color:#1E150C;--sole-bg:#7A5C3E}
+.catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px}
+.cat{background:var(--paper);color:var(--ink);border:3px solid transparent;border-radius:10px;padding:10px 8px;display:flex;flex-direction:column;align-items:center;gap:4px;font-family:var(--mono)}
+.cat svg{width:62px;height:auto;color:var(--ink);--sole-bg:#FFFFFF}
+.cat b{font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+.cat span{font-size:13px}
+.cat[aria-pressed="true"]{border-color:var(--amber);box-shadow:0 0 0 3px rgba(242,177,52,.3)}
+
+/* cifra */
+.msg{background:var(--paper);color:var(--ink);border-radius:12px;padding:16px;display:flex;flex-wrap:wrap;gap:14px 22px;--glyph-bg:var(--paper)}
+.word{display:flex;gap:6px}
+.gcell{display:flex;flex-direction:column;align-items:center;gap:2px}
+.gcell i{font:400 11px var(--mono);font-style:normal;color:#5A6680;font-variant-numeric:tabular-nums}
+svg.glyph{width:34px;height:34px;display:block}
+.keygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:8px}
+.key{background:var(--paper);color:var(--ink);border-radius:8px;padding:8px 6px;display:flex;align-items:center;justify-content:center;gap:8px;--glyph-bg:var(--paper)}
+.key b{font:700 22px var(--mono)}
+
+/* testigos */
+.slips{display:flex;flex-direction:column;gap:10px}
+.slip{background:var(--paper);color:var(--ink);border-radius:6px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.slip .who{font:700 12px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#4A5570}
+.slip q{font-size:17px;quotes:"“" "”"}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.seg button{background:var(--night);border:1.5px solid var(--line);border-radius:10px;padding:11px 8px;font-weight:700}
+.seg button[aria-pressed="true"]{border-color:var(--amber);color:var(--amber);background:rgba(242,177,52,.08)}
+
+/* rueda */
+.clues{display:flex;flex-direction:column;gap:6px;font:15px var(--mono);background:var(--night2);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.clues .ok{color:var(--green)}
+.clues .no{color:var(--muted)}
+.lineup{display:flex;flex-direction:column;gap:8px}
+.sus{text-align:left;background:var(--night2);border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:center}
+.sus .n{font-weight:700;font-size:17px}
+.sus .o{color:var(--muted);font-size:14px}
+.sus .d{grid-column:1/-1;font:14px var(--mono);color:var(--paper2);font-variant-numeric:tabular-nums}
+.sus .tag{grid-row:1/3;grid-column:2;font:700 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--red)}
+.sus[aria-pressed="true"]{border-color:var(--amber);background:rgba(242,177,52,.08)}
+.sus.out{opacity:.45}
+.sus.out .n{text-decoration:line-through}
+
+/* final */
+.stamp{align-self:flex-start;font-family:var(--display);font-size:clamp(36px,11vw,60px);line-height:1;padding:10px 16px 6px;border:5px double currentColor;border-radius:8px;transform:rotate(-4deg);margin-block:12px}
+.stamp.win{color:var(--green)}
+.stamp.lose{color:var(--red)}
+.facts{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.fact{background:var(--night2);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.fact b{display:block;font:700 24px var(--mono);font-variant-numeric:tabular-nums}
+.fact span{font-size:13px;color:var(--muted)}
+.quit{align-self:center;background:none;border:0;color:var(--muted);font-size:13px;text-decoration:underline}
+
+@media (min-width:560px){ .facts{grid-template-columns:repeat(3,1fr)} }
+@media (prefers-reduced-motion:reduce){ .timer.low,.timer.hit,.penfx{animation:none} }
+</style>
+</head>
+<body>
+
+<div id="app" class="wrap"></div>
+
+<script>
+(function(){
+"use strict";
+const TOTAL = 480, PEN_STEP = 20, PEN_ACC = 45;
+const TALLES = [37, 39, 41, 43, 45];
+const VEHS = ["MOTO", "AUTO", "BICI", "TAXI", "BONDI"];
+const VEH_TXT = {MOTO:"moto", AUTO:"auto", BICI:"bici", TAXI:"taxi", BONDI:"bondi"};
+const MANOS = ["izquierda", "derecha"];
+const ESTATS = ["alta", "baja"];
+const NAMES = ["Irma Ledesma","Tito Carrizo","Nora Vidal","Beto Maldonado","Chela Ruiz","Pocho Arriaga","Delia Funes","Mauro Quiroga","Rita Sosa","Ciro Benítez","Lola Paredes","Julio Achával","Fina Correa","Nacho Villalba","Susi Olmedo","Rafa Toranzo"];
+const OFICIOS = ["pianista","cerrajero","sommelier","taxista","florista","contadora","bailarín","relojera","jardinero","periodista","bandoneonista","mozo","fotógrafa","sastre"];
+const BARRIOS = ["Almagro","Boedo","San Telmo","Villa Crespo","Barracas","Palermo","La Boca","Caballito"];
+const SCENES = [
+  {t:"El golpe de la confitería", lugar:"una confitería de la avenida", obj:"la receta original de las medialunas, escrita a mano en 1921"},
+  {t:"La noche del bandoneón", lugar:"un club de tango", obj:"un bandoneón alemán de 1938 que nadie se animaba a tocar"},
+  {t:"Robo en la relojería", lugar:"una relojería de tres generaciones", obj:"un reloj de bolsillo que perteneció a un presidente"},
+  {t:"El cuadro que faltaba", lugar:"una galería de arte", obj:"un óleo del puerto pintado en 1930"},
+  {t:"Fuga del vivero", lugar:"un vivero de orquídeas", obj:"una orquídea negra valuada en diez mil dólares"},
+  {t:"La cinta de la cabina 7", lugar:"una radio AM", obj:"la única grabación de un tango inédito"},
+  {t:"El anillo del conventillo", lugar:"un conventillo convertido en museo", obj:"el anillo de compromiso de la abuela del dueño"},
+  {t:"Medianoche en el bodegón", lugar:"un bodegón de barrio", obj:"la caja fuerte con la recaudación del sábado"}
+];
+const BIRDS = ["Hornero","Zorzal","Tero","Chimango","Benteveo","Calandria","Cardenal","Carpintero","Chingolo","Tijereta"];
+const WITS = ["Doña Porota","El Gringo","Marga, la del kiosco","Rulo","Sergio, el portero","Tati","Don Aldo","La Colorada","Cacho","Mirta"];
+const REL = ["Estaba a dos metros, bajo el farol. Relato consistente.","Custodio del lugar. Hay una cámara que confirma lo que dice.","Llamó al 911 en el momento. No cambió ni una coma.","Enfermera de guardia, sobria, a buena distancia.","Paseaba al perro justo enfrente, con buena luz."];
+const UNREL = ["Miope. Esa noche no tenía los anteojos.","Salía del bar con 2 gramos de alcohol en sangre.","Miró desde un tercer piso con la persiana a medio bajar.","Primo de uno de los sospechosos. Ya mintió una vez.","Declaró tres días después y cambió la versión dos veces."];
+const STMT = {
+  izquierda:["Forzó la cerradura con la mano izquierda.","Agarró el botín con la izquierda y salió rajando."],
+  derecha:["Forzó la cerradura con la mano derecha.","Firmó el libro de entrada con la derecha, lo vi clarito."],
+  alta:["Tuvo que agacharse para pasar por la puerta.","Alcanzó el estante de arriba sin estirarse."],
+  baja:["No llegaba al picaporte de la reja, tuvo que saltar.","Se subió a un cajón para alcanzar la ventana."]
+};
+const PAT = ["círculos","zigzag","rombos","rayas"], HEEL = ["cuadrado","redondo","partido"], LOGO = ["estrella","media luna","sin logo"];
+const SHAPES = ["círculo","triángulo","cuadrado","rombo"], FILLS = ["lleno","vacío"], MARKS = ["punto","raya","cruz","nada"];
+const LS = "expediente-a-dos-v1";
+
+/* ---------- utilidades ---------- */
+function mulberry(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const randCode = () => String(1000 + Math.floor(Math.random()*9000));
+const fmt = s => { s = Math.max(0, Math.ceil(s)); return Math.floor(s/60) + ":" + String(s%60).padStart(2,"0"); };
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+
+/* ---------- generación del caso (determinística por número) ---------- */
+const caseCache = {};
+function genCase(code){
+  if (caseCache[code]) return caseCache[code];
+  const r = mulberry(code*2654435761 ^ 0x5bd1e995);
+  const pk = a => a[Math.floor(r()*a.length)];
+  const sh = a => { a = a.slice(); for (let i=a.length-1;i>0;i--){ const j=Math.floor(r()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+
+  const scene = pk(SCENES), barrio = pk(BARRIOS);
+  let sus, cul;
+  for (let k=0;k<2000;k++){
+    const ns = sh(NAMES).slice(0,6), os = sh(OFICIOS).slice(0,6);
+    sus = ns.map((n,i)=>({name:n, oficio:os[i], talle:pk(TALLES), veh:pk(VEHS), mano:pk(MANOS), estat:pk(ESTATS)}));
+    cul = Math.floor(r()*6);
+    const c = sus[cul], m = f => sus.filter(f).length;
+    const ok = m(s=>s.talle===c.talle&&s.veh===c.veh&&s.mano===c.mano&&s.estat===c.estat)===1
+      && m(s=>s.veh===c.veh&&s.mano===c.mano)>=2
+      && m(s=>s.talle===c.talle&&s.estat===c.estat)>=2
+      && m(s=>s.talle===c.talle)>=2 && m(s=>s.estat===c.estat)>=2;
+    if (ok) break;
+  }
+  const c = sus[cul];
+
+  // suelas
+  const skey = s => s.rows.join()+"|"+s.heel+"|"+s.logo;
+  const rsole = () => ({rows:[pk(PAT),pk(PAT),pk(PAT)], heel:pk(HEEL), logo:pk(LOGO)});
+  const target = rsole(), seen = new Set([skey(target)]);
+  const cat = [Object.assign({}, target, {rows:target.rows.slice(), talle:c.talle, ok:true})];
+  const otherT = TALLES.filter(t=>t!==c.talle);
+  let g = 0;
+  while (cat.length<4 && g++<200){
+    const n = {rows:target.rows.slice(), heel:target.heel, logo:target.logo};
+    const f = Math.floor(r()*5);
+    if (f<3) n.rows[f] = pk(PAT.filter(p=>p!==n.rows[f]));
+    else if (f===3) n.heel = pk(HEEL.filter(h=>h!==n.heel));
+    else n.logo = pk(LOGO.filter(l=>l!==n.logo));
+    if (seen.has(skey(n))) continue;
+    seen.add(skey(n)); cat.push(Object.assign(n,{talle:pk(otherT), ok:false}));
+  }
+  while (cat.length<8 && g++<800){
+    const n = rsole(); if (seen.has(skey(n))) continue;
+    seen.add(skey(n)); cat.push(Object.assign(n,{talle:pk(TALLES), ok:false}));
+  }
+  const birds = sh(BIRDS);
+  const catalog = sh(cat).map((s,i)=>Object.assign(s,{model:birds[i]}));
+
+  // cifrado
+  const verb = pk(["HUYO EN","ESCAPO EN","SE FUE EN","LLEGO EN","RAJO EN"]);
+  const phrase = verb + " " + c.veh;
+  const letters = [...new Set(phrase.replace(/ /g,"").split(""))];
+  const decoys = sh("ABCDEFGHIJLMNOPRSTUVYZ".split("").filter(l=>!letters.includes(l))).slice(0,6);
+  const allG = []; SHAPES.forEach(s=>FILLS.forEach(f=>MARKS.forEach(m=>allG.push({shape:s,fill:f,mark:m}))));
+  const gl = sh(allG), map = {};
+  letters.concat(decoys).forEach((l,i)=>map[l]=gl[i]);
+  const keyList = sh(Object.keys(map)).map(l=>({l, g:map[l]}));
+  const msg = phrase.split(" ").map(w=>w.split("").map(l=>map[l]));
+
+  // testigos
+  const wn = sh(WITS).slice(0,4), rel = sh(REL), unrel = sh(UNREL);
+  const oppM = c.mano==="izquierda"?"derecha":"izquierda", oppE = c.estat==="alta"?"baja":"alta";
+  const wit = sh([
+    {text:pk(STMT[c.mano]), ok:true}, {text:pk(STMT[oppM]), ok:false},
+    {text:pk(STMT[c.estat]), ok:true}, {text:pk(STMT[oppE]), ok:false}
+  ]).map((w,i)=>Object.assign(w,{name:wn[i], note:w.ok?rel[i]:unrel[i]}));
+  const registry = sh(wit);
+
+  return caseCache[code] = {code, scene, barrio, sus, cul, c, catalog, phrase, keyList, msg, wit, registry};
+}
+
+/* ---------- dibujos ---------- */
+function rowPat(p,y){
+  const xs=[36,52,68,84];
+  if (p==="círculos") return xs.map(x=>`<circle cx="${x}" cy="${y}" r="5.5" fill="none" stroke="currentColor" stroke-width="2.6"/>`).join("");
+  if (p==="rombos") return xs.map(x=>`<path d="M${x} ${y-7}L${x+6} ${y}L${x} ${y+7}L${x-6} ${y}Z" fill="currentColor"/>`).join("");
+  if (p==="zigzag"){ const pts=[]; for(let i=0;i<=8;i++) pts.push((26+i*8.5)+","+(y+(i%2?-7:7))); return `<polyline points="${pts.join(" ")}" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linejoin="round"/>`; }
+  return [30,42,54,66,78,90].map(x=>`<line x1="${x}" y1="${y-8}" x2="${x}" y2="${y+8}" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>`).join("");
+}
+function soleSVG(s, cls){
+  let g = s.rows.map((p,i)=>rowPat(p,[50,82,114][i])).join("");
+  if (s.logo==="estrella"){ const pts=[]; for(let i=0;i<10;i++){ const a=-Math.PI/2+i*Math.PI/5, rr=i%2?5:12; pts.push((60+rr*Math.cos(a)).toFixed(1)+","+(152+rr*Math.sin(a)).toFixed(1)); } g+=`<polygon points="${pts.join(" ")}" fill="currentColor"/>`; }
+  else if (s.logo==="media luna") g+=`<circle cx="60" cy="152" r="12" fill="currentColor"/><circle cx="66" cy="148" r="10" fill="var(--sole-bg)"/>`;
+  if (s.heel==="cuadrado") g+=`<rect x="40" y="198" width="40" height="40" fill="none" stroke="currentColor" stroke-width="3"/>`;
+  else if (s.heel==="redondo") g+=`<circle cx="60" cy="218" r="21" fill="none" stroke="currentColor" stroke-width="3"/>`;
+  else g+=`<rect x="37" y="198" width="19" height="40" fill="none" stroke="currentColor" stroke-width="3"/><rect x="64" y="198" width="19" height="40" fill="none" stroke="currentColor" stroke-width="3"/>`;
+  return `<svg class="${cls}" viewBox="0 0 120 264" aria-hidden="true"><path d="M60 6C92 6 108 36 106 80C104 118 94 136 91 160L91 238C91 252 80 258 60 258C40 258 29 252 29 238L29 160C26 136 16 118 14 80C12 36 28 6 60 6Z" fill="var(--sole-bg)" stroke="currentColor" stroke-width="3"/>${g}</svg>`;
+}
+function glyphSVG(q){
+  const full = q.fill==="lleno";
+  const st = full ? 'fill="currentColor"' : 'fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"';
+  let shp;
+  if (q.shape==="círculo") shp=`<circle cx="20" cy="20" r="14" ${st}/>`;
+  else if (q.shape==="triángulo") shp=`<path d="M20 5L35 33H5Z" ${st}/>`;
+  else if (q.shape==="cuadrado") shp=`<rect x="7" y="7" width="26" height="26" ${st}/>`;
+  else shp=`<path d="M20 3L37 20L20 37L3 20Z" ${st}/>`;
+  const mc = full ? "var(--glyph-bg)" : "currentColor", cy = q.shape==="triángulo" ? 24 : 20;
+  let mk = "";
+  if (q.mark==="punto") mk=`<circle cx="20" cy="${cy}" r="3.3" fill="${mc}"/>`;
+  else if (q.mark==="raya") mk=`<line x1="13" y1="${cy}" x2="27" y2="${cy}" stroke="${mc}" stroke-width="3" stroke-linecap="round"/>`;
+  else if (q.mark==="cruz") mk=`<path d="M20 ${cy-6}V${cy+6}M14 ${cy}H26" stroke="${mc}" stroke-width="3" stroke-linecap="round"/>`;
+  return `<svg viewBox="0 0 40 40" class="glyph" aria-hidden="true">${shp}${mk}</svg>`;
+}
+
+/* ---------- estado ---------- */
+const blank = () => ({suela:false, cifra:false, testigos:false});
+function loadMe(){
+  try{ const o = JSON.parse(lsGet(LS)); if (o && o.v===1 && o.code>=1000 && o.code<=9999) return o; }catch(e){}
+  return {v:1, phase:"lobby", code:+randCode(), role:null, startedAt:0, solved:blank(), pen:0, wrong:[], end:null, left:0};
+}
+let me = loadMe();
+let codeDraft = String(me.code);
+let tab = "suela";
+let sel = {suela:null, cifra:"", man:null, est:null, acc:null};
+let flash = null, flashT = 0, quitArm = false;
+let room = null, syncState = "wait", partner = null, lastSig = "", prevSolved = 0, lastSec = -1;
+let muted = lsGet(LS+"-mute")==="1";
+const app = document.getElementById("app");
+
+function save(){ lsSet(LS, JSON.stringify(me)); pushPresence(); }
+function pushPresence(){
+  if (!room) return;
+  room.presence({v:1, code:me.code, role:me.role, phase:me.phase, startedAt:me.startedAt, solved:me.solved, pen:me.pen, wrong:me.wrong, end:me.end, left:me.left}).catch(()=>{});
+}
+function cleanP(o){
+  if (!o || o.v!==1) return null;
+  const code = Number(o.code); if (!(code>=1000 && code<=9999)) return null;
+  const num = (x,a,b) => { x=Number(x); return Number.isFinite(x) ? Math.min(b,Math.max(a,x)) : 0; };
+  const s = o.solved || {};
+  return {
+    code, role: o.role==="campo"||o.role==="archivo" ? o.role : null,
+    phase: ["lobby","brief","game","end"].includes(o.phase) ? o.phase : "lobby",
+    startedAt: num(o.startedAt,0,9e15), pen: num(o.pen,0,5000), left: num(o.left,0,TOTAL),
+    solved: {suela:!!s.suela, cifra:!!s.cifra, testigos:!!s.testigos},
+    wrong: Array.isArray(o.wrong) ? o.wrong.map(Number).filter(n=>Number.isInteger(n)&&n>=0&&n<6).slice(0,6) : [],
+    end: o.end==="win"||o.end==="lose" ? o.end : null
+  };
+}
+function readPartner(){
+  if (!room) return null;
+  const list = room.peers().filter(p=>!p.sameTab && p.kind==="viewer").map(p=>({p:cleanP(p.presence), t:p.updatedAt})).filter(x=>x.p);
+  if (!list.length) return null;
+  list.sort((a,b)=>(b.p.code===me.code)-(a.p.code===me.code) || b.t-a.t);
+  return list[0].p;
+}
+function M(){
+  const p = partner && partner.code===me.code && me.phase!=="lobby" && partner.phase!=="lobby" ? partner : null;
+  const solved = {}; ["suela","cifra","testigos"].forEach(k=>solved[k] = !!(me.solved[k] || (p && p.solved[k])));
+  let startedAt = me.startedAt;
+  if (p && p.startedAt && (!startedAt || p.startedAt<startedAt)) startedAt = p.startedAt;
+  const end = (me.end==="win" || (p&&p.end==="win")) ? "win" : ((me.end==="lose" || (p&&p.end==="lose")) ? "lose" : null);
+  const left = me.end ? me.left : (p && p.end ? p.left : 0);
+  return {p, solved, pen: me.pen + (p?p.pen:0), wrong:[...new Set(me.wrong.concat(p?p.wrong:[]))], startedAt, end, left};
+}
+const remaining = m => m.startedAt ? Math.max(0, TOTAL - (Date.now()-m.startedAt)/1000 - m.pen) : TOTAL;
+
+function reconcile(){
+  if (!partner || partner.code!==me.code) return;
+  if (me.phase==="brief" && !me.startedAt && partner.phase==="game" && partner.startedAt){
+    me.startedAt = partner.startedAt; me.phase = "game"; save();
+  }
+  if (me.phase==="game"){
+    const m = M();
+    if (m.end && !me.end){ me.end = m.end; me.left = m.left; me.phase = "end"; save(); m.end==="win" ? sWin() : sErr(); }
+  }
+}
+
+/* ---------- sonido ---------- */
+let ac = null;
+function audioInit(){ if (ac) return; try{ ac = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ ac = null; } }
+function tone(f,d,type,v,when){
+  if (!ac || muted) return;
+  try{
+    const t = ac.currentTime + (when||0), o = ac.createOscillator(), gn = ac.createGain();
+    o.type = type||"sine"; o.frequency.value = f;
+    gn.gain.setValueAtTime(v||.08, t); gn.gain.exponentialRampToValueAtTime(.0001, t+d);
+    o.connect(gn); gn.connect(ac.destination); o.start(t); o.stop(t+d+.03);
+  }catch(e){}
+}
+const sOk = () => { tone(660,.12,"triangle",.09); tone(990,.22,"triangle",.09,.1); };
+const sErr = () => { tone(150,.4,"sawtooth",.05); tone(110,.4,"sawtooth",.05,.05); };
+const sTick = () => tone(1300,.04,"square",.02);
+const sWin = () => [523,659,784,1047].forEach((f,i)=>tone(f,.3,"triangle",.08,i*.12));
+
+/* ---------- vistas ---------- */
+const other = r => r==="campo" ? "archivo" : "campo";
+const RNAME = {campo:"Campo", archivo:"Archivo"};
+
+function syncLine(){
+  if (!room || syncState==="off") return `<p class="sync"><span class="dot"></span>Sin sincronización. Usen el mismo número de caso y arranquen el reloj a la vez.</p>`;
+  if (partner) return `<p class="sync"><span class="dot on"></span>Tu compañero está conectado.</p>`;
+  return `<p class="sync"><span class="dot${syncState==="on"?" on":""}"></span>${syncState==="on"?"Sincronización lista. Esperando a tu compañero.":"Conectando…"}</p>`;
+}
+function partnerBanner(){
+  if (!partner) return "";
+  if (partner.code===me.code && partner.role && partner.role!==me.role && me.role)
+    return `<div class="banner"><p>Conectados en el caso <b>#${partner.code}</b>. Tu compañero está en <b>${RNAME[partner.role]}</b>.</p></div>`;
+  if (partner.phase==="lobby" && !partner.role) return `<div class="banner"><p>Tu compañero entró y está eligiendo caso.</p></div>`;
+  const clash = partner.code===me.code && partner.role && partner.role===me.role;
+  const txt = clash ? `Los dos eligieron <b>${RNAME[me.role]}</b>. Uno tiene que cambiar.` :
+    `Tu compañero abrió el caso <b>#${partner.code}</b>${partner.role?` como <b>${RNAME[partner.role]}</b>`:""}.`;
+  return `<div class="banner"><p>${txt}</p><button class="ghost small" data-act="join">${clash?`Pasarme a ${RNAME[other(me.role)]}`:"Unirme a ese caso"}</button></div>`;
+}
+
+function viewLobby(){
+  const valid = /^\d{4}$/.test(codeDraft) && +codeDraft>=1000;
+  const role = (r, d) => `<button class="role" data-act="role" data-v="${r}" aria-pressed="${me.role===r}"><h3>${RNAME[r]}</h3><p>${d}</p>${partner&&partner.role===r&&partner.code===+codeDraft?`<span class="taken">Lo eligió tu compañero</span>`:""}</button>`;
+  return `
+  <header class="brand">
+    <p class="eyebrow">Policial cooperativo · 2 jugadores · 8 minutos</p>
+    <h1>Expediente<br>a Dos</h1>
+    <p class="lede">Uno está en la escena del crimen. El otro, en el archivo central. Cada uno ve la mitad de las pistas. Tienen que hablar rápido: el reloj corre y cada error lo acelera.</p>
+  </header>
+  ${partnerBanner()}
+  <section class="panel">
+    <div class="field">
+      <label for="code">Número de caso</label>
+      <div class="row"><input id="code" class="code" inputmode="numeric" maxlength="4" autocomplete="off" value="${esc(codeDraft)}"><button class="ghost" data-act="rnd">Otro al azar</button></div>
+      <p class="hint">Los dos tienen que abrir el mismo número. Cada número es un crimen distinto.</p>
+    </div>
+    <div class="field">
+      <label>Tu rol</label>
+      <div class="roles">
+        ${role("campo","Estás en la escena: la huella, la libreta del ladrón y los testigos.")}
+        ${role("archivo","Estás en la central: el catálogo, el mensaje interceptado y los registros.")}
+      </div>
+    </div>
+    <button class="cta" id="open" data-act="open" ${valid&&me.role?"":"disabled"}>Abrir el caso</button>
+  </section>
+  <section class="panel how">
+    <h3>Cómo se juega</h3>
+    <ol>
+      <li>Pónganse en llamada o en la misma habitación. Cada uno con su pantalla, sin mirar la del otro.</li>
+      <li>Abran el mismo número de caso con roles distintos.</li>
+      <li>Resuelvan la huella, el mensaje y los testigos en el orden que quieran. Cada uno tiene la mitad de la información.</li>
+      <li>Crucen las fichas de los seis sospechosos y acusen a uno solo.</li>
+    </ol>
+    <div class="rules"><span class="pill">8:00 de reloj</span><span class="pill red">Error en una pista −20 s</span><span class="pill red">Acusación falsa −45 s</span></div>
+  </section>
+  ${syncLine()}`;
+}
+
+function viewBrief(){
+  const C = genCase(me.code);
+  const sync = room && syncState!=="off";
+  const my = me.role==="campo"
+    ? "Estás en la escena. Ves la huella en el barro, la libreta con la clave del ladrón y las declaraciones de los testigos. Tu compañero tiene los registros que les dan sentido."
+    : "Estás en la central. Tenés el catálogo de suelas, un mensaje cifrado interceptado y el registro de cada testigo. Lo que pasó en la escena solo lo ve tu compañero.";
+  return `
+  <header class="brand">
+    <p class="eyebrow">Caso #${me.code} · ${esc(C.barrio)}</p>
+    <h2>${esc(C.scene.t)}</h2>
+  </header>
+  <p class="lede">Medianoche en ${esc(C.barrio)}. Alguien entró en ${esc(C.scene.lugar)} y se llevó ${esc(C.scene.obj)}. La policía retuvo a seis personas que andaban cerca. Una de ellas lo hizo.</p>
+  <section class="panel">
+    <p class="eyebrow">Tu rol</p>
+    <h3>${RNAME[me.role]}</h3>
+    <p>${my}</p>
+  </section>
+  ${partnerBanner()}
+  <button class="cta" data-act="start">Arrancar el reloj</button>
+  <p class="hint">${sync ? "Cuando uno arranca, arranca para los dos." : "Asegúrense de tener el mismo número de caso. Cuenten 3, 2, 1 y aprieten a la vez."}</p>
+  <div class="btnrow"><button class="ghost" data-act="back">Volver</button></div>
+  ${syncLine()}`;
+}
+
+function clueText(k, C){
+  const c = C.c;
+  if (k==="suela") return `Calza ${c.talle}.`;
+  if (k==="cifra") return `Se escapó en ${VEH_TXT[c.veh]}.`;
+  return `Mano hábil: ${c.mano}. Estatura: ${c.estat}.`;
+}
+function clueBox(k, C, m){
+  if (!m.solved[k]) return "";
+  const mine = me.solved[k];
+  return `<div class="clue">Pista: ${clueText(k,C)}<span>${mine ? (m.p ? "Tu compañero también la ve." : "Contásela a tu compañero.") : "La resolvió tu compañero."}</span></div>`;
+}
+function flashBox(k){ return flash && flash.k===k ? `<p class="flash" role="alert">${esc(flash.t)}</p>` : ""; }
+
+function viewSuela(C, m){
+  const solved = m.solved.suela;
+  if (me.role==="campo") return `
+    <div class="station"><h2>La huella</h2>
+    <p class="intro">Hay una sola huella clara en el barro, junto a la ventana. Describísela a tu compañero, de la punta al taco: tiene el catálogo de suelas.</p>
+    <div class="mud">${soleSVG(C.catalog.find(s=>s.ok),"sole-big")}</div>
+    ${clueBox("suela",C,m)}</div>`;
+  return `
+    <div class="station"><h2>Catálogo de suelas</h2>
+    <p class="intro">Tu compañero ve una huella en la escena. Preguntale cómo es cada franja, el logo y el taco. Cuando la encuentres, confirmala.</p>
+    <div class="catalog">${C.catalog.map((s,i)=>`<button class="cat" data-act="pick-sole" data-v="${i}" aria-pressed="${sel.suela===i}" ${solved?"disabled":""}>${soleSVG(s,"")}<b>${s.model}</b><span>Talle ${s.talle}</span></button>`).join("")}</div>
+    ${solved ? clueBox("suela",C,m) : `<button class="cta" data-act="suela" ${sel.suela===null?"disabled":""}>Confirmar suela</button>${flashBox("suela")}`}</div>`;
+}
+function viewCifra(C, m){
+  const solved = m.solved.cifra;
+  if (me.role==="archivo"){
+    let n = 0;
+    return `
+    <div class="station"><h2>Mensaje interceptado</h2>
+    <p class="intro">Un informante dejó este mensaje. La clave está en la libreta que encontró tu compañero en la escena. Dictale los símbolos uno por uno: forma, relleno y marca.</p>
+    <div class="msg">${C.msg.map(w=>`<div class="word">${w.map(q=>`<div class="gcell">${glyphSVG(q)}<i>${++n}</i></div>`).join("")}</div>`).join("")}</div>
+    ${clueBox("cifra",C,m)}</div>`;
+  }
+  return `
+    <div class="station"><h2>La libreta</h2>
+    <p class="intro">Se le cayó al ladrón al escapar. Cada símbolo es una letra. Tu compañero tiene un mensaje escrito con esta clave: que te lo dicte y escribí la frase completa.</p>
+    <div class="keygrid">${C.keyList.map(k=>`<div class="key">${glyphSVG(k.g)}<b>${k.l}</b></div>`).join("")}</div>
+    ${solved ? clueBox("cifra",C,m) : `
+    <div class="field"><label for="cifra">Mensaje descifrado</label><input id="cifra" class="text" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(sel.cifra)}" placeholder="Frase completa"></div>
+    <button class="cta" data-act="cifra">Confirmar mensaje</button>${flashBox("cifra")}`}</div>`;
+}
+function viewTestigos(C, m){
+  const solved = m.solved.testigos;
+  if (me.role==="campo") return `
+    <div class="station"><h2>Los testigos</h2>
+    <p class="intro">Cuatro personas declararon. Dos de ellas no sirven. Leéselas a tu compañero: tiene el registro de cada testigo.</p>
+    <div class="slips">${C.wit.map(w=>`<div class="slip"><span class="who">${esc(w.name)}</span><q>${esc(w.text)}</q></div>`).join("")}</div>
+    ${clueBox("testigos",C,m)}</div>`;
+  const seg = (k, opts) => `<div class="seg">${opts.map(o=>`<button data-act="${k}" data-v="${o}" aria-pressed="${sel[k]===o}">${o[0].toUpperCase()+o.slice(1)}</button>`).join("")}</div>`;
+  return `
+    <div class="station"><h2>Registro de testigos</h2>
+    <p class="intro">Tu compañero tiene lo que dijo cada testigo. Vos sabés a quién creerle. Descartá las declaraciones que no sirven y definí cómo es el culpable.</p>
+    <div class="slips">${C.registry.map(w=>`<div class="slip"><span class="who">${esc(w.name)}</span><span>${esc(w.note)}</span></div>`).join("")}</div>
+    ${solved ? clueBox("testigos",C,m) : `
+    <div class="field"><label>Mano hábil del culpable</label>${seg("man",MANOS)}</div>
+    <div class="field"><label>Estatura del culpable</label>${seg("est",ESTATS)}</div>
+    <button class="cta" data-act="testigos" ${sel.man&&sel.est?"":"disabled"}>Confirmar perfil</button>${flashBox("testigos")}`}</div>`;
+}
+function viewRueda(C, m){
+  const items = [["suela","La huella"],["cifra","El mensaje"],["testigos","Los testigos"]];
+  const data = s => me.role==="campo" ? `Vehículo: ${VEH_TXT[s.veh]} · Mano: ${s.mano}` : `Talle: ${s.talle} · Estatura: ${s.estat}`;
+  const chosen = sel.acc!==null ? C.sus[sel.acc] : null;
+  return `
+    <div class="station"><h2>La rueda</h2>
+    <p class="intro">Seis personas retenidas. Ninguno de los dos ve la ficha completa: vos tenés ${me.role==="campo"?"vehículo y mano hábil":"talle y estatura"}, tu compañero tiene el resto. Crucen los datos antes de acusar.</p>
+    <div class="clues">${items.map(([k,t])=>m.solved[k]?`<span class="ok">✓ ${clueText(k,C)}</span>`:`<span class="no">— ${t}: sin resolver</span>`).join("")}</div>
+    <div class="lineup">${C.sus.map((s,i)=>{ const out = m.wrong.includes(i);
+      return `<button class="sus${out?" out":""}" data-act="sus" data-v="${i}" aria-pressed="${sel.acc===i}" ${out?"disabled":""}><span class="n">${esc(s.name)}</span>${out?`<span class="tag">Inocente</span>`:""}<span class="o">${esc(s.oficio)}</span><span class="d">${data(s)}</span></button>`; }).join("")}</div>
+    <button class="cta" data-act="accuse" ${chosen?"":"disabled"}>${chosen?`Acusar a ${esc(chosen.name)}`:"Elegí a quién acusar"}</button>${flashBox("accuse")}
+    </div>`;
+}
+
+function viewGame(){
+  const C = genCase(me.code), m = M(), left = remaining(m);
+  const tabs = [["suela","Huella"],["cifra","Mensaje"],["testigos","Testigos"],["rueda","Rueda"]];
+  const st = k => k==="rueda" ? `${m.wrong.length?m.wrong.length+" desc.":"acusar"}` : (m.solved[k]?"✓ lista":"abierta");
+  const body = tab==="suela"?viewSuela(C,m):tab==="cifra"?viewCifra(C,m):tab==="testigos"?viewTestigos(C,m):viewRueda(C,m);
+  return `
+  <div class="hud">
+    <div class="l">Caso #${me.code}<br><b>${RNAME[me.role]}</b></div>
+    <div class="timer${left<=60?" low":""}" id="timer" aria-live="off">${fmt(left)}</div>
+    <div class="r"><span class="sync"><span class="dot${m.p?" on":""}"></span>${m.p?"En línea":"Solo"}</span><button class="mute" data-act="mute" aria-pressed="${!muted}">Sonido ${muted?"no":"sí"}</button></div>
+  </div>
+  <nav class="tabs" role="tablist">${tabs.map(([k,t])=>`<button class="tab${k!=="rueda"&&m.solved[k]?" done":""}" role="tab" data-act="tab" data-v="${k}" aria-selected="${tab===k}">${t}<small>${st(k)}</small></button>`).join("")}</nav>
+  ${body}
+  <button class="quit" data-act="quit">${quitArm?"¿Seguro? Tocá de nuevo para abandonar":"Abandonar el caso"}</button>`;
+}
+
+function viewEnd(){
+  const C = genCase(me.code), m = M(), c = C.c, win = me.end==="win";
+  const best = +(lsGet(LS+"-best")||0);
+  return `
+  <p class="eyebrow">Caso #${me.code} · ${esc(C.scene.t)}</p>
+  <div class="stamp ${win?"win":"lose"}">${win?"Caso cerrado":"Se escapó"}</div>
+  <p class="lede">${win
+    ? `${esc(c.name)}, ${esc(c.oficio)}, confesó en la comisaría de ${esc(C.barrio)} antes del amanecer. ${esc(C.scene.obj[0].toUpperCase()+C.scene.obj.slice(1))} volvió a su lugar.`
+    : `Era ${esc(c.name)}, ${esc(c.oficio)}. Calza ${c.talle}, mano hábil ${c.mano}, estatura ${c.estat}. Se fue en ${VEH_TXT[c.veh]} y nadie la volvió a ver.`}</p>
+  <div class="facts">
+    <div class="fact"><b>${fmt(win?me.left:0)}</b><span>Tiempo que les sobró</span></div>
+    <div class="fact"><b>${m.pen} s</b><span>Perdidos en errores</span></div>
+    <div class="fact"><b>${best?fmt(best):"—"}</b><span>Mejor marca en este dispositivo</span></div>
+  </div>
+  ${partner && partner.code!==me.code && partner.phase!=="end" ? partnerBanner() : ""}
+  <div class="btnrow">
+    <button class="cta" data-act="again" data-v="swap">Otro caso, roles cambiados</button>
+    <button class="ghost" data-act="again" data-v="same">Otro caso, mismo rol</button>
+  </div>
+  <p class="hint">Con sincronización, tu compañero ve el caso nuevo y se suma con un toque. Sin ella, díctenle el número.</p>`;
+}
+
+function render(){
+  const a = document.activeElement, id = a && a.id, ss = a && a.selectionStart;
+  app.innerHTML = me.phase==="lobby" ? viewLobby() : me.phase==="brief" ? viewBrief() : me.phase==="game" ? viewGame() : viewEnd();
+  if (id){ const el = document.getElementById(id); if (el){ el.focus({preventScroll:true}); try{ if (ss!=null) el.setSelectionRange(ss,ss); }catch(e){} } }
+  prevSolved = me.phase==="game" ? Object.values(M().solved).filter(Boolean).length : 0;
+}
+
+/* ---------- acciones ---------- */
+function openCase(){
+  me = Object.assign(me, {phase:"brief", startedAt:0, solved:blank(), pen:0, wrong:[], end:null, left:0});
+  sel = {suela:null, cifra:"", man:null, est:null, acc:null}; tab = "suela"; flash = null;
+  genCase(me.code); save(); render(); window.scrollTo(0,0);
+}
+function penalize(k, secs, text){
+  me.pen += secs; save(); sErr();
+  flash = {k, t:text}; clearTimeout(flashT); flashT = setTimeout(()=>{ flash=null; render(); }, 2600);
+  render();
+  const t = document.getElementById("timer");
+  if (t){ t.classList.add("hit"); const s = document.createElement("span"); s.className="penfx"; s.textContent="−"+secs+" s"; t.appendChild(s); }
+}
+function solve(k){ me.solved[k] = true; save(); sOk(); render(); }
+
+function act(a, v){
+  switch(a){
+    case "role": me.role = v; save(); render(); break;
+    case "rnd": codeDraft = randCode(); render(); break;
+    case "open":
+      if (!/^\d{4}$/.test(codeDraft) || +codeDraft<1000 || !me.role) return;
+      me.code = +codeDraft; openCase(); break;
+    case "join":
+      if (!partner) return;
+      if (partner.code===me.code && partner.role===me.role){ me.role = other(me.role); save(); render(); return; }
+      me.code = partner.code; codeDraft = String(partner.code);
+      if (partner.role) me.role = other(partner.role); else if (!me.role) me.role = "campo";
+      openCase(); break;
+    case "back": me.phase = "lobby"; codeDraft = String(me.code); save(); render(); break;
+    case "start":
+      if (!me.startedAt) me.startedAt = Date.now();
+      me.phase = "game"; save(); render(); window.scrollTo(0,0); break;
+    case "tab": tab = v; quitArm = false; render(); window.scrollTo(0,0); break;
+    case "pick-sole": sel.suela = +v; render(); break;
+    case "suela": {
+      if (sel.suela===null) return;
+      genCase(me.code).catalog[sel.suela].ok ? solve("suela") : penalize("suela", PEN_STEP, "No es esa suela. −20 s");
+      break; }
+    case "cifra": {
+      const C = genCase(me.code);
+      const norm = s => s.toUpperCase().normalize("NFD").replace(/[^A-Z]/g,"");
+      if (!norm(sel.cifra)) return;
+      norm(sel.cifra)===norm(C.phrase) ? solve("cifra") : penalize("cifra", PEN_STEP, "El mensaje no es ese. −20 s");
+      break; }
+    case "man": sel.man = v; render(); break;
+    case "est": sel.est = v; render(); break;
+    case "testigos": {
+      const c = genCase(me.code).c;
+      if (!sel.man || !sel.est) return;
+      (sel.man===c.mano && sel.est===c.estat) ? solve("testigos") : penalize("testigos", PEN_STEP, "Ese perfil no cierra. −20 s");
+      break; }
+    case "sus": sel.acc = +v; render(); break;
+    case "accuse": {
+      if (sel.acc===null) return;
+      const C = genCase(me.code);
+      if (sel.acc===C.cul){
+        me.left = remaining(M()); me.end = "win"; me.phase = "end";
+        if (me.left > +(lsGet(LS+"-best")||0)) lsSet(LS+"-best", String(Math.round(me.left)));
+        save(); sWin(); render(); window.scrollTo(0,0);
+      } else {
+        const name = C.sus[sel.acc].name;
+        me.wrong.push(sel.acc); sel.acc = null;
+        penalize("accuse", PEN_ACC, `${name} tiene coartada. −45 s`);
+      }
+      break; }
+    case "mute": muted = !muted; lsSet(LS+"-mute", muted?"1":"0"); render(); break;
+    case "quit":
+      if (!quitArm){ quitArm = true; render(); setTimeout(()=>{ if(quitArm){ quitArm=false; if(me.phase==="game") render(); } }, 4000); return; }
+      quitArm = false; me.phase = "lobby"; me.startedAt = 0; codeDraft = String(me.code); save(); render(); break;
+    case "again":
+      if (v==="swap") me.role = other(me.role);
+      me.code = +randCode(); codeDraft = String(me.code); openCase(); break;
+  }
+}
+
+app.addEventListener("click", e => {
+  const b = e.target.closest("[data-act]"); if (!b || b.disabled) return;
+  audioInit(); act(b.dataset.act, b.dataset.v);
+});
+app.addEventListener("input", e => {
+  if (e.target.id==="code"){
+    codeDraft = e.target.value.replace(/\D/g,"").slice(0,4);
+    if (e.target.value!==codeDraft) e.target.value = codeDraft;
+    const btn = document.getElementById("open");
+    if (btn) btn.disabled = !(/^\d{4}$/.test(codeDraft) && +codeDraft>=1000 && me.role);
+  }
+  if (e.target.id==="cifra") sel.cifra = e.target.value;
+});
+app.addEventListener("keydown", e => { if (e.key==="Enter" && e.target.id==="cifra"){ audioInit(); act("cifra"); } });
+
+/* ---------- reloj ---------- */
+setInterval(() => {
+  if (me.phase!=="game") return;
+  const m = M(), left = remaining(m);
+  if (m.end){ reconcile(); render(); return; }
+  if (left<=0){ me.end = "lose"; me.left = 0; me.phase = "end"; save(); sErr(); render(); window.scrollTo(0,0); return; }
+  const t = document.getElementById("timer");
+  if (t){
+    const txt = fmt(left); if (t.firstChild && t.firstChild.nodeValue!==txt) t.firstChild.nodeValue = txt;
+    t.classList.toggle("low", left<=60);
+  }
+  const sec = Math.ceil(left);
+  if (sec!==lastSec){ if (left<=30) sTick(); lastSec = sec; }
+}, 250);
+
+/* ---------- sincronización ---------- */
+function onRoom(){
+  partner = readPartner();
+  const before = prevSolved;
+  reconcile();
+  const sig = JSON.stringify([partner, syncState]);
+  if (sig!==lastSig){
+    lastSig = sig; render();
+    if (me.phase==="game" && prevSolved>before) sOk();
+  }
+}
+(async () => {
+  try{ room = window.claude && window.claude.use ? await window.claude.use("room") : null; }catch(e){ room = null; }
+  if (!room){ syncState = "off"; render(); return; }
+  const dead = () => { syncState = "off"; room = null; partner = null; render(); };
+  room.onConnection(c => { syncState = c ? "on" : "wait"; onRoom(); }, dead);
+  room.onPeers(onRoom, dead);
+  pushPresence();
+})();
+
+if (me.phase==="game" && !me.startedAt) me.phase = "brief";
+render();
+})();
+</script>
+</body>
+</html>
