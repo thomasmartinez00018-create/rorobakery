@@ -232,6 +232,7 @@ export class Renderer {
     g.fillStyle = "rgba(0,0,0,.3)"; g.fillRect(X(dir > 0 ? x - len : x), by - 1, len, 3);
     if (name === "tren") { put("locomotora", X(x + back * 30)); for (let i = 0; i < 3; i++) put("vagon", X(x + back * (60 + 42 + i * 86))); }
     else if (name === "carritos") for (let i = 0; i < 6; i++) put("carrito", X(x + back * (11 + i * 26)));
+    else if (name === "trote") for (let i = 0; i < 5; i++) { const s = SPR[i % 2 ? "alumna" : "alumno"], fr = Math.floor(this.t * 10 + i) % 4; g.drawImage(dir < 0 ? s.fl[fr] : s.f[fr], Math.round(X(x + back * (10 + i * 23)) - (s.w >> 1)), by - s.h + 1); }
     else if (name === "autos") put(["auto", "auto3", "auto2"][Math.abs(y) % 3], X(x + back * 22));
     else put(name, X(x + back * (len >> 1)));
   }

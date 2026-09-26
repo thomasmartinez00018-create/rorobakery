@@ -66,6 +66,8 @@ function human(o, f) {
   });
 }
 const THOMAS = { skin: "#e8b48e", hair: "rulos", hairC: "#1e1612", hairL: "#3a2a20", shirt: "#17191f", print: "#dcdcdc", sleeveless: true, pants: "#8b8e96", stripe: "#e9e9e9", shoes: "#2a4fb0", shoeStripe: "#ffffff" };
+const ALUMNO = { skin: "#d8a07a", hair: "rulos", hairC: "#241a14", hairL: "#3a2a20", shirt: "#1c1c20", print: "#f2d21e", pants: "#1c1c20", stripe: "#f2d21e", shoes: "#d8a07a" };
+const ALUMNA = { skin: "#e8b48e", hair: "largo", hairC: "#3a2418", hairL: "#5a3a28", shirt: "#1c1c20", print: "#f2d21e", pants: "#1c1c20", shoes: "#e8b48e" };
 const ROCIO = { skin: "#f0c4a2", hair: "largo", hairC: "#2b1a13", hairL: "#4a2f22", shirt: "#c7b3ea", necklace: "#e9edf2", pants: "#1d1d24", shoes: "#f2f2f2" };
 
 /* ---------- gatos ---------- */
@@ -146,6 +148,17 @@ function paloma(f) {
 }
 
 /* ---------- objetos ---------- */
+function booth(back) {
+  return mk(34, 30, ({ R, P }) => {
+    R(0, 0, 34, 18, back); R(0, 0, 34, 2, "#6b6f78"); R(0, 0, 1, 30, "#6b6f78"); R(33, 0, 1, 30, "#6b6f78");
+    R(2, 3, 30, 1, "#9aa0aa");
+    ["#d8323a", "#1e1e24", "#7ec8e3", "#f2f2f2", "#f2c230", "#e8a0b4", "#6fae4a", "#2b3a6a"].forEach((c, i) => { const x = 2 + i * 4; R(x, 4, 3, 7, c); R(x - 1, 4, 5, 2, c); });
+    R(2, 13, 30, 1, "#b8a58a"); for (let x = 3; x < 31; x += 3) R(x, 11, 2, 2, ["#f2f2f2", "#7ec8e3", "#e8a0b4", "#f2c230"][x % 4]);
+    R(2, 18, 30, 11, "#b8dcea"); R(2, 18, 30, 1, "#ffffff"); R(2, 28, 30, 1, "#6b6f78"); R(17, 18, 1, 11, "#8ea8b8");
+    for (let x = 4; x < 30; x += 5) R(x, 22 + (x % 3), 3, 2, ["#f2c230", "#d8323a", "#f2f2f2"][x % 3]);
+    P(5, 19, "#ffffff"); P(6, 20, "#ffffff");
+  });
+}
 function stall(c1, c2) {
   return mk(34, 30, ({ R, P }) => {
     R(1, 6, 1, 24, "#6b6f78"); R(32, 6, 1, 24, "#6b6f78");
@@ -261,6 +274,23 @@ const ITEMS = {
   }),
   delantal: () => mk(10, 11, ({ R, P }) => { R(2, 0, 6, 1, "#f2f2f2"); R(1, 1, 1, 2, "#f2f2f2"); R(8, 1, 1, 2, "#f2f2f2"); R(2, 3, 6, 8, "#ff8ac2"); R(1, 4, 8, 7, "#ff8ac2"); R(3, 6, 4, 3, "#ffb3d9"); P(4, 7, "#c9407e"); P(5, 7, "#c9407e"); }),
   vendas: () => mk(10, 9, ({ R, P }) => { R(1, 1, 8, 7, "#f2f2f2"); R(1, 3, 8, 1, "#c9ccd4"); R(1, 5, 8, 1, "#c9ccd4"); R(0, 2, 1, 5, "#e0e0e0"); P(8, 0, "#d32f2f"); R(7, 0, 3, 1, "#d32f2f"); }),
+  local: () => booth("#f2f2f2"),
+  local2: () => booth("#e8a0c8"),
+  local3: () => booth("#8f86d8"),
+  local4: () => booth("#7ec8e3"),
+  golosinas: () => mk(34, 30, ({ R, P }) => {
+    R(0, 0, 34, 9, "#d8323a"); R(2, 2, 30, 5, "#f2c83a"); for (let x = 4; x < 30; x += 4) P(x, 4, "#d8323a");
+    R(1, 9, 1, 21, "#1c1c20"); R(32, 9, 1, 21, "#1c1c20");
+    for (let y = 11; y < 20; y += 4) for (let x = 3; x < 22; x += 4) { R(x, y, 3, 3, ["#c8a060", "#e8d8a8", "#b87838", "#f0a0c0"][(x + y) % 4]); }
+    R(2, 21, 21, 8, "#8a5a2b"); R(2, 21, 21, 1, "#b07a42");
+    R(24, 12, 8, 8, "#d8323a"); R(25, 13, 6, 5, "#e8f4ff"); for (let x = 25; x < 31; x += 2) P(x, 16, "#f6e6a0"); R(24, 20, 8, 9, "#b8141b"); R(26, 10, 4, 2, "#f2c83a");
+  }),
+  maniqui: () => mk(10, 22, ({ R, E }) => { E(5, 2.5, 2.5, 2.5, "#f2f2f2"); R(4, 5, 2, 1, "#f2f2f2"); R(2, 6, 6, 7, "#d8323a"); R(1, 6, 1, 5, "#d8323a"); R(8, 6, 1, 5, "#d8323a"); R(3, 13, 4, 5, "#2b3a6a"); R(4, 18, 2, 2, "#6b6f78"); R(2, 20, 6, 2, "#4a4e56"); }),
+  mesa: () => mk(22, 14, ({ R }) => { R(3, 4, 16, 2, "#b8bec6"); R(4, 6, 14, 1, "#8e959d"); R(10, 7, 2, 6, "#6b6f78"); R(7, 12, 8, 1, "#6b6f78"); R(0, 5, 3, 1, "#1c1c20"); R(0, 0, 1, 12, "#1c1c20"); R(2, 6, 1, 6, "#1c1c20"); R(19, 5, 3, 1, "#1c1c20"); R(21, 0, 1, 12, "#1c1c20"); R(19, 6, 1, 6, "#1c1c20"); }),
+  bolsa: () => mk(12, 34, ({ R, E, P }) => { R(5, 0, 2, 5, "#6b6f78"); E(6, 7, 5, 2, "#1c1c20"); R(1, 7, 10, 24, "#1c1c20"); R(1, 7, 10, 5, "#f2d21e"); R(1, 18, 10, 2, "#f2d21e"); E(6, 31, 5, 2, "#1c1c20"); R(2, 12, 1, 17, "#3a3a40"); P(6, 23, "#f2d21e"); P(5, 24, "#f2d21e"); P(7, 24, "#f2d21e"); }),
+  rpost: () => mk(8, 30, ({ R }) => { R(2, 0, 4, 30, "#9aa0aa"); R(1, 2, 6, 20, "#d8323a"); R(1, 2, 6, 2, "#ff6a6a"); }),
+  bpost: () => mk(8, 30, ({ R }) => { R(2, 0, 4, 30, "#9aa0aa"); R(1, 2, 6, 20, "#2d4fb0"); R(1, 2, 6, 2, "#6a8cff"); }),
+  silla: () => mk(10, 14, ({ R }) => { R(1, 0, 8, 6, "#f2f2f2"); R(1, 6, 8, 3, "#e0e0e0"); R(1, 9, 1, 5, "#d0d0d0"); R(8, 9, 1, 5, "#d0d0d0"); R(2, 1, 6, 1, "#ffffff"); }),
   banco: () => mk(20, 10, ({ R }) => { R(0, 0, 20, 2, "#2f4f3a"); R(0, 4, 20, 2, "#3b6048"); R(1, 6, 1, 4, "#1f1f1f"); R(18, 6, 1, 4, "#1f1f1f"); R(1, 2, 1, 2, "#1f1f1f"); R(18, 2, 1, 2, "#1f1f1f"); })
 };
 
@@ -271,6 +301,8 @@ function add(name, frames, anchorY) {
 export function buildSprites() {
   add("thomas", [0, 1, 2, 3].map(f => human(THOMAS, f)));
   add("rocio", [0, 1, 2, 3].map(f => human(ROCIO, f)));
+  add("alumno", [0, 1, 2, 3].map(f => human(ALUMNO, f)));
+  add("alumna", [0, 1, 2, 3].map(f => human(ALUMNA, f)));
   for (const [k, o] of Object.entries(CATS)) {
     const fr = [0, 1].map(f => cat(o, f));
     const s = k === "luz" ? 2 : k === "linda" ? 3 : 1;

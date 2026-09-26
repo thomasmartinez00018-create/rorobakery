@@ -49,10 +49,11 @@ Cada mapa es más difícil y da más monedas, y tiene su propio peligro que cruz
 
 1. **Plaza Mitre**: para arrancar.
 2. **Estación Los Polvorines**: pasa el Belgrano Norte por las vías.
-3. **Feria Persa**: el castillo de colores de Av. Balbín, con puestos, guirnaldas, parrillas y el fletero.
-4. **Cancha del Trueno Verde**: la cortadora del canchero.
-5. **Tortugas Open Mall**: palmeras, cúpulas de vidrio, la fuente, la calesita, el deck sobre el lago y carritos del súper sueltos.
-6. **Terrazas de Mayo**: la entrada con el cartel, Carrefour, Cinemark, bowling, el patio de comidas y el estacionamiento gigante con autos.
+3. **Feria Persa**: armada con fotos reales. El castillo de Av. Balbín con murallas de colores, cúpulas de cebolla y torres con punta, el cartel de la alfombra mágica, el paredón azul con reja blanca, y adentro los pasillos con línea amarilla, los locales de ropa, los puestos de golosinas y el patio de comidas. Cruza el fletero.
+4. **Team Bielli**: armado con fotos reales. Encastrables amarillos y negros, bolsas, el ring, banderines de países y los banners del team. Cruza la fila de la entrada en calor. Thomas juega de local: +15% de daño.
+5. **Cancha del Trueno Verde**: la cortadora del canchero.
+6. **Tortugas Open Mall**: palmeras, cúpulas de vidrio, la fuente, la calesita, el deck sobre el lago y carritos del súper sueltos.
+7. **Terrazas de Mayo**: la entrada con el cartel, Carrefour, Cinemark, bowling, el patio de comidas y el estacionamiento gigante con autos.
 
 ## Técnica
 

@@ -7,7 +7,8 @@ const shade = (h, k) => { const n = parseInt(h.slice(1), 16); const f = c => Mat
 export const THEMES = {
   plaza:    { name: "Plaza Mitre", sub: "Para arrancar tranqui", night: [10, 12, 32, 0.74] },
   estacion: { name: "Estación Los Polvorines", sub: "Ojo con el Belgrano Norte", night: [14, 10, 30, 0.66] },
-  feria:    { name: "Feria Persa", sub: "Cajones con premios y el fletero", night: [16, 10, 34, 0.62] },
+  feria:    { name: "Feria Persa", sub: "Cajones con premios y el fletero", night: [16, 10, 34, 0.58] },
+  bielli:   { name: "Team Bielli", sub: "La fila de la entrada en calor", night: [12, 12, 22, 0.4] },
   cancha:   { name: "Cancha del Trueno Verde", sub: "La cortadora del canchero", night: [8, 14, 26, 0.5] },
   tortugas: { name: "Tortugas Open Mall", sub: "Carritos del súper desbocados", night: [10, 14, 36, 0.56] },
   terrazas: { name: "Terrazas de Mayo", sub: "Autos en el estacionamiento", night: [12, 12, 30, 0.6] }
@@ -77,52 +78,111 @@ export function buildMap(theme) {
     for (let i = 0; i < 12; i++) props.push({ s: "banco", x: 140 + i * 70, y: i % 2 ? 460 : 580 });
     for (let i = 0; i < 26; i++) { const x = 90 + r() * (MAP - 180), y = r() < 0.5 ? 100 + r() * 90 : 860 + r() * 70; if (free(x, y, 26)) props.push({ s: "arbol", x, y }); }
   } else if (theme === "feria") {
-    // Feria Persa de San Miguel: el viejo castillo de Balbín, con torres de colores y cúpulas
-    tiles(0, 0, MAP, MAP, "#8c8c88", "#7e7e7a", 16, "#96968f");
-    noise(["#7a7a76", "#a0a09a", "#85857f"], 14000);
+    // Feria Persa de San Miguel (Av. Balbín): el castillo de colores, el paredón azul con reja blanca y el galpón con pasillos
+    g.fillStyle = "#86878a"; g.fillRect(0, 0, MAP, MAP); noise(["#7e7f82", "#8f9093", "#8a8b8e"], 16000);
+    sky(120);
+    // murallas con almenas: cada tramo de un color, como en la foto
+    const walls = [[0, 90, "#e57a8a"], [90, 170, "#8f86d8"], [170, 250, "#d8323a"], [250, 330, "#2d4fb0"], [330, 420, "#d8323a"], [420, 500, "#8f86d8"], [500, 610, "#1f6e45"], [610, 700, "#d8323a"], [700, 790, "#f2c83a"], [790, 880, "#e57a8a"], [880, 960, "#8f86d8"], [960, 1024, "#3fb8af"]];
+    walls.forEach(([x0, x1, col], i) => {
+      const top = 104 + (i % 3) * 8;
+      g.fillStyle = col; g.fillRect(x0, top, x1 - x0, 184 - top);
+      g.fillStyle = shade(col, 0.86); g.fillRect(x0, top, 3, 184 - top);
+      for (let x = x0 + 2; x < x1 - 4; x += 12) { g.fillStyle = col; g.fillRect(x, top - 8, 7, 8); g.fillStyle = shade(col, 1.15); g.fillRect(x, top - 8, 7, 1); }
+      for (let x = x0 + 16; x < x1 - 16; x += 36) { g.fillStyle = "#2a2233"; g.fillRect(x, top + 22, 8, 12); disc(x + 4, top + 22, 4, "#2a2233", 3); }
+    });
+    // rosetón blanco del tramo verde
+    disc(556, 138, 14, "#f2f2f2"); disc(556, 138, 11, "#3a6ad8"); for (let a = 0; a < 6.28; a += 0.52) { g.fillStyle = "#f2f2f2"; g.fillRect(Math.round(556 + Math.cos(a) * 7), Math.round(138 + Math.sin(a) * 7), 2, 2); } disc(556, 138, 3, "#f2f2f2");
+    // torres: cilindros con cúpula de cebolla, punta de cono o almenas
+    const onion = (x, y, w, col) => { disc(x, y, Math.round(w * 0.62), col, Math.round(w * 0.5)); disc(x - Math.round(w * 0.2), y - Math.round(w * 0.18), Math.round(w * 0.16), shade(col, 1.35), Math.round(w * 0.12)); g.fillStyle = col; for (let k = 0; k < Math.round(w * 0.5); k++) g.fillRect(x - Math.max(0, Math.round((w * 0.5 - k) * 0.25)), y - Math.round(w * 0.5) - k, Math.max(1, Math.round((w * 0.5 - k) * 0.5)), 1); g.fillStyle = "#f2c83a"; g.fillRect(x, y - w - 4, 1, 5); };
+    const cone = (x, y, w, h, col) => { for (let k = 0; k < h; k++) { const ww = Math.round(w / 2 * (1 - k / h)); g.fillStyle = k % 7 ? col : shade(col, 0.85); g.fillRect(x - ww, y - k, ww * 2 + 1, 1); } g.fillStyle = shade(col, 0.8); for (let k = 0; k < h; k++) { const ww = Math.round(w / 2 * (1 - k / h)); g.fillRect(x + Math.round(ww * 0.4), y - k, Math.max(1, ww - Math.round(ww * 0.4)), 1); } };
+    const tower = (x, w, topY, col, cap, capCol, white) => {
+      g.fillStyle = col; g.fillRect(x - w / 2, topY, w, 186 - topY);
+      g.fillStyle = shade(col, 0.78); g.fillRect(x + w / 2 - Math.round(w * 0.28), topY, Math.round(w * 0.28), 186 - topY);
+      g.fillStyle = shade(col, 1.12); g.fillRect(x - w / 2 + 2, topY, 2, 186 - topY);
+      const tc = white ? "#f2f2f2" : shade(col, 1.05);
+      g.fillStyle = tc; g.fillRect(x - w / 2 - 2, topY - 4, w + 4, 6); for (let k = x - w / 2 - 2; k < x + w / 2; k += 8) g.fillRect(k, topY - 10, 5, 7);
+      g.fillStyle = "#2a2233"; g.fillRect(x - 2, topY + 18, 4, 9); if (186 - topY > 70) g.fillRect(x - 2, topY + 48, 4, 9);
+      if (cap === "onion") onion(x, topY - 14, w, capCol);
+      if (cap === "cone") cone(x, topY - 8, w + 2, Math.round(w * 1.6), capCol);
+    };
+    [[22, 30, 58, "#1f6e45", "cone", "#e8c23a"], [120, 26, 70, "#2d4fb0", "onion", "#e0a8c8"], [206, 34, 44, "#8f86d8", "cone", "#e86aa0"], [292, 28, 64, "#3fb8af", "onion", "#3a6ad8"], [372, 40, 30, "#f2c83a", "cone", "#3fb8af", true], [452, 26, 52, "#e57a8a", "onion", "#efe6d0"], [640, 44, 60, "#f2c83a", "onion", "#2d6fb8", true], [728, 30, 40, "#e57a8a", "cone", "#b8a8e8"], [812, 38, 56, "#e57a8a", "onion", "#c8323a"], [900, 30, 26, "#8f86d8", "cone", "#b8a8e8", true], [986, 30, 66, "#2d4fb0", "onion", "#3fb8af"]].forEach(a => tower(...a));
+    // portón con el cartel de la alfombra mágica
+    g.fillStyle = "#1c2a5a"; g.fillRect(470, 120, 84, 66); disc(512, 120, 42, "#1c2a5a", 22); g.fillStyle = "#ffcf7a"; g.fillRect(482, 150, 60, 36);
+    g.fillStyle = "#2d4fb0"; g.fillRect(430, 74, 164, 40); g.fillStyle = "#7ec8f0"; g.fillRect(433, 77, 158, 34); g.fillStyle = "#b8e2f8"; g.fillRect(433, 77, 158, 10);
+    g.fillStyle = "#f2f2f2"; g.fillRect(452, 82, 22, 4); g.fillRect(456, 80, 12, 2); g.fillStyle = "#e1251b"; g.fillRect(454, 86, 18, 1);
+    g.fillStyle = "#16306a"; g.font = "italic bold 19px Georgia"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("Feria Persa", 522, 98);
+    g.fillStyle = "#f2f2f2"; g.font = "italic bold 19px Georgia"; g.fillText("Feria Persa", 521, 97);
+    lights.push({ x: 512, y: 150, r: 90, c: "#ffcf7a" }, { x: 512, y: 94, r: 70, c: "#9ad8ff" });
+    // paredón azul con reja blanca y el pasto de adelante
+    g.fillStyle = "#2d4fb0"; g.fillRect(0, 184, MAP, 12); g.fillStyle = "#1f3a8a"; g.fillRect(0, 194, MAP, 2);
+    g.fillStyle = "#f2f2f2"; g.fillRect(0, 176, MAP, 1); for (let x = 0; x < MAP; x += 3) g.fillRect(x, 176, 1, 8);
+    for (let x = 0; x < MAP; x += 128) { g.fillStyle = "#2d4fb0"; g.fillRect(x, 172, 10, 24); }
+    g.fillStyle = "#4a8a3a"; g.fillRect(0, 196, MAP, 22); noise(["#3f7a32", "#5a9a48"], 2500, 0, 196, MAP, 22);
+    // adentro: piso gris con líneas amarillas y flechas
+    const dash = (x0, y0, x1, y1) => { g.fillStyle = "#e8c23a"; const n = Math.hypot(x1 - x0, y1 - y0) / 14; for (let i = 0; i < n; i++) { const k = i / n; g.fillRect(Math.round(x0 + (x1 - x0) * k), Math.round(y0 + (y1 - y0) * k), x1 === x0 ? 2 : 7, x1 === x0 ? 7 : 2); } };
+    const arrow = (x, y, dx) => { g.fillStyle = "#e8c23a"; g.fillRect(x - 6 * dx, y, 10, 2); for (let i = 0; i < 4; i++) g.fillRect(x + 4 * dx - i * dx, y - 3 + i, 1, 8 - i * 2); };
+    dash(512, 224, 512, 940);
+    const rows = [300, 430, 560, 690, 820];
+    rows.forEach((y, ri) => {
+      dash(40, y + 50, 490, y + 50); dash(534, y + 50, 990, y + 50);
+      arrow(260, y + 62, ri % 2 ? 1 : -1); arrow(760, y + 38, ri % 2 ? -1 : 1);
+      for (let x = 64; x < MAP - 40; x += 38) {
+        if (Math.abs(x - 512) < 50 || (x % 190) < 24) continue;
+        const food = ri >= 3 && x < 480;
+        if (food) { if ((x / 38 | 0) % 2 === 0) props.push({ s: "mesa", x, y: y - 6 }); continue; }
+        const k = r();
+        props.push({ s: k < 0.12 ? "golosinas" : k < 0.2 ? "maniqui" : ["local", "local2", "local3", "local4"][Math.floor(r() * 4)], x, y });
+      }
+    });
+    // patio de comidas con techo de chapa
+    g.fillStyle = "rgba(255,255,255,.06)"; g.fillRect(40, 620, 440, 260); g.fillStyle = "#6a6b6e"; for (let x = 40; x < 480; x += 10) g.fillRect(x, 620, 1, 3);
+    props.push({ s: "golosinas", x: 120, y: 612 }, { s: "golosinas", x: 400, y: 612 });
+    // tubos de luz del galpón
+    for (let y = 260; y < 940; y += 130) for (let x = 110; x < MAP; x += 200) { g.fillStyle = "#dfe8f0"; g.fillRect(x - 12, y - 64, 24, 2); lights.push({ x, y: y - 40, r: 84, c: "#e6f0ff" }); }
+    // Av. Balbín
     road(MAP - 58, 58); tiles(0, MAP - 76, MAP, 18, "#a39e92", "#8f8a7e", 9);
     text("AV. BALBÍN", 150, MAP - 16, "rgba(240,240,240,.35)", 12);
-    sky(80);
-    const cols = ["#e8a0b4", "#7ec8e3", "#f2c84b", "#e8a0b4", "#7ec8e3", "#f2c84b"];
-    for (let i = 0; i < 6; i++) {
-      const x0 = Math.round(i * MAP / 6), w = Math.ceil(MAP / 6), col = cols[i];
-      g.fillStyle = col; g.fillRect(x0, 78, w, 104);
-      g.fillStyle = shade(col, 0.82); for (let y = 86; y < 176; y += 8) for (let x = x0 + ((y / 8) % 2) * 6; x < x0 + w; x += 12) g.fillRect(x, y, 10, 1);
-      for (let x = x0 + 4; x < x0 + w - 6; x += 16) { g.fillStyle = col; g.fillRect(x, 66, 9, 12); g.fillStyle = shade(col, 1.12); g.fillRect(x, 66, 9, 2); }
-      for (let x = x0 + 20; x < x0 + w - 20; x += 44) { g.fillStyle = "#3a2a44"; g.fillRect(x, 112, 14, 26); disc(x + 7, 112, 7, "#3a2a44", 6); g.fillStyle = "#ffcf7a"; if (r() < 0.6) g.fillRect(x + 3, 116, 8, 18); }
+    for (let x = 60; x < MAP; x += 170) { props.push({ s: "farol", x, y: MAP - 60 }); lights.push({ x, y: MAP - 86, r: 60, c: "#ffd98a" }); if (x + 85 < MAP) props.push({ s: "arbol", x: x + 85, y: MAP - 60 }); }
+  } else if (theme === "bielli") {
+    // Team Bielli (9 de Julio 2340, Los Polvorines): encastrables amarillos y negros, bolsas, el ring y las banderas
+    g.fillStyle = "#6f7378"; g.fillRect(0, 0, MAP, MAP); noise(["#676b70", "#777b80"], 9000);
+    for (let y = 200; y < 990; y += 32) for (let x = 24; x < 1000; x += 32) {
+      const yel = ((x - 24) / 32 + (y - 200) / 32) % 2 === 0;
+      g.fillStyle = yel ? "#f2d21e" : "#1c1c20"; g.fillRect(x, y, 32, 32);
+      g.fillStyle = yel ? "#1c1c20" : "#f2d21e"; g.fillRect(x + 12, y, 8, 3); g.fillRect(x, y + 12, 3, 8);
+      g.fillStyle = yel ? "#e0c010" : "#26262b"; g.fillRect(x + 3, y + 29, 29, 3);
     }
-    g.fillStyle = "#f3e6c8"; g.fillRect(0, 174, MAP, 8); g.fillStyle = "rgba(0,0,0,.3)"; g.fillRect(0, 182, MAP, 8);
-    // portón con el cartel
-    g.fillStyle = "#2a2030"; g.fillRect(452, 120, 120, 62); disc(512, 120, 60, "#2a2030", 34);
-    g.fillStyle = "#6a4020"; g.fillRect(470, 150, 84, 32);
-    g.fillStyle = "#f3e6c8"; g.fillRect(420, 84, 184, 26); g.fillStyle = "#c8102e"; g.fillRect(422, 86, 180, 22);
-    text("FERIA PERSA", 512, 98, "#fff4d0", 17);
-    lights.push({ x: 512, y: 150, r: 90, c: "#ffcf7a" });
-    // torres con cúpulas
-    [[64, "#e8a0b4", "#3fb8af"], [300, "#f2c84b", "#e8a0b4"], [724, "#7ec8e3", "#f2c84b"], [960, "#e8a0b4", "#3fb8af"]].forEach(([x, col, dome]) => {
-      g.fillStyle = col; g.fillRect(x - 32, 34, 64, 150); g.fillStyle = shade(col, 0.8); g.fillRect(x + 20, 34, 12, 150);
-      for (let k = x - 32; k < x + 32; k += 11) { g.fillStyle = col; g.fillRect(k, 26, 7, 9); }
-      disc(x, 22, 30, dome, 24); disc(x - 8, 12, 12, shade(dome, 1.35), 8); g.fillStyle = "#f2c84b"; g.fillRect(x - 1, -6, 3, 10);
-      g.fillStyle = "#3a2a44"; g.fillRect(x - 6, 70, 12, 20); disc(x, 70, 6, "#3a2a44", 5); g.fillStyle = "#ffcf7a"; g.fillRect(x - 3, 73, 6, 15);
-      g.fillStyle = "#3a2a44"; g.fillRect(x - 6, 120, 12, 22); g.fillStyle = "#ffcf7a"; g.fillRect(x - 3, 124, 6, 16);
-      lights.push({ x, y: 90, r: 60, c: "#ffcf7a" });
+    // pared blanca con techo de chapa
+    g.fillStyle = "#3a3e46"; g.fillRect(0, 0, MAP, 58); g.fillStyle = "#4a4e56"; for (let x = 0; x < MAP; x += 12) g.fillRect(x, 0, 5, 58);
+    g.fillStyle = "#e8e6df"; g.fillRect(0, 58, MAP, 130); g.fillStyle = "#cfcdc6"; g.fillRect(0, 176, MAP, 12);
+    // banderines de países
+    const flags = [["#74acdf", "#ffffff"], ["#c8102e", "#ffffff"], ["#009b3a", "#fedf00"], ["#002868", "#bf0a30"], ["#ffffff", "#bc002d"], ["#000000", "#dd0000"], ["#ff9933", "#138808"], ["#0038a8", "#ce1126"]];
+    for (let x = 4, i = 0; x < MAP; x += 20, i++) { const [a, b] = flags[i % flags.length], y = 64 + Math.round(Math.sin(x / 60) * 3); g.fillStyle = "#5a5a5a"; g.fillRect(x, y, 20, 1); g.fillStyle = a; g.fillRect(x + 2, y + 1, 14, 5); g.fillStyle = b; g.fillRect(x + 2, y + 6, 14, 4); }
+    // banners del team
+    [[150, "TEAM BIELLI"], [512, "TEAM BIELLI"], [870, "KICK BOXING"]].forEach(([x, t]) => {
+      g.fillStyle = "#1c1c20"; g.fillRect(x - 90, 84, 180, 52); g.fillStyle = "#f2d21e"; g.fillRect(x - 86, 88, 172, 3); g.fillRect(x - 86, 129, 172, 3);
+      for (let k = 0; k < 16; k++) { const an = k / 16 * Math.PI * 2; g.fillStyle = "#f2d21e"; g.fillRect(Math.round(x - 65 + Math.cos(an) * 15), Math.round(109 + Math.sin(an) * 15), 3, 3); } disc(x - 64, 110, 12, "#f2d21e"); disc(x - 64, 110, 9, "#1c1c20"); text("B", x - 64, 111, "#f2d21e", 14);
+      text(t, x + 14, 111, "#f2d21e", 19);
     });
-    // puestos en hileras, con pasillo central
-    const rows = [280, 400, 520, 640, 760, 880];
-    rows.forEach((y, ri) => {
-      for (let x = 70; x < MAP - 40; x += 76) {
-        if (Math.abs(x - 512) < 64) continue;
-        const k = r();
-        if (k < 0.12) continue;
-        if (k < 0.22) { props.push({ s: "perchero", x: x + r() * 10, y }); continue; }
-        if (k < 0.27) { props.push({ s: "parrilla", x, y }); lights.push({ x, y: y - 8, r: 54, c: "#ff9a4a" }); continue; }
-        props.push({ s: ["puesto", "puesto2", "puesto3", "puesto4"][Math.floor(r() * 4)], x, y });
-      }
-      // guirnalda de lamparitas sobre el pasillo
-      const gy = y - 58;
-      for (let x = 0; x < MAP; x += 6) { const sag = Math.sin((x % 128) / 128 * Math.PI) * 10; g.fillStyle = "#2a2a30"; g.fillRect(x, Math.round(gy + sag), 6, 1); if (x % 12 === 0) { g.fillStyle = ["#ffd24a", "#ff5fb0", "#7fe0ff", "#9dff6a"][(x / 12 + ri) % 4]; g.fillRect(x, Math.round(gy + sag) + 1, 2, 2); } }
-      for (let x = 64; x < MAP; x += 256) lights.push({ x: x + (ri % 2) * 128, y: gy + 8, r: 58, c: ["#ffd98a", "#ff9ad0", "#9ae8ff"][ri % 3] });
-    });
+    [[330, 110], [700, 110]].forEach(([x, y]) => { g.fillStyle = "#6b4a2f"; g.fillRect(x - 22, y - 16, 44, 32); g.fillStyle = "#b8c4d0"; g.fillRect(x - 19, y - 13, 38, 26); g.fillStyle = "#1c1c20"; g.fillRect(x - 6, y - 8, 12, 16); });
+    [[420, 150], [980, 150], [40, 150]].forEach(([x, y]) => { disc(x, y, 11, "#5a5e66"); disc(x, y, 8, "#c9ced4"); g.fillStyle = "#5a5e66"; g.fillRect(x - 1, y - 7, 2, 14); g.fillRect(x - 7, y - 1, 14, 2); });
+    // bolsas colgadas frente a la pared
+    for (let x = 70; x < MAP; x += 96) props.push({ s: "bolsa", x: x + (x % 3) * 6, y: 232 });
+    for (let x = 90; x < 400; x += 96) props.push({ s: "bolsa", x, y: 820 });
+    // ring
+    const rx = 560, ry = 440, rs = 260;
+    g.fillStyle = "#2b2f3a"; g.fillRect(rx - 8, ry - 8, rs + 16, rs + 16);
+    g.fillStyle = "#50607a"; g.fillRect(rx, ry, rs, rs); noise(["#4a5a72", "#566680"], 1200, rx, ry, rs, rs);
+    text("TEAM BIELLI", rx + rs / 2, ry + rs / 2, "rgba(242,210,30,.35)", 26);
+    [["#f2f2f2", 6], ["#d8323a", 12], ["#2d4fb0", 18]].forEach(([c, o]) => { g.fillStyle = c; g.fillRect(rx + 4, ry + o, rs - 8, 1); g.fillRect(rx + 4, ry + rs - o, rs - 8, 1); g.fillRect(rx + o - 2, ry + 4, 1, rs - 8); g.fillRect(rx + rs - o + 2, ry + 4, 1, rs - 8); });
+    g.fillStyle = "#d8d8d4"; g.fillRect(rx - 26, ry + rs - 40, 18, 36); g.fillStyle = "#9a9a96"; for (let k = 0; k < 4; k++) g.fillRect(rx - 26, ry + rs - 36 + k * 9, 18, 2);
+    [[rx, ry + 4, "rpost"], [rx + rs, ry + 4, "bpost"], [rx, ry + rs, "bpost"], [rx + rs, ry + rs, "rpost"]].forEach(([x, y, s]) => props.push({ s, x, y }));
+    for (let i = 0; i < 6; i++) props.push({ s: "silla", x: rx + 24 + i * 40, y: ry + rs + 44 });
+    for (let i = 0; i < 4; i++) props.push({ s: "silla", x: rx - 44, y: ry + 30 + i * 44 });
+    // tubos de luz
+    for (let y = 250; y < MAP; y += 180) for (let x = 120; x < MAP; x += 240) lights.push({ x, y, r: 130, c: "#eef4ff" });
+    lights.push({ x: rx + rs / 2, y: ry + rs / 2, r: 170, c: "#fff6d8" });
+    g.fillStyle = "#6f7378"; g.fillRect(0, 990, MAP, 34); g.fillStyle = "#3a3e46"; g.fillRect(470, 1000, 84, 24); text("9 DE JULIO 2340", 512, 994, "rgba(240,240,240,.5)", 10);
   } else if (theme === "cancha") {
     for (let x = 0; x < MAP; x += 32) { g.fillStyle = (x / 32) % 2 ? "#3f8f3a" : "#469e40"; g.fillRect(x, 0, 32, MAP); }
     noise(["#3a8534", "#4fa848"], 14000);

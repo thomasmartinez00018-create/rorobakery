@@ -12,10 +12,10 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;"
 const fmt = s => { s = Math.max(0, Math.floor(s)); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); };
 const NAME = { thomas: "Thomas", rocio: "Rocío" };
 const ICON = { patada: "thomas", medialuna: "medialuna", juli: "juli", romero: "romero", mate: "mate", bondi: "bus", rodillo: "rodillo", torta: "torta", guantes: "guante", zapatillas: "zapa", termo: "termo", iman: "iman", amargo: "mate", abrazo: "corazon", delantal: "delantal", vendas: "vendas", alfajor: "alfajor" };
-const HZ_BANNER = { tren: ["¡Viene el tren!", "Salgan de las vías"], fletero: ["¡El fletero!", "Pasa la camioneta sin frenar"], cortadora: ["¡La cortadora!", "El canchero no mira"], carritos: ["¡Carritos!", "Se soltó una fila del súper"], autos: ["¡Auto!", "Cuidado en el estacionamiento"] };
+const HZ_BANNER = { tren: ["¡Viene el tren!", "Salgan de las vías"], fletero: ["¡El fletero!", "Pasa la camioneta sin frenar"], cortadora: ["¡La cortadora!", "El canchero no mira"], carritos: ["¡Carritos!", "Se soltó una fila del súper"], autos: ["¡Auto!", "Cuidado en el estacionamiento"], trote: ["¡Entrada en calor!", "Pasa la fila trotando"] };
 const UPG = { hp: ["Vida", "+10 de vida"], dmg: ["Fuerza", "+8% de daño"], spd: ["Velocidad", "+5% de velocidad"], mag: ["Imán", "+15% de alcance"] };
 const UPG_COST = [15, 35, 70, 120, 200];
-const MAP_COST = { plaza: 0, estacion: 60, feria: 120, cancha: 180, tortugas: 260, terrazas: 350 };
+const MAP_COST = { plaza: 0, estacion: 60, feria: 120, bielli: 150, cancha: 180, tortugas: 260, terrazas: 350 };
 let coinIc = "";
 const COIN = () => coinIc || (coinIc = `<img class="coin-ic" src="${portrait("moneda", 3)}" alt="monedas">`);
 
@@ -110,7 +110,7 @@ function startRun(m, chars) {
     snap = sim.snapshot();
   } else { sim = null; snap = null; guestPos = null; }
   screen = "run"; music.set("run"); sfx.play("levelup");
-  banner(THEMES[map].name, "Aguanten hasta que aparezca Linda");
+  banner(THEMES[map].name, map === "bielli" && (chars.host === "thomas" || chars.guest === "thomas") ? "Thomas juega de local: +15% de daño" : "Aguanten hasta que aparezca Linda");
   draw();
 }
 function endRun() { runOn = false; sim = null; }

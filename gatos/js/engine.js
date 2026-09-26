@@ -7,7 +7,8 @@ export const RUN_BOSS2 = 420;     // Linda aparece a los 7:00
 export const MAPS = {
   plaza:    { tier: 0, b: [12, 12, MAP - 12, MAP - 12], hz: null, pigeons: 30 },
   estacion: { tier: 1, b: [12, 12, MAP - 12, MAP - 12], hz: "tren", hzEvery: 30, hzFirst: 35 },
-  feria:    { tier: 2, b: [12, 190, MAP - 12, MAP - 12], hz: "fletero", hzEvery: 26, hzFirst: 40, crates: 6 },
+  feria:    { tier: 2, b: [12, 202, MAP - 12, MAP - 12], hz: "fletero", hzEvery: 26, hzFirst: 40, crates: 6 },
+  bielli:   { tier: 3, b: [30, 200, MAP - 30, 984], hz: "trote", hzEvery: 22, hzFirst: 30 },
   cancha:   { tier: 3, b: [12, 136, MAP - 12, MAP - 136], hz: "cortadora", hzEvery: 24, hzFirst: 30 },
   tortugas: { tier: 4, b: [12, 176, MAP - 12, 870], hz: "carritos", hzEvery: 22, hzFirst: 30 },
   terrazas: { tier: 5, b: [12, 214, MAP - 12, MAP - 12], hz: "autos", hzEvery: 18, hzFirst: 25 }
@@ -17,7 +18,8 @@ export const HAZ = {
   fletero:   { len: 52, spd: 320, h: 12, dmg: 24, edmg: 140, warn: 1.7 },
   cortadora: { len: 22, spd: 120, h: 11, dmg: 18, edmg: 90, warn: 1.4 },
   carritos:  { len: 156, spd: 210, h: 9, dmg: 20, edmg: 80, warn: 1.7 },
-  autos:     { len: 44, spd: 360, h: 13, dmg: 28, edmg: 160, warn: 1.5 }
+  autos:     { len: 44, spd: 360, h: 13, dmg: 28, edmg: 160, warn: 1.5 },
+  trote:     { len: 112, spd: 140, h: 10, dmg: 16, edmg: 80, warn: 1.6 }
 };
 export const HAZ_ID = Object.keys(HAZ);
 
@@ -92,6 +94,7 @@ export class Sim {
       dashCd: 0, dashT: 0, dvx: 0, dvy: 0, bond: false,
       dog: null, orbA: 0
     };
+    if (this.map === "bielli" && char === "thomas") p.dmgMul += 0.15; // juega de local
     this.players[side] = p;
     return p;
   }
