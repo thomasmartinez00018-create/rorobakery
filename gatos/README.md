@@ -9,10 +9,50 @@ Supervivientes cooperativo para dos, cada uno en su celu. Thomas (patadas del Te
 - Los gatos dejan gemas: al juntar experiencia suben de nivel y **cada uno elige una mejora** (armas nuevas o mejoras de las que tienen).
 - Si uno cae, el otro lo levanta quedándose al lado unos segundos.
 - A los 3:30 aparece **Luz**; a los 7:00, **Linda**. Derrotarla es ganar.
-- El botón redondo es el especial (se carga matando gatos): **Combo** de Thomas o **Lluvia de tortas** de Rocío.
-- Las monedas de cada partida se gastan en el **Taller** (mejoras permanentes) y en desbloquear mapas: Plaza Mitre, Estación Los Polvorines y la cancha del Trueno Verde.
+- El botón redondo es el especial (se carga matando gatos): **Combo** de Thomas o **Lluvia de tortas** de Rocío. Si los dos lo tiran casi a la vez sale el **Combo de pareja**: pega más y los cura.
+- **Esquive** (botón celeste, o Shift en la compu): un salto corto en el que no te pueden pegar.
+- Parados cerca uno del otro aparece el hilo de corazón: **juntos pegan 20% más**.
+- Las monedas de cada partida se gastan en el **Taller** (mejoras permanentes) y en desbloquear mapas.
 
-Armas: Patada Bielli, Medialunas, Juli (gira alrededor), Romero (muerde), Mate hirviendo, El 315, Palo de amasar y Torta bomba. Pasivas: guantes, zapatillas, termo, imán, mate amargo y abrazo.
+### Dificultad pensada
+
+Los gatos avisan antes de atacar (signo **!** y parpadeo): hay que leerlos y esquivar, no solo correr.
+
+- **Saltarín** (naranja y blanco): se agacha y salta en línea recta.
+- **Escupidor** (siamés): se queda a distancia y escupe.
+- **Gata madre** (tricolor): al caer suelta tres gatitos.
+- **Élite** (dorado y enorme): cuesta matarlo y suelta una **caja de Roro's**.
+- **Luz** marca con una línea roja por dónde va a cargar; con poca vida carga dos veces.
+- **Linda** tiene tres fases: bolas de pelo, después círculos rojos donde va a caer algo, y al final un anillo de bolas con un hueco para escapar.
+- Las hordas vienen en anillo con dos huecos. Si uno cae, los gatos aflojan para dar chance de levantarlo; si van sobrados, aprietan.
+- **Pedido de Roro's**: aparece una caja en el mapa; parados encima se carga, y juntos el doble de rápido.
+- Cajones para romper: sueltan monedas, alfajores, imán (junta toda la experiencia) o manguera (moja y frena a los gatos).
+
+### Evoluciones
+
+Arma al máximo + su pasiva compañera + abrir una caja de Roro's = evolución.
+
+| Arma | Pasiva | Evolución |
+| --- | --- | --- |
+| Patada Bielli | Guantes de box | Patada Voladora |
+| Medialunas | Mate amargo | Docena de Medialunas |
+| Juli | Abrazo | Juli Mimosa |
+| Romero | Zapatillas | Romero Desatado |
+| Mate hirviendo | Termo | Pava Hirviendo |
+| El 315 | Imán | 315 Expreso |
+| Palo de amasar | Vendas | Rodillo de Acero |
+| Torta bomba | Delantal de Roro | Torta de Tres Pisos |
+
+### Mapas
+
+Cada mapa es más difícil y da más monedas, y tiene su propio peligro que cruza la pantalla (siempre avisa antes con una franja roja).
+
+1. **Plaza Mitre**: para arrancar.
+2. **Estación Los Polvorines**: pasa el Belgrano Norte por las vías.
+3. **Feria Persa**: el castillo de colores de Av. Balbín, con puestos, guirnaldas, parrillas y el fletero.
+4. **Cancha del Trueno Verde**: la cortadora del canchero.
+5. **Tortugas Open Mall**: palmeras, cúpulas de vidrio, la fuente, la calesita, el deck sobre el lago y carritos del súper sueltos.
+6. **Terrazas de Mayo**: la entrada con el cartel, Carrefour, Cinemark, bowling, el patio de comidas y el estacionamiento gigante con autos.
 
 ## Técnica
 

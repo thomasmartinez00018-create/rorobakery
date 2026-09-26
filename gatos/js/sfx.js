@@ -68,7 +68,7 @@ export const sfx = {
   join() { tone(523, 0.1, "triangle", 0.08); tone(784, 0.18, "triangle", 0.08, 0.09); },
   // sonidos del juego, con límite de frecuencia para que 200 gatos no saturen
   play(name) {
-    const now = performance.now(), gap = { hit: 45, die: 55, gem: 40, throw: 120, coin: 60 }[name] || 0;
+    const now = performance.now(), gap = { hit: 45, die: 55, gem: 40, throw: 120, coin: 60, spit: 150, boom: 60, dash: 100 }[name] || 0;
     if (gap && now - (last[name] || 0) < gap) return;
     last[name] = now;
     const f = {
@@ -91,7 +91,24 @@ export const sfx = {
       bossdown: () => { [523, 659, 784, 1047, 1319].forEach((q, i) => tone(q, 0.2, "square", 0.07, i * 0.09)); },
       hairball: () => { noise(0.1, 0.1, 0, 900); },
       win: () => { [523, 659, 784, 1047, 784, 1047, 1319].forEach((q, i) => tone(q, 0.22, "square", 0.07, i * 0.12)); },
-      over: () => { [392, 349, 330, 262].forEach((q, i) => tone(q, 0.35, "triangle", 0.08, i * 0.25)); }
+      over: () => { [392, 349, 330, 262].forEach((q, i) => tone(q, 0.35, "triangle", 0.08, i * 0.25)); },
+      dash: () => { noise(0.12, 0.12, 0, 2400); tone(500, 0.08, "triangle", 0.03, 0, 900); },
+      elite: () => { tone(150, 0.4, "sawtooth", 0.07, 0, 110); tone(300, 0.3, "square", 0.04, 0.1, 220); },
+      spit: () => { noise(0.07, 0.09, 0, 1400); tone(700, 0.06, "sine", 0.04, 0, 300); },
+      zones: () => { [880, 660].forEach((q, i) => tone(q, 0.12, "square", 0.04, i * 0.12)); },
+      phase: () => { [196, 185, 175, 110].forEach((q, i) => tone(q, 0.3, "sawtooth", 0.08, i * 0.14)); noise(0.6, 0.2, 0, 300); },
+      chest: () => { [659, 784, 988, 1319].forEach((q, i) => tone(q, 0.16, "square", 0.06, i * 0.06)); },
+      evo: () => { [523, 659, 784, 1047, 1319, 1568, 2093].forEach((q, i) => tone(q, 0.2, "square", 0.06, i * 0.07)); noise(0.5, 0.15, 0.3, 3000); },
+      vacuum: () => { tone(300, 0.5, "sine", 0.08, 0, 1600); },
+      splash: () => { noise(0.5, 0.25, 0, 1200); noise(0.3, 0.15, 0.1, 3200); },
+      sync: () => { [523, 784, 1047, 1568].forEach((q, i) => tone(q, 0.3, "triangle", 0.09, i * 0.05)); noise(0.4, 0.2, 0, 800); },
+      horn: () => { tone(233, 1.1, "sawtooth", 0.06); tone(277, 1.1, "sawtooth", 0.06); tone(349, 1.1, "sawtooth", 0.04); },
+      warn: () => { [988, 740, 988, 740].forEach((q, i) => tone(q, 0.12, "square", 0.05, i * 0.16)); },
+      train: () => { for (let i = 0; i < 6; i++) noise(0.14, 0.2, i * 0.2, 250); },
+      whoosh: () => { noise(0.4, 0.15, 0, 700); },
+      obj: () => { [784, 988, 1175].forEach((q, i) => tone(q, 0.14, "triangle", 0.08, i * 0.09)); },
+      objok: () => { [659, 784, 988, 1319, 1568].forEach((q, i) => tone(q, 0.18, "triangle", 0.08, i * 0.08)); },
+      objfail: () => { [330, 262].forEach((q, i) => tone(q, 0.3, "triangle", 0.07, i * 0.2)); }
     }[name];
     if (f) f();
   }

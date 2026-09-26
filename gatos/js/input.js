@@ -2,7 +2,7 @@
 export class Input {
   constructor(zone, base, knob) {
     this.zone = zone; this.base = base; this.knob = knob;
-    this.dir = { x: 0, y: 0 }; this.touch = null; this.keys = new Set(); this.ultPressed = false;
+    this.dir = { x: 0, y: 0 }; this.touch = null; this.keys = new Set(); this.ultPressed = false; this.dashPressed = false;
     const R = 38;
     zone.addEventListener("pointerdown", e => {
       if (this.touch !== null) return;
@@ -20,7 +20,7 @@ export class Input {
     });
     const end = e => { if (e.pointerId !== this.touch) return; this.touch = null; this.dir = { x: 0, y: 0 }; base.classList.remove("on"); knob.classList.remove("on"); };
     zone.addEventListener("pointerup", end); zone.addEventListener("pointercancel", end);
-    addEventListener("keydown", e => { this.keys.add(e.key.toLowerCase()); if (e.key === " ") { this.ultPressed = true; e.preventDefault(); } });
+    addEventListener("keydown", e => { this.keys.add(e.key.toLowerCase()); if (e.key === " ") { this.ultPressed = true; e.preventDefault(); } if (e.key === "Shift" || e.key === "k" || e.key === "K") this.dashPressed = true; });
     addEventListener("keyup", e => this.keys.delete(e.key.toLowerCase()));
     addEventListener("blur", () => this.keys.clear());
   }
@@ -32,4 +32,5 @@ export class Input {
     return this.dir;
   }
   takeUlt() { const u = this.ultPressed; this.ultPressed = false; return u; }
+  takeDash() { const u = this.dashPressed; this.dashPressed = false; return u; }
 }

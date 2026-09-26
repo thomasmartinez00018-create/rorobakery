@@ -1,5 +1,5 @@
 // Gatos de Linda — menús, salas, bucle de juego y sincronización entre los dos celus.
-import { Sim, WEAPONS, PASSIVES, ENEMY_NAME, MAP } from "./engine.js";
+import { Sim, WEAPONS, PASSIVES, MAPS, EVO_OF } from "./engine.js";
 import { buildSprites, SPR, portrait } from "./sprites.js";
 import { Renderer, THEMES } from "./render.js";
 import { Net, makeCode, cleanCode } from "./net.js";
@@ -11,10 +11,11 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = s => { s = Math.max(0, Math.floor(s)); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); };
 const NAME = { thomas: "Thomas", rocio: "Rocío" };
-const ICON = { patada: "thomas", medialuna: "medialuna", juli: "juli", romero: "romero", mate: "mate", bondi: "bus", rodillo: "rodillo", torta: "torta", guantes: "guante", zapatillas: "zapa", termo: "termo", iman: "iman", amargo: "mate", abrazo: "corazon", alfajor: "alfajor" };
+const ICON = { patada: "thomas", medialuna: "medialuna", juli: "juli", romero: "romero", mate: "mate", bondi: "bus", rodillo: "rodillo", torta: "torta", guantes: "guante", zapatillas: "zapa", termo: "termo", iman: "iman", amargo: "mate", abrazo: "corazon", delantal: "delantal", vendas: "vendas", alfajor: "alfajor" };
+const HZ_BANNER = { tren: ["¡Viene el tren!", "Salgan de las vías"], fletero: ["¡El fletero!", "Pasa la camioneta sin frenar"], cortadora: ["¡La cortadora!", "El canchero no mira"], carritos: ["¡Carritos!", "Se soltó una fila del súper"], autos: ["¡Auto!", "Cuidado en el estacionamiento"] };
 const UPG = { hp: ["Vida", "+10 de vida"], dmg: ["Fuerza", "+8% de daño"], spd: ["Velocidad", "+5% de velocidad"], mag: ["Imán", "+15% de alcance"] };
 const UPG_COST = [15, 35, 70, 120, 200];
-const MAP_COST = { plaza: 0, estacion: 60, cancha: 150 };
+const MAP_COST = { plaza: 0, estacion: 60, feria: 120, cancha: 180, tortugas: 260, terrazas: 350 };
 let coinIc = "";
 const COIN = () => coinIc || (coinIc = `<img class="coin-ic" src="${portrait("moneda", 3)}" alt="monedas">`);
 
@@ -37,7 +38,7 @@ let map = "plaza";
 const me = { side: "host", net: null, code: null, partner: null, partnerMeta: null, connected: false };
 let sim = null, snap = null, runId = 0, runOn = false, paused = false, endShown = false, earned = 0;
 let pendingEv = [], sendAcc = 0, lastSeen = 0;
-let guestPos = null, guestInput = { pos: null, face: 1, moving: 0, ult: false };
+let guestPos = null, guestInput = { pos: null, face: 1, moving: 0, ult: false, dash: false };
 const smooth = new Map();
 let bannerT = 0, errMsg = null, busyMsg = null, joinDraft = cleanCode(new URLSearchParams(location.search).get("sala") || "");
 
@@ -60,7 +61,7 @@ function netHandlers() {
       if (!d || typeof d !== "object") return;
       if (me.side === "host") {
         if (d.t === "hello") { me.partner = d.who === "rocio" ? "rocio" : "thomas"; me.partnerMeta = cleanMeta(d.meta); sendLobby(); draw(); }
-        if (d.t === "in" && d.pos && isFinite(d.pos.x) && isFinite(d.pos.y)) { guestInput.pos = { x: +d.pos.x, y: +d.pos.y }; guestInput.face = d.face < 0 ? -1 : 1; guestInput.moving = d.moving ? 1 : 0; if (d.ult) guestInput.ult = true; }
+        if (d.t === "in" && d.pos && isFinite(d.pos.x) && isFinite(d.pos.y)) { guestInput.pos = { x: +d.pos.x, y: +d.pos.y }; guestInput.face = d.face < 0 ? -1 : 1; guestInput.moving = d.moving ? 1 : 0; if (d.ult) guestInput.ult = true; if (d.dash) guestInput.dash = true; }
         if (d.t === "pick" && sim) sim.pick("guest", d.i | 0);
       } else {
         if (d.t === "lobby") { me.partner = d.who; map = THEMES[d.map] ? d.map : "plaza"; draw(); }
@@ -124,17 +125,30 @@ function onEvents(ev) {
     if (e[0] === "horde") banner("¡HORDA!", "Los rodearon");
     if (e[0] === "down") { const who = e[3] === me.side ? "Caíste" : `¡Cayó ${NAME[(snap && snap.P[e[3]] && snap.P[e[3]].c) || ""] || "tu pareja"}!`; banner(who, e[3] === me.side ? "Esperá que te levanten" : "Parate al lado para levantarlo"); }
     if (e[0] === "levelup") music.set("pause");
+    if (e[0] === "elite") banner("¡Gato de élite!", "Duro y lento. Suelta una caja de Roro's");
+    if (e[0] === "warn") { const b = HZ_BANNER[e[1]]; if (b) banner(b[0], b[1]); }
+    if (e[0] === "phase") banner(e[1] === 2 ? "¡Linda se enoja!" : "¡Linda está furiosa!", e[1] === 2 ? "Salgan de los círculos rojos" : "Busquen el hueco en el anillo");
+    if (e[0] === "sync") banner("¡Combo de pareja!", "Doble poder y se curan los dos");
+    if (e[0] === "obj") banner(["Se enfrió el pedido", "¡Pedido entregado!", "¡Pedido de Roro's!"][e[1]], ["Otra vez será", "Caja, alfajor y monedas", "Párense encima: juntos carga el doble"][e[1]]);
+    if (e[0] === "vacuum" && e[3] === me.side) banner("¡Imán!", "Toda la experiencia para ustedes");
+    if (e[0] === "splash" && e[3] === me.side) banner("¡Manguerazo!", "A los gatos no les gusta el agua");
+    if (e[0] === "chest") {
+      const who = e[1] === me.side ? "" : `${NAME[(snap && snap.P[e[1]] && snap.P[e[1]].c) || ""] || "Tu pareja"}: `;
+      if (e[2] === "evo") banner("¡EVOLUCIÓN!", who + WEAPONS[e[3]].evo.name);
+      else if (e[2] === "up") banner("Caja de Roro's", who + WEAPONS[e[3]].name + " sube de nivel");
+      else banner("Caja de Roro's", who + "vida llena y monedas");
+    }
   }
 }
 
 /* ---------------- bucle ---------------- */
 let last = performance.now();
 function loop(now) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
   let V;
   if (screen === "run" && me.side === "host" && sim) {
-    const inp = { host: { dir: input.vec, ult: input.takeUlt() } };
-    if (sim.players.guest) { inp.guest = { ...guestInput }; guestInput.ult = false; }
+    const inp = { host: { dir: input.vec, ult: input.takeUlt(), dash: input.takeDash() || hostDash } }; hostDash = false;
+    if (sim.players.guest) { inp.guest = { ...guestInput }; guestInput.ult = false; guestInput.dash = false; }
     if (!paused) sim.step(dt, inp);
     snap = sim.snapshot();
     onEvents(snap.ev); pendingEv.push(...snap.ev);
@@ -145,15 +159,26 @@ function loop(now) {
     if (snap) {
       const mine = snap.P.guest;
       if (mine) {
-        if (!guestPos || mine.d) guestPos = { x: mine.x, y: mine.y, face: mine.f, moving: 0 };
+        const B = (MAPS[snap.map] || MAPS.plaza).b;
+        let dash = false;
+        if (!guestPos || mine.d) guestPos = { x: mine.x, y: mine.y, face: mine.f, moving: 0, dt: 0, dcd: 0 };
         else if (snap.st === "run") {
           const v = input.vec, m = Math.hypot(v.x, v.y);
           guestPos.moving = m > 0.1 ? 1 : 0;
-          if (m > 0.1) { guestPos.x = Math.max(12, Math.min(MAP - 12, guestPos.x + v.x * mine.sp * dt)); guestPos.y = Math.max(12, Math.min(MAP - 12, guestPos.y + v.y * mine.sp * dt)); if (Math.abs(v.x) > 0.15) guestPos.face = Math.sign(v.x); }
+          guestPos.dcd = Math.max(0, guestPos.dcd - dt);
+          if ((input.takeDash() || guestDash) && guestPos.dcd <= 0 && mine.dc <= 0.1) {
+            dash = true; guestPos.dcd = 2.4; guestPos.dt = 0.17;
+            const dx = m > 0.1 ? v.x / m : guestPos.face, dy = m > 0.1 ? v.y / m : 0; guestPos.dvx = dx * 290; guestPos.dvy = dy * 290;
+          }
+          let nx = guestPos.x, ny = guestPos.y;
+          if (m > 0.1) { nx += v.x * mine.sp * dt; ny += v.y * mine.sp * dt; if (Math.abs(v.x) > 0.15) guestPos.face = Math.sign(v.x); }
+          if (guestPos.dt > 0) { guestPos.dt -= dt; nx += guestPos.dvx * dt; ny += guestPos.dvy * dt; }
+          guestPos.x = Math.max(B[0], Math.min(B[2], nx)); guestPos.y = Math.max(B[1], Math.min(B[3], ny));
         } else guestPos.moving = 0;
+        guestDash = false;
         sendAcc += dt;
         const ult = input.takeUlt() || guestUlt;
-        if (me.net && (sendAcc >= 0.05 || ult)) { sendAcc = 0; me.net.send({ t: "in", pos: { x: guestPos.x, y: guestPos.y }, face: guestPos.face, moving: guestPos.moving, ult }); guestUlt = false; }
+        if (me.net && (sendAcc >= 0.05 || ult || dash)) { sendAcc = 0; me.net.send({ t: "in", pos: { x: guestPos.x, y: guestPos.y }, face: guestPos.face, moving: guestPos.moving, ult, dash }); guestUlt = false; }
       }
       V = view(snap, "guest", guestPos);
     }
@@ -170,7 +195,7 @@ function loop(now) {
   if (screen === "run" && snap) updateHud(dt);
   requestAnimationFrame(loop);
 }
-let guestUlt = false;
+let guestUlt = false, guestDash = false, hostDash = false;
 
 function view(s, local, override) {
   const players = {};
@@ -184,10 +209,10 @@ function view(s, local, override) {
     let x = tx, y = ty;
     if (guest) { const o = smooth.get(id); if (o) { o.x += (tx - o.x) * 0.35; o.y += (ty - o.y) * 0.35; x = o.x; y = o.y; } else smooth.set(id, { x, y }); seen.add(id); }
     let fx = 1, bd = Infinity; for (const p of pl) { const d = Math.abs(p.x - x) + Math.abs(p.y - y); if (d < bd) { bd = d; fx = p.x < x ? -1 : 1; } }
-    enemies.push({ id, type: E[i + 1], x, y, flash: E[i + 4], charge: E[i + 5], fx });
+    enemies.push({ id, type: E[i + 1], x, y, f: E[i + 4], a: E[i + 5], fx });
   }
   if (guest && smooth.size > seen.size + 50) for (const k of smooth.keys()) if (!seen.has(k)) smooth.delete(k);
-  return { local, players, enemies, proj: s.B, eproj: s.H, gems: s.G, pickups: s.K, pools: s.U, bombs: s.M, buses: s.Bu };
+  return { local, players, enemies, proj: s.B, eproj: s.H, gems: s.G, pickups: s.K, pools: s.U, bombs: s.M, buses: s.Bu, zones: s.Z || [], hz: s.Hz || [], obj: s.ob, bond: s.tg };
 }
 
 /* ---------------- HUD ---------------- */
@@ -204,6 +229,8 @@ function buildHud() {
     <div class="bossbar" id="bossbar" hidden><span id="bossname"></span><div><i id="bossfill"></i></div></div>
     <button class="pausebtn" data-act="pause" aria-label="Pausa">II</button>
     <button class="ultbtn" id="ultbtn" data-act="ult"><span id="ultlabel">COMBO</span></button>
+    <button class="dashbtn" id="dashbtn" data-act="dash"><span>ESQUIVE</span></button>
+    <div class="objhud" id="objhud" hidden><img src="${portrait("regalo", 3)}" alt=""><span id="objtxt"></span></div>
     <div class="banner" id="banner"><b id="btitle"></b><span id="bsub"></span></div>`;
   hudBuilt = true;
 }
@@ -223,7 +250,10 @@ function updateHud(dt) {
   if (mine) {
     const u = $("#ultbtn"); u.style.setProperty("--k", Math.round(mine.u * 100) + "%"); u.classList.toggle("ready", mine.u >= 1);
     $("#ultlabel").textContent = mine.c === "thomas" ? "COMBO" : "TORTAS";
+    const d = $("#dashbtn"); d.style.setProperty("--k", Math.round((1 - Math.min(1, (me.side === "guest" && guestPos ? Math.max(guestPos.dcd, mine.dc) : mine.dc) / 2.4)) * 100) + "%");
   }
+  const oh = $("#objhud");
+  if (s.ob) { oh.hidden = false; $("#objtxt").textContent = `Pedido de Roro's ${s.ob[2]}% · ${s.ob[3]}s`; } else oh.hidden = true;
   const bb = $("#bossbar");
   if (s.boss) { bb.hidden = false; $("#bossname").textContent = s.boss.n === "luz" ? "LUZ" : "LINDA, LA JEFA"; $("#bossfill").style.width = s.boss.hp * 100 + "%"; } else bb.hidden = true;
   const b = $("#banner"); if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) b.classList.remove("on"); }
@@ -248,16 +278,17 @@ function renderLevelUp(s, of) {
     <div class="opts">${of.opts.map((o, i) => {
       const def = o.kind === "w" ? WEAPONS[o.id] : o.kind === "p" ? PASSIVES[o.id] : { name: "Alfajor", desc: "Te recuperás entero." };
       const isNew = o.kind === "w" && !(mine && mine.w && mine.w[o.id]);
+      const hint = o.kind === "w" ? `Evoluciona con ${PASSIVES[WEAPONS[o.id].evo.p].name}` : o.kind === "p" && EVO_OF[o.id] ? `Evoluciona ${WEAPONS[EVO_OF[o.id]].name}` : "";
       return `<button class="opt" data-act="pick" data-i="${i}">
         <img src="${portrait(ICON[o.id] || "gem1", 4)}" alt="">
-        <span class="on"><b>${esc(def.name)}</b>${isNew ? `<em>NUEVA</em>` : `<small>Nivel ${o.lv}</small>`}<span>${esc(def.desc)}</span></span>
+        <span class="on"><b>${esc(def.name)}</b>${isNew ? `<em>NUEVA</em>` : `<small>Nivel ${o.lv}</small>`}<span>${esc(def.desc)}</span>${hint ? `<i class="evo">${esc(hint)}</i>` : ""}</span>
         <span class="stars">${"■".repeat(o.lv)}${"□".repeat(Math.max(0, (def.max || 1) - o.lv))}</span></button>`;
     }).join("")}</div></div>`;
   sfx.play("levelup");
 }
 function finish(s) {
   const win = s.st === "win";
-  earned = s.co + Math.floor(s.kl / 12) + Math.floor(s.t / 20) + (win ? 60 : 0);
+  earned = Math.round((s.co + Math.floor(s.kl / 12) + Math.floor(s.t / 20) + (win ? 60 : 0)) * (1 + (MAPS[s.map] || MAPS.plaza).tier * 0.12));
   prof.coins += earned; prof.runs++;
   if (win) prof.wins++;
   const newBest = s.t > prof.best.t;
@@ -277,7 +308,8 @@ function charCard(c) {
 function mapCards() {
   return `<div class="maps">${Object.entries(THEMES).map(([k, t]) => {
     const owned = prof.maps[k];
-    return `<button class="mapc ${map === k ? "on" : ""} ${owned ? "" : "locked"}" data-act="${owned ? "map" : "buymap"}" data-v="${k}"><b>${t.name}</b><span>${owned ? (map === k ? "Elegido" : "Elegir") : `Desbloquear · ${MAP_COST[k]}${COIN()}`}</span></button>`;
+    const tier = MAPS[k].tier;
+    return `<button class="mapc ${map === k ? "on" : ""} ${owned ? "" : "locked"}" data-act="${owned ? "map" : "buymap"}" data-v="${k}"><div><b>${t.name}</b><small>${"★".repeat(tier + 1)}${"☆".repeat(5 - tier)} · ${esc(t.sub)}${tier ? ` · +${tier * 12}%${COIN()}` : ""}</small></div><span>${owned ? (map === k ? "Elegido" : "Elegir") : `${MAP_COST[k]}${COIN()}`}</span></button>`;
   }).join("")}</div>`;
 }
 let lastResult = null;
@@ -352,7 +384,7 @@ document.addEventListener("click", e => {
   const b = e.target.closest("[data-act]"); if (!b || b.disabled) return;
   const a = b.dataset.act, v = b.dataset.v;
   sfx.init();
-  if (a !== "ult" && a !== "pick") sfx.click();
+  if (a !== "ult" && a !== "pick" && a !== "dash") sfx.click();
   switch (a) {
     case "start": music.start(); music.set("menu"); screen = "menu"; if (joinDraft.length === 4 && prof.who) joinRoom(joinDraft); draw(); break;
     case "who": prof.who = v; save(); newDemo(); draw(); break;
@@ -369,7 +401,7 @@ document.addEventListener("click", e => {
     case "back": if (screen === "shop") screen = shopBack || "menu"; else { leave(); screen = "menu"; me.code = null; } errMsg = null; draw(); break;
     case "share": { const url = location.origin + location.pathname + "?sala=" + me.code; if (navigator.share) navigator.share({ title: "Gatos de Linda", text: "Entrá a mi sala", url }).catch(() => {}); else navigator.clipboard && navigator.clipboard.writeText(url).then(() => banner("Link copiado", "")).catch(() => {}); break; }
     case "pick": { const i = +b.dataset.i; if (me.side === "host") sim && sim.pick("host", i); else me.net && me.net.send({ t: "pick", i }); sfx.play("coin"); break; }
-    case "ult": if (me.side === "host") input.ultPressed = true; else guestUlt = true; break;
+
     case "pause":
       if (me.side === "host" && !(me.net && me.net.connected)) { paused = !paused; b.textContent = paused ? "▶" : "II"; if (paused) banner("Pausa", "Tocá ▶ para seguir"); }
       else if (confirmQuit) { if (me.net && me.side === "host") me.net.send({ t: "menu" }); endRun(); toMenu(); confirmQuit = false; }
@@ -378,6 +410,13 @@ document.addEventListener("click", e => {
   }
 });
 let confirmQuit = false, shopBack = "menu";
+// esquive y combo responden al apoyar el dedo, sin esperar a soltar
+document.addEventListener("pointerdown", e => {
+  const b = e.target.closest('[data-act="dash"],[data-act="ult"]'); if (!b) return;
+  e.preventDefault(); sfx.init();
+  if (b.dataset.act === "ult") { if (me.side === "host") input.ultPressed = true; else guestUlt = true; }
+  else { if (me.side === "host") hostDash = true; else guestDash = true; }
+});
 document.addEventListener("input", e => { if (e.target.id === "code") { joinDraft = cleanCode(e.target.value); e.target.value = joinDraft; } });
 
 if (new URLSearchParams(location.search).has("debug")) window.__g = () => ({ sim, snap, me, R, prof, input });
