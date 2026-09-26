@@ -4,8 +4,8 @@ import { World } from "./world.js";
 import { Net, makeCode, cleanCode } from "./net.js";
 import { sfx } from "./sfx.js";
 import { music } from "./music.js";
-import { soleSVG, glyphSVG } from "./draw2d.js";
-import { genCase, hashSeed, clueText, normPhrase, VEH_TXT, MANOS, ESTATS } from "./casegen.js";
+import { soleSVG, glyphSVG, pixelIcon, wireSVG, COLOR_HEX } from "./draw2d.js";
+import { genCase, hashSeed, stationClue, normPhrase, VEH_TXT, MANOS, ESTATS, STATION_NAME, ALARM_RULES } from "./casegen.js";
 
 const gsap = window.gsap;
 // sin "lag smoothing": las animaciones duran lo mismo en los dos dispositivos aunque uno vaya más lento
@@ -25,8 +25,8 @@ function fresh() {
   return {
     v: 2, phase: "lobby", level: 1, seed: 0, solo: false, code: "",
     roles: { host: "campo", guest: "archivo" }, who: { host: null, guest: null },
-    startedAt: 0, solved: { suela: false, cifra: false, testigos: false }, pen: 0, wrong: [], juli: null,
-    end: null, left: 0, streak: 0, fx: null, romero: null
+    startedAt: 0, solved: {}, pen: 0, wrong: [], juli: null,
+    end: null, left: 0, streak: 0, fx: null, romero: null, ev: {}
   };
 }
 let S = fresh();
@@ -38,7 +38,7 @@ let C = null, portraits = [];
 let tab = "suela";
 let sel = {};
 let flash = null;
-let lastFx = null, lastPhase = null, lastRomero = null, lastSeed = null, lastWrongLen = 0;
+let lastFx = null, lastPhase = null, lastRomero = null, lastSeed = null, lastWrongLen = 0, lastEvKey = "";
 let joinDraft = cleanCode(new URLSearchParams(location.search).get("sala") || "");
 let soloCode = lsGet("soloCode") || String(1000 + Math.floor(Math.random() * 9000));
 let lobbyPanel = joinDraft ? "join" : null;
@@ -66,8 +66,8 @@ function ensureCase() {
   if (C && C.seed === S.seed && C.level === S.level) return;
   C = genCase(S.seed, S.level);
   portraits = world.portraits(C.sus.map(s => () => A.suspect(s.look)));
-  sel = { suela: null, cifra: "", man: null, est: null, acc: null };
-  tab = "suela"; flash = null;
+  sel = { suela: null, cifra: "", man: null, est: null, acc: null, alarma: null, mapa: null, fotos: null, quiz: null };
+  tab = C.stations[0].k; flash = null;
 }
 
 /* ---------------- anfitrión: reglas ---------------- */
@@ -92,11 +92,16 @@ function hostAct(a, by) {
     case "go":
       if (S.phase !== "brief") return;
       S.phase = "play"; S.startedAt = Date.now();
-      S.romero = C.P.romero ? { at: S.startedAt + C.romeroFrac * C.P.time * 1000, active: false, until: 0, done: false, caught: false, n: 0 } : null;
+      S.romero = C.events.romero ? { at: S.startedAt + C.events.romero * C.P.time * 1000, active: false, until: 0, done: false, caught: false, n: 0 } : null;
+      S.ev = {};
+      ["apagon", "sabotaje", "quiz"].forEach(e => { if (C.events[e]) S.ev[e] = { at: S.startedAt + C.events[e] * C.P.time * 1000, state: "wait", until: 0, taps: {}, ans: {} }; });
       break;
     case "answer": {
-      if (S.phase !== "play" || S.solved[a.k]) return;
+      if (S.phase !== "play" || S.solved[a.k] || !C.stations.some(st => st.k === a.k)) return;
       let ok = false;
+      if (a.k === "alarma") ok = a.v === C.alarm.cut;
+      if (a.k === "mapa") ok = a.v === C.map.target;
+      if (a.k === "fotos") ok = a.v === C.fotos.changed;
       if (a.k === "suela") ok = !!(C.catalog[a.v] && C.catalog[a.v].ok);
       if (a.k === "cifra") ok = normPhrase(a.v) === normPhrase(C.phrase) && normPhrase(a.v).length > 0;
       if (a.k === "testigos") ok = a.v && a.v.man === C.c.mano && a.v.est === C.c.estat;
@@ -119,6 +124,21 @@ function hostAct(a, by) {
       fx({ kind: "juli", i, by, secs: P.penJuli });
       break;
     }
+    case "shoo": {
+      const E = S.ev.sabotaje;
+      if (!E || E.state !== "on") return;
+      E.taps[by] = Date.now();
+      const need = players(), ts = need.map(sd => E.taps[sd]);
+      if (ts.every(Boolean) && Math.max(...ts) - Math.min(...ts) <= 2500) { E.state = "done"; fx({ kind: "shoo-ok", by }); }
+      break;
+    }
+    case "quiz": {
+      const E = S.ev.quiz;
+      if (!E || E.state !== "on" || E.ans[by] !== undefined) return;
+      E.ans[by] = a.v;
+      if (players().every(sd => E.ans[sd] !== undefined)) resolveQuiz();
+      break;
+    }
     case "romero":
       if (S.romero && S.romero.active) { S.romero.active = false; S.romero.done = true; S.romero.caught = true; fx({ kind: "romero-ok", by }); }
       break;
@@ -139,7 +159,7 @@ function hostAct(a, by) {
 function openCase(level) {
   S.level = level;
   S.seed = S.solo ? hashSeed(S.code + ":" + level) : (Math.random() * 4294967295) >>> 0;
-  Object.assign(S, { phase: "brief", startedAt: 0, solved: { suela: false, cifra: false, testigos: false }, pen: 0, wrong: [], juli: null, end: null, left: 0, romero: null });
+  Object.assign(S, { phase: "brief", startedAt: 0, solved: {}, pen: 0, wrong: [], juli: null, end: null, left: 0, romero: null, ev: {} });
   ensureCase();
 }
 
@@ -149,10 +169,32 @@ function finish(result) {
   fx({ kind: result });
 }
 
+// quiénes tienen que participar en los eventos de a dos
+function players() { return !S.solo && me.net && me.net.connected ? ["host", "guest"] : ["host"]; }
+function resolveQuiz() {
+  const E = S.ev.quiz; E.state = "done";
+  const right = players().every(sd => E.ans[sd] === C.quiz.ok);
+  if (right) { S.pen -= 20; fx({ kind: "bonus", secs: 20 }); }
+  else fx({ kind: "quiz-miss" });
+}
+
 function hostTick() {
   if (S.phase !== "play" || !C) return;
   const now = Date.now();
   if (remaining() <= 0) { S.left = 0; finish("lose"); commit(); return; }
+  const ev = S.ev || {};
+  for (const [k, E] of Object.entries(ev)) {
+    if (E.state === "wait" && now >= E.at) {
+      E.state = "on"; E.until = now + (k === "apagon" ? 16000 : k === "sabotaje" ? 14000 : 20000);
+      commit(); return;
+    }
+    if (E.state === "on" && now > E.until) {
+      if (k === "sabotaje") { E.state = "done"; S.pen += 15; fx({ kind: "sab-miss", secs: 15 }); }
+      else if (k === "quiz") resolveQuiz();
+      else E.state = "done";
+      commit(); return;
+    }
+  }
   const R = S.romero;
   if (R && !R.done && !R.active && now >= R.at) { R.active = true; R.until = now + 6500; R.n += 1; commit(); }
   else if (R && R.active && now > R.until) { R.active = false; R.done = true; S.pen += C.P.penRomero; fx({ kind: "romero-miss", secs: C.P.penRomero }); commit(); }
@@ -313,10 +355,26 @@ function react() {
     if (f.kind === "juli") { sfx.meow(); hitTimer(f.secs); world.juliHint(`Miau. ${C.sus[f.i].name.split(" ")[0]} es inocente.`); flash = { k: "accuse", ok: true, t: `Juli descartó a ${C.sus[f.i].name}. −${f.secs} s` }; }
     if (f.kind === "romero-ok") { sfx.ok(); world.endRomero(true); }
     if (f.kind === "romero-miss") { sfx.err(); hitTimer(f.secs); world.endRomero(false); world.react("err"); }
+    if (f.kind === "bonus") { sfx.win(); world.react("ok"); toast(`¡Los dos acertaron! +${f.secs} s`); }
+    if (f.kind === "quiz-miss") { sfx.err(); toast("El comisario cortó. No hubo premio."); }
+    if (f.kind === "shoo-ok") { sfx.meow(); world.react("ok"); toast("Linda se bajó del escritorio. Por ahora."); }
+    if (f.kind === "sab-miss") { sfx.evil(); hitTimer(f.secs); world.react("err"); toast(`Linda desordenó todo. −${f.secs} s`); }
     if (f.kind === "win") { sfx.win(); world.setView("place"); world.celebrate(); }
     if (f.kind === "lose") { sfx.lose(); world.setView("place"); world.defeat(); setTimeout(() => sfx.evil(), 600); }
     if (flash) { const fl = flash; setTimeout(() => { if (flash === fl) { flash = null; render(); } }, 3000); }
   }
+  // eventos: apagón, sabotaje de Linda, llamada del comisario
+  const ev = S.phase === "play" ? (S.ev || {}) : {};
+  const evKey = Object.entries(ev).map(([k, E]) => k + E.state).join();
+  if (evKey !== lastEvKey) {
+    const was = lastEvKey; lastEvKey = evKey;
+    const on = k => ev[k] && ev[k].state === "on", wasOn = k => was.includes(k + "on");
+    if (on("apagon") && !wasOn("apagon")) { world.blackout(true); sfx.sting(); document.body.classList.add("apagon"); }
+    if (!on("apagon") && document.body.classList.contains("apagon")) { world.blackout(false); document.body.classList.remove("apagon"); }
+    if (on("sabotaje") && !wasOn("sabotaje")) { world.setView("place"); world.villainCameo("Me subo al escritorio. ¿Y?"); sfx.evil(); }
+    if (on("quiz") && !wasOn("quiz")) { sfx.join(); sel.quiz = null; }
+  }
+  if (S.phase !== "play" && document.body.classList.contains("apagon")) { world.blackout(false); document.body.classList.remove("apagon"); }
   const R = S.romero;
   const rkey = R ? R.n + ":" + R.active : null;
   if (rkey !== lastRomero) {
@@ -439,8 +497,10 @@ function viewRoom() {
 function viewBrief() {
   const p = C.place;
   const mine = myRole() === "campo"
-    ? "Estás en la escena. Ves la huella en el piso, la libreta que se le cayó al ladrón y lo que dicen los testigos."
-    : "Estás en el archivo. Tenés el catálogo de suelas, el mensaje interceptado, el registro de testigos y la rueda con alturas.";
+    ? "Estás en la escena: ves lo que dejó el ladrón. Tu pareja tiene los registros que le dan sentido."
+    : "Estás en el archivo: tenés manuales, registros y la rueda con alturas. Lo que pasó en la escena lo ve tu pareja.";
+  const COND = { apagon: "Hay cortes de luz en la zona.", sabotaje: "Linda anda cerca y va a molestar.", romero: "Romero está inquieto.", quiz: "El comisario va a llamar con una pregunta." };
+  const conds = Object.keys(C.events).map(k => COND[k]);
   return `
   <section class="brief">
     <div class="briefcard" id="briefcard">
@@ -449,6 +509,8 @@ function viewBrief() {
       <p>Alguien entró en ${esc(p.place)} y se llevó ${esc(p.obj)}. Hay ${C.sus.length} sospechosos retenidos. Tienen ${fmt(C.P.time)}.</p>
       ${C.P.villain ? `<p class="villain">Linda, la gata, dejó su marca. Nivel de jefa: todo cuesta más.</p>` : ""}
       <p class="roleinfo"><b>${RNAME[myRole()]}.</b> ${mine}</p>
+      <div class="today"><span class="label">Pruebas de hoy</span><div class="chips">${C.stations.map(st => `<span class="chip">${STATION_NAME[st.k][1]}</span>`).join("")}</div></div>
+      ${conds.length ? `<div class="today"><span class="label">Esta noche</span><ul class="conds">${conds.map(t => `<li>${t}</li>`).join("")}</ul></div>` : ""}
       <button class="cta" data-act="go">Arrancar el reloj</button>
       <p class="hint">${S.solo ? "Cuenten 3, 2, 1 y aprieten a la vez." : "Cuando uno arranca, arranca para los dos."}</p>
     </div>
@@ -457,7 +519,8 @@ function viewBrief() {
 
 function clueBox(k) {
   if (!S.solved[k]) return "";
-  return `<div class="clue">Pista: ${clueText(k, C.c)}<span>${S.solo ? "Contásela a tu pareja." : "Los dos la ven."}</span></div>`;
+  const st = C.stations.find(x => x.k === k);
+  return `<div class="clue">Pista: ${stationClue(st, C.c)}<span>${S.solo ? "Contásela a tu pareja." : "Los dos la ven."}</span></div>`;
 }
 function flashBox(k) { return flash && flash.k === k ? `<p class="flash ${flash.ok ? "good" : "bad"}" role="alert">${esc(flash.t)}</p>` : ""; }
 
@@ -509,15 +572,62 @@ function viewTestigos() {
     <div class="field"><label>Estatura del culpable</label>${seg("est", ESTATS)}</div>
     <button class="cta" data-act="answer" data-k="testigos" ${sel.man && sel.est ? "" : "disabled"}>Confirmar perfil</button>${flashBox("testigos")}`}</div>`;
 }
+function viewAlarma() {
+  const A = C.alarm, solved = S.solved.alarma;
+  if (myRole() === "campo") return `
+    <div class="station"><h3>La alarma</h3>
+    <p class="intro">La alarma del lugar está por sonar y borrar las grabaciones. Contale a ${esc(partnerName())} cuántos cables hay, sus colores en orden, la luz y el número de serie. Cortá el que te diga.</p>
+    <div class="alarm">
+      <div class="alarm-top"><span class="serial">SERIE ${A.serial}</span><span class="led${A.led ? " on" : ""}"></span></div>
+      ${A.wires.map((w, i) => `<button class="wirebtn" data-act="${solved ? "" : "cut"}" data-v="${i}" ${solved ? "disabled" : ""} aria-label="Cable ${i + 1} ${w}"><span class="wn">${i + 1}</span>${wireSVG(w, solved && i === A.cut, i)}</button>`).join("")}
+    </div>
+    ${flashBox("alarma")}${clueBox("alarma")}</div>`;
+  return `
+    <div class="station"><h3>Manual de la alarma</h3>
+    <p class="intro">${esc(partnerName())} tiene el panel. Preguntá cuántos cables hay y buscá la tabla que corresponde. Aplicá las reglas en orden: vale la primera que se cumpla.</p>
+    <div class="manual">${[4, 5, 6].map(n => `<div class="rules"><b>${n} cables</b><ol>${ALARM_RULES[n].map(r => `<li>${r}</li>`).join("")}</ol></div>`).join("")}</div>
+    ${flashBox("alarma")}${clueBox("alarma")}</div>`;
+}
+const DIR_TXT = { norte: "al norte", sur: "al sur", este: "al este", oeste: "al oeste" };
+function viewMapa() {
+  const M = C.map, solved = S.solved.mapa;
+  if (myRole() === "archivo") return `
+    <div class="station"><h3>Declaración del recorrido</h3>
+    <p class="intro">Un vecino siguió al culpable. ${esc(partnerName())} tiene el mapa del barrio: leéle el recorrido paso a paso.</p>
+    <ol class="route"><li>Salió desde <b>${M.from}</b>.</li>${M.moves.map(m => `<li>${m.st} ${m.st > 1 ? "cuadras" : "cuadra"} ${DIR_TXT[m.d]}.</li>`).join("")}<li>Ahí se subió a algo y desapareció.</li></ol>
+    ${flashBox("mapa")}${clueBox("mapa")}</div>`;
+  const land = {}; M.lands.forEach(l => { land[l.cell] = l.name; });
+  return `
+    <div class="station"><h3>El mapa del barrio</h3>
+    <p class="intro">${esc(partnerName())} tiene lo que declaró un vecino. Seguí el recorrido con el dedo y marcá la esquina donde terminó. Arriba es el norte.</p>
+    <div class="map"><span class="north">N ▲</span>${Array.from({ length: 25 }, (_, i) => `<button class="blk${land[i] ? " land" : ""}${sel.mapa === i ? " on" : ""}${solved && i === M.target ? " hit" : ""}" data-act="pick" data-k="mapa" data-v="${i}" ${solved ? "disabled" : ""}>${land[i] ? `<span>${land[i]}</span>` : ""}</button>`).join("")}</div>
+    ${solved ? clueBox("mapa") : `<button class="cta" data-act="answer" data-k="mapa" ${sel.mapa === null ? "disabled" : ""}>Marcar esta esquina</button>${flashBox("mapa")}`}</div>`;
+}
+function viewFotos() {
+  const F = C.fotos, solved = S.solved.fotos;
+  const cell = (it, i, btn) => btn
+    ? `<button class="ph${sel.fotos === i ? " on" : ""}${solved && i === F.changed ? " hit" : ""}" data-act="pick" data-k="fotos" data-v="${i}" ${solved ? "disabled" : ""}>${pixelIcon(it.t, it.c)}</button>`
+    : `<div class="ph">${pixelIcon(it.t, it.c)}</div>`;
+  if (myRole() === "archivo") return `
+    <div class="station"><h3>La foto de ayer</h3>
+    <p class="intro">La cámara sacó esta foto ayer a las 23:14. Hoy falta una cosa y apareció otra en su lugar. Describile a ${esc(partnerName())} cada objeto: qué es, de qué color y dónde está.</p>
+    <div class="photo"><span class="stamp-cam">CAM 02 · AYER 23:14</span><div class="phgrid">${F.before.map((it, i) => cell(it, i, false)).join("")}</div></div>
+    ${flashBox("fotos")}${clueBox("fotos")}</div>`;
+  return `
+    <div class="station"><h3>La escena de hoy</h3>
+    <p class="intro">${esc(partnerName())} tiene la foto de ayer. Una sola cosa cambió: esa la dejó el ladrón. Encontrala.</p>
+    <div class="photo now"><span class="stamp-cam">AHORA</span><div class="phgrid">${F.after.map((it, i) => cell(it, i, true)).join("")}</div></div>
+    ${solved ? clueBox("fotos") : `<button class="cta" data-act="answer" data-k="fotos" ${sel.fotos === null ? "disabled" : ""}>Esto lo dejó el ladrón</button>${flashBox("fotos")}`}</div>`;
+}
+
 function viewRueda() {
-  const items = [["suela", "La huella"], ["cifra", "El mensaje"], ["testigos", "Los testigos"]];
   const campo = myRole() === "campo";
   const data = s => campo ? `Vehículo: ${VEH_TXT[s.veh]} · Mano: ${s.mano}` : `Talle: ${s.talle} · Estatura: ${s.estat}`;
   const chosen = sel.acc !== null && sel.acc !== undefined ? C.sus[sel.acc] : null;
   return `
     <div class="station"><h3>La rueda</h3>
     <p class="intro">${C.sus.length} personas retenidas. Vos tenés ${campo ? "vehículo y mano hábil" : "talle y estatura (mirá la pared de alturas)"}; ${esc(partnerName())} tiene el resto. Crucen los datos antes de acusar.</p>
-    <div class="clues">${items.map(([k, t]) => S.solved[k] ? `<span class="ok">✓ ${clueText(k, C.c)}</span>` : `<span class="no">— ${t}: sin resolver</span>`).join("")}</div>
+    <div class="clues">${C.stations.map(st => S.solved[st.k] ? `<span class="ok">✓ ${stationClue(st, C.c)}</span>` : `<span class="no">— ${STATION_NAME[st.k][1]}: sin resolver</span>`).join("")}</div>
     <div class="lineup">${C.sus.map((s, i) => {
       const out = S.wrong.includes(i), byJuli = S.juli === i;
       return `<button class="sus${out ? " out" : ""}" data-act="pick" data-k="acc" data-v="${i}" aria-pressed="${sel.acc === i}" ${out ? "disabled" : ""}>
@@ -532,10 +642,36 @@ function viewRueda() {
     ${flashBox("accuse")}</div>`;
 }
 
+function viewEvents() {
+  const ev = S.ev || {}, out = [];
+  const sab = ev.sabotaje;
+  if (sab && sab.state === "on") {
+    const tapped = sab.taps[me.side], other = sab.taps[partnerSide()];
+    out.push(`<div class="evmodal evil"><div class="evbox">
+      <p class="eyebrow">Sabotaje</p><h3>¡Linda se subió al escritorio!</h3>
+      <p>Está sentada arriba de todos los papeles. Tóquenla <b>los dos a la vez</b> para bajarla${S.solo ? "" : ` (cuenten 3, 2, 1)`}. Si no, desordena todo: −15 s.</p>
+      <button class="cta shoo" data-act="shoo">¡Fuera, Linda!</button>
+      <p class="hint">${S.solo ? "" : tapped && other ? "Casi: tienen que tocar al mismo tiempo." : tapped ? `Vos tocaste. Falta ${esc(partnerName())}.` : other ? `${esc(partnerName())} ya tocó. ¡Ahora vos!` : ""}</p>
+    </div></div>`);
+  }
+  const qz = ev.quiz;
+  if (qz && qz.state === "on" && C.quiz) {
+    const mineAns = qz.ans[me.side];
+    out.push(`<div class="evmodal"><div class="evbox">
+      <p class="eyebrow">☎ Llamada del comisario</p><h3>${esc(C.quiz.q)}</h3>
+      <p class="hint">Respondan cada uno por su lado, sin mirar. Si los dos aciertan: +20 s.</p>
+      <div class="qopts">${C.quiz.opts.map((o, i) => `<button class="ghost qopt${mineAns === i ? " on" : ""}" data-act="quizans" data-v="${i}" ${mineAns !== undefined ? "disabled" : ""}>${esc(o)}</button>`).join("")}</div>
+      ${mineAns !== undefined ? `<p class="busy">Esperando a ${esc(partnerName())}</p>` : ""}
+    </div></div>`);
+  }
+  return out.join("");
+}
+
 function viewPlay() {
-  const tabs = [["suela", "Huella"], ["cifra", "Mensaje"], ["testigos", "Testigos"], ["rueda", "Rueda"]];
+  const tabs = C.stations.map(st => [st.k, STATION_NAME[st.k][0]]).concat([["rueda", "Rueda"]]);
   const st = k => k === "rueda" ? (S.wrong.length ? S.wrong.length + " desc." : "acusar") : (S.solved[k] ? "✓ lista" : "abierta");
-  const body = tab === "suela" ? viewSuela() : tab === "cifra" ? viewCifra() : tab === "testigos" ? viewTestigos() : viewRueda();
+  const views = { suela: viewSuela, cifra: viewCifra, testigos: viewTestigos, alarma: viewAlarma, mapa: viewMapa, fotos: viewFotos, rueda: viewRueda };
+  const body = (views[tab] || viewRueda)();
   const net = S.solo ? "" : `<span class="dot${me.net && me.net.connected ? " on" : ""}"></span>`;
   return `
   <div class="hud">
@@ -545,8 +681,9 @@ function viewPlay() {
   </div>
   ${me.side === "guest" && me.netStatus === "closed" ? `<div class="banner bad">Se cortó la conexión. <button class="ghost small" data-act="rejoin">Reconectar</button></div>` : ""}
   ${me.side === "host" && !S.solo && me.netStatus === "closed" ? `<div class="banner bad">${esc(partnerName())} se desconectó. Cuando vuelva a entrar con el código ${esc(S.code)}, sigue la partida.</div>` : ""}
-  <nav class="tabs" role="tablist">${tabs.map(([k, t]) => `<button class="tab${k !== "rueda" && S.solved[k] ? " done" : ""}" role="tab" data-act="tab" data-v="${k}" aria-selected="${tab === k}">${t}<small>${st(k)}</small></button>`).join("")}</nav>
+  <nav class="tabs" role="tablist" style="grid-template-columns:repeat(${tabs.length},1fr)">${tabs.map(([k, t]) => `<button class="tab${k !== "rueda" && S.solved[k] ? " done" : ""}" role="tab" data-act="tab" data-v="${k}" aria-selected="${tab === k}">${t}<small>${st(k)}</small></button>`).join("")}</nav>
   ${body}
+  ${viewEvents()}
   <button class="link" data-act="quit">${quitArm ? "¿Seguro? Tocá de nuevo para abandonar" : "Abandonar el caso"}</button>`;
 }
 
@@ -654,17 +791,20 @@ ui.addEventListener("click", e => {
       if (v === "rueda" && myRole() === "archivo") world.buildLineup(C.sus, S.wrong);
       render(); ui.scrollTo({ top: 0 }); break;
     case "pick":
-      if (k === "suela" || k === "acc") sel[k] = +v; else sel[k] = v;
+      if (["suela", "acc", "mapa", "fotos"].includes(k)) sel[k] = +v; else sel[k] = v;
       sfx.click(); render(); break;
     case "answer": {
       let val = sel[k];
       if (k === "cifra") { const el = $("#cifra"); val = el ? el.value : sel.cifra; if (!normPhrase(val)) return; }
       if (k === "testigos") { if (!sel.man || !sel.est) return; val = { man: sel.man, est: sel.est }; }
-      if (k === "suela" && val === null) return;
+      if (["suela", "mapa", "fotos"].includes(k) && (val === null || val === undefined)) return;
       act({ type: "answer", k, v: val }); break;
     }
     case "accuse": if (sel.acc !== null && sel.acc !== undefined) { act({ type: "accuse", i: sel.acc }); sel.acc = null; } break;
     case "juli": act({ type: "juli" }); break;
+    case "cut": sfx.click(); act({ type: "answer", k: "alarma", v: +v }); break;
+    case "shoo": sfx.meow(); act({ type: "shoo" }); break;
+    case "quizans": sel.quiz = +v; act({ type: "quiz", v: +v }); break;
     case "next": act({ type: "next" }); break;
     case "swapnext": act({ type: "swap" }); act({ type: "next" }); break;
     case "mute": sfx.toggle(); render(); break;
@@ -706,6 +846,10 @@ function toast(t) {
   gsap.fromTo(el, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.3 });
   setTimeout(() => gsap.to(el, { opacity: 0, duration: 0.3, onComplete: () => el.remove() }), 2200);
 }
+
+// la linterna del apagón sigue al dedo o al mouse
+window.addEventListener("pointermove", e => { if (document.body.classList.contains("apagon")) { document.body.style.setProperty("--mx", e.clientX + "px"); document.body.style.setProperty("--my", e.clientY + "px"); } }, { passive: true });
+window.addEventListener("pointerdown", e => { document.body.style.setProperty("--mx", e.clientX + "px"); document.body.style.setProperty("--my", e.clientY + "px"); }, { passive: true });
 
 /* ---------------- reloj ---------------- */
 setInterval(() => {

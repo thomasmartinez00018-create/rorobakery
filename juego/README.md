@@ -6,9 +6,16 @@ Juego policial cooperativo para dos jugadores: Thomas y Rocío resuelven casos e
 
 1. Uno abre la página, elige quién es y toca **Crear sala**. Aparece un código de 4 letras.
 2. El otro entra con **Unirme con código** o con el link compartido (`?sala=CODIGO`).
-3. **Campo** ve la escena (huella, libreta cifrada, testigos). **Archivo** tiene los registros (catálogo de suelas, mensaje interceptado, registro de testigos, rueda con alturas).
-4. Resuelven las tres pistas, cruzan las fichas y acusan a una sola persona.
-5. Cada caso ganado sube el nivel: más sospechosos, más símbolos, menos tiempo. Cada 3 niveles aparece Linda.
+3. **Campo** ve la escena y **Archivo** tiene los registros. Cada caso sortea 3 pruebas (4 desde el nivel 6) de estas 6:
+   - **La huella**: Campo describe la suela, Archivo la busca en el catálogo.
+   - **El mensaje**: Archivo dicta símbolos, Campo tiene la clave.
+   - **Los testigos**: Campo lee declaraciones, Archivo sabe a quién creerle.
+   - **La alarma**: Campo ve cables, Archivo tiene el manual para desactivarla.
+   - **El recorrido**: Archivo lee lo que declaró un vecino, Campo sigue el camino en el mapa.
+   - **Antes y después**: Archivo tiene la foto de ayer, Campo la de hoy; hay que encontrar lo que dejó el ladrón.
+4. Resuelven las pruebas, cruzan las fichas y acusan a una sola persona.
+5. Eventos sorpresa: Romero se escapa, apagón (linterna), sabotaje de Linda (tocar los dos a la vez) y la llamada del comisario (trivia de ustedes, +20 s).
+6. Cada caso ganado sube el nivel: más sospechosos, más símbolos, menos tiempo. Cada 3 niveles aparece Linda.
 
 Sin conexión: **Jugar sin conexión** con el mismo número de caso en los dos dispositivos.
 

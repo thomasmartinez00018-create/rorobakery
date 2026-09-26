@@ -195,44 +195,65 @@ const PLACES = {
     return { sky: "#8fd0e8", fog: "#8fd0e8", hemi: ["#ffffff", "#8a7a6a"], sun: "#fff6e6", sunI: 2.6, pets: [] };
   },
   observatorio(K, W) {
-    K.base(10, 7, "#2f5d3a", "#20331f", null);
-    K.cyl(1.7, 1.8, 1.8, "#e8e6e1", 0, 0.9, -1.8, {}, 28);
-    const dome = A.mesh(new THREE.SphereGeometry(1.75, 28, 16, 0, Math.PI * 2, 0, Math.PI / 2), "#c7ccd4"); K.put(dome, 0, 1.8, -1.8);
-    K.box(0.5, 1.5, 0.3, "#1a2238", 0, 2.6, -0.3).rotation.x = -0.6;
-    const scope = K.cyl(0.14, 0.18, 1.7, "#39414f", 0.2, 3.1, -0.9); scope.rotation.x = -0.9;
-    W.evidence = V(0.2, 3.1, -0.9);
-    K.box(2.4, 1.3, 1.4, "#dcd8cf", 3.2, 0.65, -2.2); K.box(0.6, 1.0, 0.05, "#5a3d2a", 3.2, 0.5, -1.48);
-    K.lamp(-3.5, 1.2); K.lamp(3.8, 1.0); K.tree(-4.1, -2.4, 1.1, "#2f6b3a");
+    // Observatorio de Física Cósmica (1935): edificio racionalista con varias cúpulas, estación meteorológica y eucaliptos
+    K.base(10, 7, "#2f5a36", "#20331f", null);
+    K.box(5.4, 1.6, 1.6, "#e8e1d3", -1.0, 0.8, -2.5); K.box(5.6, 0.12, 1.8, "#cfc6b4", -1.0, 1.66, -2.5);
+    for (let i = 0; i < 5; i++) K.box(0.5, 0.6, 0.05, "#2b3444", -3.2 + i * 1.05, 0.95, -1.68, { outline: false });
+    K.box(0.7, 1.1, 0.05, "#5a3d2a", -1.0, 0.55, -1.68, { outline: false });
+    K.cyl(1.2, 1.25, 1.9, "#e8e1d3", 1.9, 0.95, -1.2, {}, 28);
+    const dome = A.mesh(new THREE.SphereGeometry(1.18, 28, 16, 0, Math.PI * 2, 0, Math.PI / 2), "#dadde0"); K.put(dome, 1.9, 1.9, -1.2);
+    const slit = A.mesh(new THREE.BoxGeometry(0.34, 1.25, 0.25), "#141a2a", { outline: false }); slit.position.set(0, 0.55, 0.95); slit.rotation.x = -0.55; dome.add(slit);
+    W.dome = dome;
+    const scope = K.cyl(0.12, 0.16, 1.5, "#39414f", 1.9, 2.6, -0.5); scope.rotation.x = -0.9;
+    W.evidence = V(1.9, 2.6, -0.5);
+    [[-2.9, 0.6], [-1.3, 0.48]].forEach(([x, r]) => { K.cyl(r, r, 0.3, "#e8e1d3", x, 1.87, -2.5); K.put(A.mesh(new THREE.SphereGeometry(r, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), "#aeb3b8"), x, 2.02, -2.5); });
+    // abrigo meteorológico
+    [[3.3, -0.2], [3.7, -0.2], [3.3, 0.2], [3.7, 0.2]].forEach(([x, z]) => K.box(0.04, 0.9, 0.04, "#ddd", x, 0.45, z - 0.5));
+    K.box(0.55, 0.5, 0.5, "#f5f5f5", 3.5, 1.1, -0.5); for (let i = 0; i < 4; i++) K.box(0.56, 0.02, 0.51, "#c9c9c9", 3.5, 0.92 + i * 0.1, -0.5, { outline: false });
+    K.cyl(0.03, 0.03, 2.4, "#bbb", 4.3, 1.2, -1.5); [0, 2.1, 4.2].forEach(a => K.sph(0.06, "#ddd", 4.3 + Math.cos(a) * 0.18, 2.45, -1.5 + Math.sin(a) * 0.18, { outline: false }));
+    // eucaliptos altos
+    [[-4.4, -2.9, 1.2], [4.5, -2.8, 1.0], [-4.6, 0.6, 0.9]].forEach(([x, z, s]) => { K.cyl(0.08 * s, 0.13 * s, 3.0 * s, "#cbbfae", x, 1.5 * s, z); K.sph(0.7 * s, "#4d6b4a", x, 3.1 * s, z); K.sph(0.5 * s, "#5a7a55", x + 0.3, 3.5 * s, z + 0.1); });
+    K.lamp(-3.5, 1.2); K.lamp(3.8, 1.0);
     const moon = new THREE.Mesh(new THREE.SphereGeometry(1.2, 20, 16), new THREE.MeshBasicMaterial({ color: 0xfff6d8, fog: false })); K.put(moon, -9, 9, -18);
     return { sky: "#0b1430", fog: "#0b1430", hemi: ["#8fa6ff", "#10140e"], sun: "#b8c8ff", sunI: 1.2, pets: [], night: true };
   },
   estacion(K, W) {
-    K.base(10, 7, "#9aa0a6", "#55595e", tiles("anden", "#a7acb2", "#8c9197", 12), 3);
-    K.box(10, 0.06, 0.25, "#f2c230", 0, 0.03, -0.9, { outline: false });
-    K.box(10, 0.2, 2.0, "#4a4038", 0, -0.1, -2.4, { outline: false });
-    for (let i = -9; i <= 9; i++) K.box(0.18, 0.06, 1.7, "#6d5842", i * 0.52, 0.02, -2.4, { outline: false });
+    // Estación Los Polvorines (renovada en 2021): andén elevado, borde táctil amarillo, refugio, molinetes SUBE; trenes rojos del Belgrano Norte
+    K.base(10, 7, "#b5b2aa", "#55595e", tiles("anden", "#b8b4ab", "#9d998f", 12), 3);
+    K.box(10, 0.07, 0.3, "#f2c200", 0, 0.03, -1.05, { outline: false });
+    K.box(10, 0.2, 2.0, "#7d766c", 0, -0.1, -2.4, { outline: false });
+    for (let i = -9; i <= 9; i++) K.box(0.18, 0.06, 1.7, "#8e8a83", i * 0.52, 0.02, -2.4, { outline: false });
     [-2.9, -1.9].forEach(z => K.box(10, 0.08, 0.08, "#9aa3ad", 0, 0.08, z, { outline: false }));
     const train = new THREE.Group(); K.put(train, 0, 0, -2.4);
-    const car = A.mesh(new THREE.BoxGeometry(7.5, 1.7, 1.3), "#dfe3e8"); car.position.y = 1.0; train.add(car);
-    const band = A.mesh(new THREE.BoxGeometry(7.52, 0.3, 1.32), "#1f4e99", { outline: false }); band.position.y = 0.45; train.add(band);
-    const wins = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 0.55), new THREE.MeshBasicMaterial({ map: stripes("wins", ["#23324a", "#dfe3e8"], false, 16) })); wins.position.set(0, 1.25, 0.66); train.add(wins);
+    const car = A.mesh(new THREE.BoxGeometry(7.5, 1.7, 1.3), "#c8102e"); car.position.y = 1.0; train.add(car);
+    const roof = A.mesh(new THREE.BoxGeometry(7.5, 0.18, 1.2), "#8a8d8f", { outline: false }); roof.position.y = 1.93; train.add(roof);
+    const under = A.mesh(new THREE.BoxGeometry(7.2, 0.25, 1.1), "#222222", { outline: false }); under.position.y = 0.2; train.add(under);
+    const wins = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 0.5), new THREE.MeshBasicMaterial({ map: stripes("winsR", ["#1a2233", "#c8102e"], false, 16) })); wins.position.set(0, 1.28, 0.66); train.add(wins);
+    [-2.2, 2.2].forEach(x => { const d = A.mesh(new THREE.BoxGeometry(0.7, 1.3, 0.04), "#a50d25", { outline: false }); d.position.set(x, 0.85, 0.66); train.add(d); });
     W.train = train;
-    K.sign("LOS POLVORINES", 3.6, 0.55, { bg: "#1f4e99" }, 1.2, 2.4, -0.6);
-    [-0.5, 2.9].forEach(x => K.cyl(0.04, 0.04, 2.2, "#2d2d33", x, 1.1, -0.62));
+    K.box(6.4, 0.1, 1.7, "#d9dde2", 0.3, 2.55, 0.05);
+    [-2.6, -0.2, 2.2].forEach(x => K.box(0.12, 2.5, 0.12, "#e6e6e6", x, 1.25, 0.6));
+    K.sign("LOS POLVORINES", 3.2, 0.48, { bg: "#ffffff", fg: "#1d2a44", border: "#1d2a44" }, 0.3, 2.15, 0.9);
+    for (let i = 0; i < 3; i++) { K.box(0.22, 0.9, 0.55, "#9aa3ad", -4.3 + i * 0.5, 0.45, 1.8); K.box(0.24, 0.05, 0.3, glowMat("#46c86e", 1.4), -4.3 + i * 0.5, 0.93, 1.72, { outline: false }); }
     K.box(1.8, 0.1, 0.5, "#8a5a33", -2.8, 0.5, -0.2); [-3.5, -2.1].forEach(x => K.box(0.08, 0.5, 0.4, "#333", x, 0.25, -0.2));
     K.cyl(0.04, 0.04, 2.5, "#2d2d33", 4.0, 1.25, 0.2); K.box(0.5, 0.35, 0.08, "#2d2d33", 4.0, 2.4, 0.2);
     W.evidence = V(4.0, 2.4, 0.2);
-    K.box(1.4, 2.0, 1.2, "#e8dcc6", -4.2, 1.0, 1.4); K.sign("BOLETERÍA", 1.2, 0.3, { bg: "#6b3b2a" }, -4.2, 1.7, 2.02);
+    K.box(1.4, 2.0, 1.2, "#e8dcc6", -4.2, 1.0, 0.1); K.sign("BOLETERÍA", 1.2, 0.3, { bg: "#1d2a44" }, -4.2, 1.7, 0.72);
     return { sky: "#e9a36a", fog: "#e9a36a", hemi: ["#ffe7cc", "#4a3d36"], sun: "#ffd2a0", sunI: 2.2, pets: [], trainIntro: true };
   },
   rotonda(K, W) {
+    // Rotonda de Grand Bourg / Plaza Bouchard (renovada en 2016): juegos con piso de goma, escenario y luminarias LED
     K.base(10, 7, "#5d9a48", "#3c5f2c", null);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(1.9, 3.2, 48), A.toon("#3d3f45")); ring.rotation.x = -Math.PI / 2; ring.position.set(0, 0.01, -0.8); ring.receiveShadow = true; K.put(ring, 0, 0.01, -0.8).rotation.x = -Math.PI / 2;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.9, 3.2, 48), A.toon("#3d3f45")); ring.receiveShadow = true; K.put(ring, 0, 0.01, -0.8).rotation.x = -Math.PI / 2;
     const dash = new THREE.Mesh(new THREE.RingGeometry(2.53, 2.57, 48), new THREE.MeshBasicMaterial({ color: 0xf5f5f5 })); K.put(dash, 0, 0.02, -0.8).rotation.x = -Math.PI / 2;
     K.cyl(1.85, 1.85, 0.12, "#6fb25a", 0, 0.06, -0.8, {}, 40);
+    const ringPath = new THREE.Mesh(new THREE.RingGeometry(1.5, 1.8, 40), A.toon("#9c9a94")); K.put(ringPath, 0, 0.125, -0.8).rotation.x = -Math.PI / 2;
+    [["#2e7d32", -0.6, -1.4], ["#1565c0", 0.2, -1.5], ["#f9a825", 0.6, -0.9]].forEach(([c, x, z]) => K.cyl(0.42, 0.42, 0.03, c, x, 0.14, z, { outline: false }, 18));
+    const slide = K.box(0.25, 0.04, 0.9, "#e53935", 0.25, 0.45, -1.35); slide.rotation.x = 0.55; K.box(0.3, 0.7, 0.3, "#1565c0", 0.25, 0.48, -1.8);
+    K.box(1.1, 0.18, 0.7, "#b8b4ab", -0.9, 0.21, -0.2);
     K.cyl(0.04, 0.04, 3.2, "#dcdcdc", 0, 1.6, -0.8);
     const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.6), new THREE.MeshBasicMaterial({ map: flagTex(), side: THREE.DoubleSide })); K.put(flag, 0.47, 2.85, -0.8); W.flag = flag;
-    K.box(0.9, 0.5, 0.9, "#cfcac0", 0, 0.37, -0.8);
+    K.box(0.7, 0.4, 0.7, "#cfcac0", 0, 0.3, -0.8);
     const bus = new THREE.Group(); const bb = A.mesh(new THREE.BoxGeometry(1.8, 0.9, 0.75), "#e8e8e8"); bb.position.y = 0.6; bus.add(bb);
     const stripe = A.mesh(new THREE.BoxGeometry(1.82, 0.22, 0.77), "#c0392b", { outline: false }); stripe.position.y = 0.45; bus.add(stripe);
     const num = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.22), new THREE.MeshBasicMaterial({ map: signTex("315", { bg: "#111", fg: "#ffcf3a", w: 256, h: 112 }) })); num.position.set(0.91, 0.85, 0); num.rotation.y = Math.PI / 2; bus.add(num);
@@ -244,38 +265,66 @@ const PLACES = {
     return { sky: "#f4b07a", fog: "#f4b07a", hemi: ["#fff0dd", "#3c5f2c"], sun: "#ffd6a8", sunI: 2.2, pets: [] };
   },
   plaza(K, W) {
-    K.base(10, 7, "#c8bba6", "#7b6e5a", tiles("adoquin", "#cdbfa8", "#a99a82", 14, 0.08), 2);
-    K.box(3.4, 3.4, 1.0, "#e9e1d1", 0, 1.7, -2.9);
-    [-1, 1].forEach(s => { K.box(1.0, 4.4, 1.0, "#e2d8c5", s * 2.2, 2.2, -2.9); K.cone(0.72, 1.4, "#6d7a8a", s * 2.2, 5.1, -2.9, {}, 4); });
-    K.cone(1.9, 1.2, "#e2d8c5", 0, 4.0, -2.9, {}, 3).rotation.y = Math.PI / 6;
-    const rose = new THREE.Mesh(new THREE.CircleGeometry(0.5, 24), new THREE.MeshBasicMaterial({ map: stained() })); K.put(rose, 0, 2.6, -2.38);
-    K.box(0.9, 1.4, 0.05, "#5a3d2a", 0, 0.7, -2.38);
+    // Catedral de San Miguel Arcángel (neogótica, 1895): fachada gris clara, una torre con reloj de cuatro caras. Plaza Mitre enfrente.
+    K.base(10, 7, "#a7a39b", "#7b6e5a", tiles("adoquin", "#aca89f", "#8f8b82", 14, 0.06), 2);
+    K.box(4.4, 2.5, 1.2, "#c9c7c2", 0, 1.25, -2.9);
+    const gable = new THREE.Shape(); gable.moveTo(-2.2, 0); gable.lineTo(2.2, 0); gable.lineTo(0, 1.2); gable.lineTo(-2.2, 0);
+    K.put(A.mesh(new THREE.ExtrudeGeometry(gable, { depth: 1.2, bevelEnabled: false }), "#c2c0bb"), 0, 2.5, -3.5);
+    K.box(1.3, 1.9, 1.3, "#c9c7c2", 0, 3.35, -2.9);
+    const spire = K.cone(0.9, 1.7, "#4a4d52", 0, 5.15, -2.9, {}, 4); spire.rotation.y = Math.PI / 4;
+    const clockTex = tex(128, 128, (g, w, h) => { g.fillStyle = "#f6f2e6"; g.beginPath(); g.arc(64, 64, 60, 0, Math.PI * 2); g.fill(); g.strokeStyle = "#222"; g.lineWidth = 6; g.stroke(); g.lineWidth = 8; g.beginPath(); g.moveTo(64, 64); g.lineTo(64, 24); g.moveTo(64, 64); g.lineTo(92, 74); g.stroke(); });
+    const clock = new THREE.Mesh(new THREE.CircleGeometry(0.42, 24), new THREE.MeshBasicMaterial({ map: clockTex })); K.put(clock, 0, 3.75, -2.24);
+    const arch = new THREE.Shape(); arch.moveTo(-0.45, 0); arch.lineTo(0.45, 0); arch.lineTo(0.45, 1.1); arch.lineTo(0, 1.6); arch.lineTo(-0.45, 1.1); arch.lineTo(-0.45, 0);
+    K.put(A.mesh(new THREE.ShapeGeometry(arch), "#5b3a24", { outline: false }), 0, 0, -2.28);
+    const rose = new THREE.Mesh(new THREE.CircleGeometry(0.42, 24), new THREE.MeshBasicMaterial({ map: stained() })); K.put(rose, 0, 1.95, -2.28);
+    [-1.4, 1.4].forEach(x => { const lw = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 1.0), new THREE.MeshBasicMaterial({ map: stained() })); K.put(lw, x, 1.45, -2.28); K.box(0.3, 2.2, 0.5, "#bebcb6", x * 1.55, 1.1, -2.2); });
+    // plaza: canteros, bancos verdes, jacarandás en flor y fuente
+    [[-3.2, 0.9], [3.2, 0.9]].forEach(([x, z]) => K.box(2.4, 0.06, 1.6, "#6b8e3d", x, 0.03, z));
+    K.cyl(0.75, 0.8, 0.35, "#b9b4aa", 0, 0.17, 0.7, {}, 24); K.cyl(0.65, 0.65, 0.05, "#6fb7d6", 0, 0.33, 0.7, { outline: false }, 24); K.cyl(0.08, 0.1, 0.7, "#b9b4aa", 0, 0.5, 0.7); K.sph(0.14, "#b9b4aa", 0, 0.9, 0.7);
+    [[-2.2, 2.0], [2.2, 2.0]].forEach(([x, z]) => { K.box(1.1, 0.08, 0.35, "#2f4f3a", x, 0.42, z); K.box(1.1, 0.3, 0.06, "#2f4f3a", x, 0.62, z - 0.17); [-0.45, 0.45].forEach(d => K.box(0.06, 0.4, 0.3, "#1f1f1f", x + d, 0.2, z)); });
+    K.tree(-4.1, -1.8, 1.05, "#8e6bbf"); K.tree(4.2, -1.9, 1.0, "#8e6bbf"); K.tree(-4.4, 2.4, 0.8, "#3f8f4a");
     const stall = (x, z, cols) => {
-      K.box(1.4, 0.08, 0.8, "#8a5a33", x, 0.8, z); [[-0.6, -0.3], [0.6, -0.3], [-0.6, 0.3], [0.6, 0.3]].forEach(([dx, dz]) => K.box(0.05, 1.6, 0.05, "#444", x + dx, 0.8, z + dz));
-      K.tbox(1.6, 0.06, 1.0, stripes("aw" + cols.join(), cols, false, 8), x, 1.65, z).rotation.x = 0.1;
-      for (let i = 0; i < 3; i++) K.cyl(0.08, 0.07, 0.16, ["#c0c7cf", "#8a5a33", "#6c8f4e"][i], x - 0.4 + i * 0.4, 0.92, z);
+      K.box(1.2, 0.08, 0.7, "#8a5a33", x, 0.8, z); [[-0.5, -0.3], [0.5, -0.3], [-0.5, 0.3], [0.5, 0.3]].forEach(([dx, dz]) => K.box(0.05, 1.6, 0.05, "#444", x + dx, 0.8, z + dz));
+      K.tbox(1.4, 0.06, 0.9, stripes("aw" + cols.join(), cols, false, 8), x, 1.65, z).rotation.x = 0.1;
+      for (let i = 0; i < 3; i++) K.cyl(0.07, 0.06, 0.14, ["#c0c7cf", "#8a5a33", "#6c8f4e"][i], x - 0.35 + i * 0.35, 0.91, z);
     };
-    stall(-3.0, -0.4, ["#2e86c1", "#f5f5f5"]); stall(3.0, -0.4, ["#e67e22", "#f5f5f5"]); stall(3.4, 1.6, ["#27ae60", "#f5f5f5"]);
-    W.evidence = V(-3.0, 1.0, -0.4);
-    K.tree(-4.2, -2.4, 1.1); K.tree(4.3, -2.5, 1.0);
-    return { sky: "#9ed3f0", fog: "#9ed3f0", hemi: ["#ffffff", "#7b6e5a"], sun: "#fff4df", sunI: 2.5, pets: [] };
+    stall(-3.3, -0.6, ["#2e86c1", "#f5f5f5"]); stall(3.4, -0.5, ["#e67e22", "#f5f5f5"]);
+    W.evidence = V(-3.3, 1.0, -0.6);
+    return { sky: "#a9cbe6", fog: "#a9cbe6", hemi: ["#ffffff", "#7b6e5a"], sun: "#fff4df", sunI: 2.5, pets: [] };
   },
   cancha(K, W) {
+    // Estadio del Club Atlético San Miguel (Los Polvorines): tribunas de cemento gris con escalones verdes, platea con cabinas de transmisión
     K.base(10, 7, "#48a843", "#2f6b2c", null);
-    const f = new THREE.Mesh(new THREE.PlaneGeometry(9, 4.2), A.toon("#ffffff", { map: fieldTex() })); f.rotation.x = -Math.PI / 2; f.receiveShadow = true; K.put(f, 0, 0.01, 0.6).rotation.x = -Math.PI / 2;
-    for (let i = 0; i < 4; i++) K.tbox(10, 0.5, 0.6, stripes("tribuna", ["#1d8a3a", "#f5f5f5"], false, 16), 0, 0.25 + i * 0.5, -2.0 - i * 0.45);
-    K.sign("CLUB ATLÉTICO SAN MIGUEL", 5, 0.5, { bg: "#1d8a3a", border: "#fff" }, 0, 2.6, -3.0);
+    const f = new THREE.Mesh(new THREE.PlaneGeometry(9, 4.2), A.toon("#ffffff", { map: fieldTex() })); f.receiveShadow = true; K.put(f, 0, 0.01, 0.6).rotation.x = -Math.PI / 2;
+    for (let i = 0; i < 4; i++) {
+      K.box(10, 0.45, 0.55, "#a8a8a3", 0, 0.22 + i * 0.45, -2.0 - i * 0.5);
+      K.box(10, 0.05, 0.1, "#0b8a3e", 0, 0.45 + i * 0.45, -1.76 - i * 0.5, { outline: false });
+    }
+    for (let x = -4.8; x <= 4.8; x += 0.8) K.box(0.03, 0.55, 0.03, "#0b8a3e", x, 0.28, -1.62, { outline: false });
+    K.box(10, 0.03, 0.03, "#0b8a3e", 0, 0.55, -1.62, { outline: false });
+    K.box(4.6, 0.7, 0.7, "#e9e9e4", 0, 2.3, -3.35);
+    for (let i = 0; i < 6; i++) K.box(0.5, 0.3, 0.04, "#26324a", -1.9 + i * 0.76, 2.35, -2.98, { outline: false });
+    K.sign("CLUB ATLÉTICO SAN MIGUEL", 4.4, 0.4, { bg: "#0b8a3e", border: "#fff" }, 0, 2.85, -3.0);
     [-4.4, 4.4].forEach(x => { K.box(0.06, 0.9, 0.06, "#fff", x, 0.45, 0.0); K.box(0.06, 0.9, 0.06, "#fff", x, 0.45, 1.2); K.box(0.06, 0.06, 1.26, "#fff", x, 0.9, 0.6); });
     K.cyl(0.04, 0.04, 3.0, "#dcdcdc", 3.4, 1.5, -1.2);
     W.evidence = V(3.4, 2.8, -1.2);
-    K.lamp(-4.6, -1.0); K.lamp(4.6, -1.0);
     return { sky: "#1b2a4a", fog: "#1b2a4a", hemi: ["#dfe8ff", "#1f2f1c"], sun: "#e6eeff", sunI: 1.8, pets: [], night: true };
   },
   mall(K, W) {
-    K.base(10, 7, "#8d9096", "#4f5257", tiles("parking", "#8f9298", "#b9bcc4", 5), 2);
-    K.box(4.2, 2.6, 1.4, "#2d3142", -2.2, 1.3, -2.6); K.sign("CINE", 1.6, 0.6, { bg: "#c0392b", fg: "#fff4d6", border: "#ffcf3a" }, -2.2, 2.2, -1.88);
-    K.box(3.6, 2.0, 1.4, "#e8e2d6", 2.6, 1.0, -2.6); K.sign("PATIO DE COMIDAS", 2.6, 0.4, { bg: "#16a085" }, 2.6, 1.7, -1.88);
-    W.evidence = V(-2.2, 1.2, -1.9);
+    // Tortugas Open Mall: fachadas de piedra y madera, cúpulas vidriadas, espejo de agua con fuente
+    K.base(10, 7, "#b9b2a4", "#6f685c", tiles("mallfloor", "#bdb6a6", "#a39c8c", 8), 2);
+    K.box(4.4, 2.6, 1.4, "#cdbb9a", -2.4, 1.3, -2.6);
+    for (let i = 0; i < 9; i++) K.box(0.1, 1.9, 0.05, "#8b5a2b", -4.3 + i * 0.22, 1.2, -1.88, { outline: false });
+    K.box(1.6, 1.4, 0.05, "#9cc3d5", -1.2, 0.9, -1.88, { outline: false });
+    K.sign("CINE", 1.4, 0.55, { bg: "#d71920", fg: "#ffffff", border: "#ffffff" }, -2.4, 2.2, -1.86);
+    K.box(3.8, 2.0, 1.4, "#d8c9a8", 2.6, 1.0, -2.6);
+    const glass = new THREE.Mesh(new THREE.SphereGeometry(1.0, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshToonMaterial({ color: "#bfe3f2", transparent: true, opacity: 0.55 })); K.put(glass, 2.6, 2.0, -2.6);
+    for (let i = 0; i < 4; i++) { const rib = A.mesh(new THREE.TorusGeometry(1.0, 0.02, 4, 24, Math.PI), "#8a8f96", { outline: false }); rib.rotation.y = i * Math.PI / 4; K.put(rib, 2.6, 2.0, -2.6); }
+    K.sign("PATIO DE COMIDAS", 2.6, 0.4, { bg: "#16a085" }, 2.6, 1.7, -1.88);
+    W.evidence = V(-2.4, 1.2, -1.9);
+    K.box(3.4, 0.14, 1.3, "#9c9588", 0, 0.07, 0.3); const water = new THREE.Mesh(new THREE.PlaneGeometry(3.1, 1.0), A.toon("#4f8fb5")); K.put(water, 0, 0.15, 0.3).rotation.x = -Math.PI / 2;
+    const jets = [-1, 0, 1].map(x => K.cyl(0.03, 0.05, 0.6, A.toon("#e6f6ff", { emissive: "#bfe8ff", emissiveIntensity: 0.4 }), x, 0.45, 0.3, { outline: false }));
+    W.anims.push((dt, t) => jets.forEach((j, i) => { j.scale.y = 0.7 + Math.abs(Math.sin(t * 3 + i)) * 0.6; }));
     for (let i = 0; i < 12; i++) K.sph(0.06, A.toon("#fff1b8", { emissive: "#ffd66b", emissiveIntensity: 1.3 }), -4.5 + i * 0.82, 2.9 - Math.sin(i / 11 * Math.PI) * 0.35, -1.2, { outline: false });
     const palm = (x, z) => { K.cyl(0.07, 0.1, 1.8, "#8b6b4a", x, 0.9, z); for (let i = 0; i < 6; i++) { const lf = K.box(0.9, 0.04, 0.22, "#3f8f4a", x + Math.cos(i) * 0.35, 1.85, z + Math.sin(i) * 0.35); lf.rotation.y = -i; lf.rotation.z = -0.35; } };
     palm(-4.3, 1.2); palm(4.3, 1.4);
@@ -377,7 +426,6 @@ const AMB = {
   },
   observatorio(K, W) {
     W.amb.push(FX.stars(), FX.fireflies({ n: 34 }));
-    W.place.children.forEach(o => { if (o.geometry && o.geometry.type === "SphereGeometry" && o.position.y > 1.7 && o.position.y < 1.9) W.dome = o; });
     W.anims.push((dt, t) => { if (W.dome) W.dome.rotation.y = Math.sin(t * 0.15) * 0.6; });
     [[-3.5, 1.2], [3.8, 1.0]].forEach(([x, z]) => { const l = warmLight(K, x, 2.1, z, "#ffd98a", 6, 5); flickerLight(W, l, 6, x > 0 ? 1.3 : 1); });
     return { sound: "night" };
@@ -397,7 +445,7 @@ const AMB = {
   },
   plaza(K, W) {
     const bell = new THREE.Group(); const bm = A.mesh(new THREE.ConeGeometry(0.28, 0.4, 12, 1, true), "#c9a227"); bm.position.y = -0.2; bell.add(bm);
-    K.put(bell, 2.2, 3.9, -2.35); W.anims.push((dt, t) => { bell.rotation.z = Math.sin(t * 1.4) * 0.35; });
+    K.put(bell, 0, 4.15, -2.2); W.anims.push((dt, t) => { bell.rotation.z = Math.sin(t * 1.4) * 0.35; });
     const pg = FX.pigeons([[-0.8, 1.2], [-0.3, 1.6], [0.6, 1.0], [1.1, 1.5], [-1.4, 0.4], [0.2, 0.2]]); K.put(pg.obj); W.amb.push(pg); W.pigeons = pg;
     W.amb.push(FX.falling({ n: 18, colors: ["#f6c1d9", "#ffffff", "#f39ac0"], size: 0.07 }));
     return { sound: "plaza", rainOk: true };
@@ -409,13 +457,13 @@ const AMB = {
       const lit = K.box(1.0, 0.4, 0.05, glowMat("#f4f8ff", 2.6), x, 4.6, -2.93, { outline: false }); lit.rotation.x = 0.5;
       const b = FX.beam({ from: V(x, 4.6, -2.9), h: 6.5, r: 2.2, tilt: [0.85, i ? 0.45 : -0.45], color: "#e6eeff", opacity: 0.06 }); K.put(b.obj); W.amb.push(b);
     });
-    const flags = [-2.5, 0, 2.5].map(x => { const f = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.45), new THREE.MeshBasicMaterial({ map: stripes("flagcasm", ["#1d8a3a", "#ffffff"], false, 4), side: THREE.DoubleSide })); K.put(f, x, 2.9, -2.1); return f; });
+    const flags = [-3.4, 3.4].map(x => { K.cyl(0.02, 0.02, 1.0, "#ddd", x - 0.36, 2.2, -2.6, { outline: false }); const f = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.45), new THREE.MeshBasicMaterial({ map: stripes("flagcasm", ["#1d8a3a", "#ffffff"], false, 4), side: THREE.DoubleSide })); K.put(f, x, 2.5, -2.6); return f; });
     W.anims.push((dt, t) => flags.forEach((f, i) => { f.rotation.y = Math.sin(t * 3 + i) * 0.35; }));
     return { sound: "crowd", rainOk: true, rainBias: 0.5 };
   },
   mall(K, W) {
     const cine = W.place.children.find(o => o.isGroup && o.children[1] && o.position.y > 2.1 && o.position.x < -2);
-    if (cine) cine.children[1].material = new THREE.MeshBasicMaterial({ map: cine.children[1].material.map, color: new THREE.Color(1.5, 1.5, 1.5) });
+    if (cine) cine.children[1].material = new THREE.MeshBasicMaterial({ map: cine.children[1].material.map, color: new THREE.Color(1.12, 1.12, 1.12) });
     const neon = warmLight(K, -2.2, 2.2, -1.3, "#ff5a5a", 6, 5); flickerLight(W, neon, 6, 0.8);
     warmLight(K, 2.6, 1.8, -1.3, "#6affd6", 3, 4);
     return { sound: "city", rainOk: true };
@@ -527,6 +575,12 @@ export class World {
     this.camera.updateProjectionMatrix();
   }
   setDanger(v) { this.pipe.danger = v; }
+  // apagón: se van las luces generales; quedan las lámparas y los neones
+  blackout(on) {
+    gsap.to(this.sun, { intensity: on ? this.baseSun * 0.08 : this.baseSun, duration: on ? 0.25 : 1.2, ease: on ? "steps(3)" : "power2.out" });
+    gsap.to(this.hemi, { intensity: on ? 0.18 : (this.baseHemi || 1.15), duration: on ? 0.25 : 1.2, ease: on ? "steps(3)" : "power2.out" });
+    if (on) this.say(this.rocio, "¡Se cortó la luz!", 1500);
+  }
 
   setPlace(key, opts = {}) {
     this.placeKey = key;

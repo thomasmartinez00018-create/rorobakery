@@ -35,3 +35,50 @@ export function glyphSVG(q) {
   else if (q.mark === "cruz") mk = `<path d="M20 ${cy - 6}V${cy + 6}M14 ${cy}H26" stroke="${mc}" stroke-width="3" stroke-linecap="round"/>`;
   return `<svg viewBox="0 0 40 40" class="glyph" aria-hidden="true">${shp}${mk}</svg>`;
 }
+
+/* ---------- pixel art 8x8 para "Antes y después" ---------- */
+const BITMAPS = {
+  taza: ["........", "oooooo..", "oXXXXooo", "oXXXXo.o", "oXXXXooo", "oXXXXo..", ".oooo...", "........"],
+  mate: [".....g..", "....g...", ".ooog...", "oXXXXo..", "oXXXXXo.", "oXXXXXo.", ".oXXXo..", "..ooo..."],
+  termo: ["..ooo...", "..ggg...", ".oXXXo..", ".oXXXo..", ".oXwXo..", ".oXXXo..", ".oXXXo..", "..ooo..."],
+  libro: ["........", ".oooooo.", ".oXXXXwo", ".oXXXXwo", ".oXXXXwo", ".oXXXXwo", ".oooooo.", "........"],
+  reloj: ["..oooo..", ".oXXXXo.", "oXXwwXXo", "oXXwXXXo", "oXXwXXXo", "oXXXXXXo", ".oXXXXo.", "..oooo.."],
+  llave: ["........", ".oo.....", "oXXo....", "oX.Xoooo", "oXXoXXXo", ".oo.oo.o", "........", "........"],
+  anteojos: ["........", "........", ".oo..oo.", "oXXooXXo", "oXXo.XXo", ".oo..oo.", "........", "........"],
+  celular: ["..oooo..", "..oXXo..", "..owwo..", "..owwo..", "..owwo..", "..oXXo..", "..oooo..", "........"],
+  planta: ["..v.v...", ".vvvvv..", "..vvv...", "...v....", ".oooooo.", "..oXXo..", "..oXXo..", "...oo..."],
+  vela: ["...y....", "...y....", "..oXo...", "..oXo...", "..oXo...", "..oXo...", ".oooooo.", "........"],
+  guante: [".o.o.o..", "oXoXoXo.", "oXoXoXo.", "oXXXXXoo", "oXXXXXXo", "oXXXXXo.", ".oXXXo..", ".ooooo.."],
+  zapatilla: ["........", "........", "..ooo...", ".oXXXo..", ".oXXXXoo", "oXXXXXXo", "owwwwwwo", ".oooooo."],
+  gorra: ["........", "...ooo..", "..oXXXo.", ".oXXXXXo", ".oXXXXXo", "ooooooo.", "oXXXXo..", ".oooo..."],
+  casco: ["..oooo..", ".oXXXXo.", "oXXXXXXo", "oXXggggo", "oXXggggo", "oXXXXXXo", ".oooooo.", "........"],
+  tarjeta: ["........", "oooooooo", "oXXXXXXo", "oXwwXXXo", "oXXXXXXo", "oXXXXXXo", "oooooooo", "........"],
+  banquito: ["........", "........", "oooooooo", "oXXXXXXo", "oooooooo", ".oX..Xo.", ".oX..Xo.", ".oo..oo."],
+  inflador: ["...oo...", "...oo...", ".oooooo.", "..oXXo..", "..oXXo..", "..oXXo..", "..oXXo..", ".oooooo."]
+};
+export const COLOR_HEX = { rojo: "#e0483c", azul: "#3d6fe0", verde: "#3fb45a", amarillo: "#f0c53a", violeta: "#9d5ce0", blanco: "#f2f2f2", negro: "#44444f", naranja: "#ee8a3a" };
+const FIXED = { o: "#15151c", w: "#ffffff", g: "#9aa0aa", v: "#3f9a4a", y: "#ffd24a" };
+
+export function pixelIcon(type, color) {
+  const rows = BITMAPS[type] || BITMAPS.taza;
+  let rects = "";
+  rows.forEach((row, y) => {
+    for (let x = 0; x < 8; x++) {
+      const ch = row[x];
+      if (!ch || ch === ".") continue;
+      const fill = ch === "X" ? COLOR_HEX[color] || color : FIXED[ch];
+      rects += `<rect x="${x}" y="${y}" width="1.02" height="1.02" fill="${fill}"/>`;
+    }
+  });
+  return `<svg viewBox="0 0 8 8" class="px-icon" shape-rendering="crispEdges" aria-hidden="true">${rects}</svg>`;
+}
+
+/* ---------- panel de la alarma ---------- */
+export const WIRE_HEX = { rojo: "#e0483c", azul: "#3d6fe0", amarillo: "#f0c53a", blanco: "#f2f2f2", negro: "#26262e" };
+export function wireSVG(color, cut, i = 0) {
+  const c = WIRE_HEX[color], bend = i % 2 ? 3 : 21;
+  const line = cut
+    ? `<path d="M8 12 Q40 4 88 14" stroke="${c}" stroke-width="7" fill="none" stroke-linecap="round"/><path d="M112 10 Q160 20 192 12" stroke="${c}" stroke-width="7" fill="none" stroke-linecap="round"/><circle cx="100" cy="12" r="4" fill="#ffd24a"/>`
+    : `<path d="M8 12 Q100 ${bend} 192 12" stroke="${color === "negro" ? "#8a90a0" : "#000"}" stroke-opacity="${color === "negro" ? ".9" : ".35"}" stroke-width="10" fill="none" stroke-linecap="round"/><path d="M8 12 Q100 ${bend} 192 12" stroke="${c}" stroke-width="7" fill="none" stroke-linecap="round"/>`;
+  return `<svg viewBox="0 0 200 24" class="wire" aria-hidden="true"><rect x="0" y="4" width="8" height="16" fill="#9aa0aa"/><rect x="192" y="4" width="8" height="16" fill="#9aa0aa"/>${line}</svg>`;
+}

@@ -31,7 +31,7 @@ export const PLACES = [
   { k: "plaza", t: "Feria en Plaza Mitre", place: "la feria artesanal de Plaza Mitre", barrio: "San Miguel", obj: "el mate de alpaca del puesto más viejo" },
   { k: "cancha", t: "La bandera del Trueno", place: "la cancha del Trueno Verde", barrio: "Los Polvorines", obj: "la bandera histórica del ascenso del 84" },
   { k: "mall", t: "Función cancelada", place: "el cine del Tortugas Open Mall", barrio: "Tortuguitas", obj: "el rollo de la película del estreno" },
-  { k: "gym", t: "Nocaut en el Team Bielli", place: "el gimnasio del Team Bielli", barrio: "Malvinas Argentinas", obj: "el cinturón de campeón que cuelga arriba del ring" },
+  { k: "gym", t: "Nocaut en el Team Bielli", place: "el gimnasio del Team Bielli", barrio: "Los Polvorines", obj: "el cinturón de campeón que cuelga arriba del ring" },
   { k: "bakery", t: "La torta lila", place: "Roro's Bakery, la pastelería de Rocío", barrio: "Malvinas Argentinas", obj: "la torta lila de un pedido de cumpleaños" }
 ];
 
@@ -159,7 +159,145 @@ export function genCase(seed, level) {
   const wit = items;
   const registry = sh(items);
 
-  return { seed, level, P, place, sus, cul, c, catalog, phrase, keyList, msg, wit, registry, romeroFrac: 0.3 + r() * 0.3, rain: r() < (place.k === "cancha" ? 0.55 : 0.33) };
+  // ---- qué pruebas tiene este caso y qué pista da cada una ----
+  const nSt = level >= 6 ? 4 : 3;
+  let stations = null;
+  for (let k = 0; k < 600 && !stations; k++) {
+    const pick = sh(Object.keys(STATION_TYPES)).slice(0, nSt);
+    if (pick.includes("cifra") && pick.includes("mapa")) continue;
+    const fixed = pick.flatMap(t => STATION_TYPES[t].fixed || []);
+    if (new Set(fixed).size !== fixed.length) continue;
+    const rest = ["talle", "veh", "mano", "estat"].filter(t => !fixed.includes(t));
+    const flex = pick.filter(t => STATION_TYPES[t].flex);
+    const mins = flex.reduce((a, t) => a + STATION_TYPES[t].flex[0], 0), maxs = flex.reduce((a, t) => a + STATION_TYPES[t].flex[1], 0);
+    if (rest.length < mins || rest.length > maxs) continue;
+    const pool = sh(rest), assign = {};
+    flex.forEach(t => { assign[t] = pool.splice(0, STATION_TYPES[t].flex[0]); });
+    while (pool.length) { const t = flex.find(f => assign[f].length < STATION_TYPES[f].flex[1]); assign[t].push(pool.shift()); }
+    stations = pick.map(t => ({ k: t, traits: STATION_TYPES[t].fixed || assign[t] }));
+  }
+
+  // la alarma
+  const nW = 4 + Math.floor(r() * 3);
+  const wires = Array.from({ length: nW }, () => pk(WIRE_COLORS));
+  const serial = String(100 + Math.floor(r() * 900));
+  const led = r() < 0.5;
+  const alarm = { wires, serial, led, cut: solveAlarm(wires, serial, led) };
+
+  // el recorrido
+  const cells = sh([...Array(25).keys()]);
+  const lands = sh(LANDMARKS).slice(0, 7).map((name, i) => ({ name, cell: cells[i] }));
+  let route = null;
+  for (let k = 0; k < 400 && !route; k++) {
+    const from = pk(lands);
+    let row = Math.floor(from.cell / 5), col = from.cell % 5, prev = null;
+    const moves = [], nMoves = Math.min(6, 3 + Math.floor(level / 3));
+    for (let m = 0; m < nMoves; m++) {
+      const opts = DIRS.filter(d => d !== OPP[prev] && d !== prev).map(d => {
+        const st = 1 + Math.floor(r() * 3), [dr, dc] = DELTA[d];
+        return { d, st, nr: row + dr * st, nc: col + dc * st };
+      }).filter(o => o.nr >= 0 && o.nr < 5 && o.nc >= 0 && o.nc < 5);
+      if (!opts.length) break;
+      const o = pk(opts); moves.push({ d: o.d, st: o.st }); row = o.nr; col = o.nc; prev = o.d;
+    }
+    const target = row * 5 + col;
+    if (moves.length === nMoves && target !== from.cell) route = { from: from.name, moves, target };
+  }
+  const route2 = { lands, ...route };
+
+  // antes y después
+  const fotoTrait = (stations.find(st => st.k === "fotos") || { traits: [pk(["talle", "mano", "estat", "veh"])] }).traits[0];
+  const dropped = fotoItem(fotoTrait, c);
+  const before = [];
+  const seenF = new Set();
+  while (before.length < 12) {
+    const it = { t: pk(FOTO_ITEMS), c: pk(FOTO_COLORS) };
+    if (seenF.has(it.t + it.c)) continue; seenF.add(it.t + it.c); before.push(it);
+  }
+  const changed = Math.floor(r() * 12);
+  const newColor = pk(FOTO_COLORS.filter(col => !(before[changed].t === dropped && before[changed].c === col)));
+  // el objeto que dejó el ladrón también aparece en otro lado, así no se delata solo
+  const twin = (changed + 1 + Math.floor(r() * 11)) % 12;
+  before[twin] = { t: dropped, c: pk(FOTO_COLORS.filter(col => col !== newColor)) };
+  const after = before.map(x => ({ ...x }));
+  after[changed] = { t: dropped, c: newColor };
+  const fotos = { before, after, changed, trait: fotoTrait };
+
+  // eventos del caso, repartidos en el tiempo
+  const evs = [];
+  if (P.romero && r() < 0.75) evs.push("romero");
+  if (level >= 2 && r() < 0.45) evs.push("apagon");
+  if (P.villain || (level >= 4 && r() < 0.35)) evs.push("sabotaje");
+  if (r() < 0.7) evs.push("quiz");
+  const events = {};
+  sh(evs).forEach((e, i) => { events[e] = 0.14 + i * 0.17 + r() * 0.08; });
+  const quiz = (() => { const q = pk(QUIZ); const opts = sh(q.o.map((t, i) => ({ t, ok: i === 0 }))); return { q: q.q, opts: opts.map(o => o.t), ok: opts.findIndex(o => o.ok) }; })();
+
+  return { seed, level, P, place, sus, cul, c, catalog, phrase, keyList, msg, wit, registry, stations, alarm, map: route2, fotos, events, quiz, romeroFrac: events.romero || 0.4, rain: r() < (place.k === "cancha" ? 0.55 : 0.33) };
+}
+
+/* ---------- pruebas nuevas ---------- */
+export const STATION_TYPES = {
+  suela: { fixed: ["talle"] }, cifra: { fixed: ["veh"] }, mapa: { fixed: ["veh"] },
+  testigos: { fixed: ["mano", "estat"] }, alarma: { flex: [1, 2] }, fotos: { flex: [1, 1] }
+};
+export const STATION_NAME = {
+  suela: ["Huella", "La huella"], cifra: ["Mensaje", "El mensaje"], testigos: ["Testigos", "Los testigos"],
+  alarma: ["Alarma", "La alarma"], mapa: ["Recorrido", "El recorrido"], fotos: ["Fotos", "Antes y después"]
+};
+export const WIRE_COLORS = ["rojo", "azul", "amarillo", "blanco", "negro"];
+export const ALARM_RULES = {
+  4: ["Si no hay ningún cable rojo, cortá el 2º.", "Si el último es blanco, cortá el último.", "Si hay más de un azul, cortá el último azul.", "Si no, cortá el 1º."],
+  5: ["Si la luz está prendida y hay un solo negro, cortá el negro.", "Si el primero y el último son del mismo color, cortá el 3º.", "Si hay más amarillos que rojos, cortá el último amarillo.", "Si no, cortá el 2º."],
+  6: ["Si el número de serie termina en par y no hay blancos, cortá el 4º.", "Si hay exactamente dos rojos, cortá el último rojo.", "Si la luz está apagada, cortá el último.", "Si no, cortá el 5º."]
+};
+export function solveAlarm(w, serial, led) {
+  const n = w.length, cnt = col => w.filter(x => x === col).length, last = col => w.lastIndexOf(col);
+  const even = +serial.slice(-1) % 2 === 0;
+  if (n === 4) { if (!cnt("rojo")) return 1; if (w[3] === "blanco") return 3; if (cnt("azul") > 1) return last("azul"); return 0; }
+  if (n === 5) { if (led && cnt("negro") === 1) return w.indexOf("negro"); if (w[0] === w[4]) return 2; if (cnt("amarillo") > cnt("rojo")) return last("amarillo"); return 1; }
+  if (even && !cnt("blanco")) return 3; if (cnt("rojo") === 2) return last("rojo"); if (!led) return 5; return 4;
+}
+const LANDMARKS = ["Estación", "Rotonda", "Heladería", "Plaza", "Cancha", "Kiosco", "Iglesia", "Escuela", "Verdulería", "Farmacia"];
+const DIRS = ["norte", "sur", "este", "oeste"];
+const OPP = { norte: "sur", sur: "norte", este: "oeste", oeste: "este" };
+const DELTA = { norte: [-1, 0], sur: [1, 0], este: [0, 1], oeste: [0, -1] };
+export const FOTO_ITEMS = ["taza", "mate", "termo", "libro", "reloj", "llave", "anteojos", "celular", "planta", "vela", "guante", "zapatilla", "gorra", "casco", "tarjeta", "banquito", "inflador"];
+export const FOTO_COLORS = ["rojo", "azul", "verde", "amarillo", "violeta", "blanco", "negro", "naranja"];
+function fotoItem(t, c) {
+  if (t === "talle") return "zapatilla";
+  if (t === "mano") return "guante";
+  if (t === "estat") return c.estat === "alta" ? "gorra" : "banquito";
+  return c.veh === "MOTO" ? "casco" : c.veh === "BICI" ? "inflador" : "tarjeta";
+}
+const VEH_ART = { MOTO: "una moto", BICI: "una bici", REMIS: "un remís", TREN: "el tren", BONDI: "un bondi" };
+const QUIZ = [
+  { q: "¿Cómo se llama la gata mala, la mamá de Juli?", o: ["Linda", "Luz", "Corbata", "Romero"] },
+  { q: "¿Dónde entrena kickboxing Thomas?", o: ["Team Bielli", "El Trueno Verde", "La UNGS", "El Tortugas"] },
+  { q: "¿Qué es Romero?", o: ["Un caniche", "Un salchicha", "Un gato", "Un labrador"] },
+  { q: "¿De qué color es el sillón de la casa?", o: ["Verde", "Rojo", "Gris", "Azul"] },
+  { q: "¿Cómo se llama la pastelería de Rocío?", o: ["Roro's Bakery", "Dulce Roro", "La Abuela", "Pastelería Rocío"] },
+  { q: "¿Cómo se llama el perro negro de la abuela?", o: ["Corbata", "Moño", "Negro", "Botón"] },
+  { q: "¿Cuántas Lindas hay en la familia?", o: ["Dos", "Una", "Tres", "Ninguna"] },
+  { q: "¿Qué dice la musculosa negra de Thomas?", o: ["FOREVER", "NEVER", "BIELLI", "TEAM"] },
+  { q: "¿Qué tren pasa por Los Polvorines?", o: ["Belgrano Norte", "Sarmiento", "Mitre", "Roca"] },
+  { q: "¿Cómo es Juli?", o: ["Mimoso", "Malhumorado", "Inquieto", "Malo"] },
+  { q: "¿Qué gata de la abuela anda siempre de mal humor?", o: ["Luz", "Juli", "Linda", "Corbata"] },
+  { q: "¿Qué colectivo da vueltas en la rotonda del juego?", o: ["El 315", "El 60", "El 152", "El 101"] }
+];
+
+export function stationClue(st, c) {
+  const ph = t => t === "talle" ? `calza ${c.talle}` : t === "veh" ? `se mueve en ${VEH_TXT[c.veh]}` : t === "mano" ? `mano hábil ${c.mano}` : `estatura ${c.estat}`;
+  if (st.k === "suela") return `Calza ${c.talle}.`;
+  if (st.k === "cifra") return `Se escapó en ${VEH_TXT[c.veh]}.`;
+  if (st.k === "mapa") return `En esa esquina lo vieron subirse a ${VEH_ART[c.veh]}.`;
+  if (st.k === "testigos") return `Mano hábil: ${c.mano}. Estatura: ${c.estat}.`;
+  if (st.k === "alarma") return `La cámara de la alarma lo grabó: ${st.traits.map(ph).join(", ")}.`;
+  const t = st.traits[0];
+  if (t === "talle") return `Dejó una zapatilla talle ${c.talle}.`;
+  if (t === "mano") return `Dejó un guante de la mano ${c.mano}: es su mano hábil.`;
+  if (t === "estat") return c.estat === "alta" ? "Dejó la gorra enganchada arriba del marco de la puerta: estatura alta." : "Dejó un banquito para alcanzar la ventana: estatura baja.";
+  return { MOTO: "Dejó un casco: se mueve en moto.", BICI: "Dejó un inflador: se mueve en bici.", REMIS: "Dejó un recibo de remís.", TREN: "Dejó un boleto de tren.", BONDI: "Dejó su SUBE: se mueve en bondi." }[c.veh];
 }
 
 export function normPhrase(s) {
