@@ -1,0 +1,10 @@
+{
+  "name": "gatos-tools",
+  "private": true,
+  "type": "module",
+  "description": "Herramientas de medición de Gatos de Linda: bots, rendimiento y pruebas. No se publican con el juego.",
+  "dependencies": {
+    "peerjs-js-binarypack": "^2.1.0",
+    "playwright-core": "^1.63.0"
+  }
+}

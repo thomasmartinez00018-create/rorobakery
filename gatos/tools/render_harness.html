@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banco de render</title>
+<style>html,body{margin:0;background:#000;overflow:hidden}canvas{display:block}</style></head>
+<body><canvas id="game"></canvas>
+<script type="module">
+// Banco de render: usa render.js, sprites.js y engine.js del juego tal cual (se importan por URL relativa).
+import { Sim } from "../js/engine.js";
+import { buildSprites } from "../js/sprites.js";
+import { Renderer } from "../js/render.js";
+
+function brain(sim, p, other) {
+  let fx = 0, fy = 0;
+  const melee = p.weapons.patada && p.hp / p.maxHp > 0.4, fr = melee ? 34 : 90; let ne = null, nd = 1e9;
+  for (const e of sim.enemies) { if (e.hp <= 0 || e.type === "caja") continue; const dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy) || 1; const boss = e.type === "luz" || e.type === "linda"; if (!boss && d < nd) { nd = d; ne = e; } if (d < (boss ? 90 : fr)) { const w = (boss ? 3 : 1) / (d * d) * 900; fx += dx / d * w; fy += dy / d * w; } }
+  if (melee && ne && nd > 24 && nd < 160) { fx += (ne.x - p.x) / nd * 1.1; fy += (ne.y - p.y) / nd * 1.1; }
+  for (const h of sim.eproj) { const dx = p.x - h.x, dy = p.y - h.y, d = Math.hypot(dx, dy) || 1; if (d < 50) { fx += dx / d * 3; fy += dy / d * 3; } }
+  let g = null, bd = 1e9; for (const q of sim.gems) { const d = (q.x - p.x) ** 2 + (q.y - p.y) ** 2; if (d < bd) { bd = d; g = q; } }
+  if (g && bd < 120 * 120) { const d = Math.sqrt(bd) || 1; fx += (g.x - p.x) / d * 0.6; fy += (g.y - p.y) / d * 0.6; }
+  if (other) { const d = Math.hypot(other.x - p.x, other.y - p.y) || 1; const w = d > 60 ? 0.8 : 0; fx += (other.x - p.x) / d * w; fy += (other.y - p.y) / d * w; }
+  const b = sim.cfg.b, cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2; const dc = Math.hypot(cx - p.x, cy - p.y) || 1; fx += (cx - p.x) / dc * 0.25 * (dc / 300); fy += (cy - p.y) / dc * 0.25 * (dc / 300);
+  const m = Math.hypot(fx, fy); return { dir: m > 0.05 ? { x: fx / m, y: fy / m } : { x: 0, y: 0 }, dash: false, ult: p.ult >= 1 };
+}
+function pickBest(p, opts) { let i = opts.findIndex(x => x.kind === "w" && p.weapons[x.id]); if (i < 0) i = opts.findIndex(x => x.kind === "w"); return i < 0 ? 0 : i; }
+// copia de view() de main.js (anfitrión)
+function view(s, local) {
+  const players = { ...s.P }, enemies = [], pl = Object.values(players), E = s.E;
+  for (let i = 0; i < E.length; i += 6) { const id = E[i], x = E[i + 2], y = E[i + 3]; let fx = 1, bd = Infinity; for (const p of pl) { const d = Math.abs(p.x - x) + Math.abs(p.y - y); if (d < bd) { bd = d; fx = p.x < x ? -1 : 1; } } enemies.push({ id, type: E[i + 1], x, y, f: E[i + 4], a: E[i + 5], fx }); }
+  return { local, players, enemies, proj: s.B, eproj: s.H, gems: s.G, pickups: s.K, pools: s.U, bombs: s.M, buses: s.Bu, zones: s.Z || [], hz: s.Hz || [], obj: s.ob, bond: s.tg };
+}
+buildSprites();
+const cv = document.getElementById("game");
+const R = new Renderer(cv);
+const orig = { lighting: R.lighting.bind(R) };
+window.bench = async ({ map = "plaza", warmT = 300, frames = 300, abl = "full", stress = false }) => {
+  R.setMap(map); R.parts = []; R.nums = []; R.rings = []; R.slashes = [];
+  R.lighting = abl === "nolight" ? () => {} : orig.lighting;
+  const sim = new Sim(map); sim.addPlayer("host", "thomas"); sim.addPlayer("guest", "rocio");
+  for (const s of Object.keys(sim.players)) sim.setView(s, R.bw, R.bh);
+  const ff = dt => { if (sim.state === "levelup") { for (const s of Object.keys(sim.offers)) if (sim.offers[s].pick === null) sim.pick(s, pickBest(sim.players[s], sim.offers[s].opts)); return; } const inp = {}; for (const [s, p] of Object.entries(sim.players)) { p.hp = p.maxHp; inp[s] = brain(sim, p, Object.values(sim.players).find(q => q !== p)); } sim.step(dt, inp); };
+  if (stress) {
+    for (const p of Object.values(sim.players)) { p.weapons = p.char === "thomas" ? { patada: 5, juli: 5, mate: 5, bondi: 5, torta: 5 } : { medialuna: 5, romero: 5, rodillo: 5, torta: 5, mate: 5 }; for (const w of Object.keys(p.weapons)) p.evo[w] = true; p.dmgMul = 1e-4; }
+    sim.t = 300; sim.hordes = [];
+  } else { while (sim.t < warmT && sim.state !== "over") { ff(1 / 30); sim.ev = []; } }
+  const ctx = cv.getContext("2d");
+  const ft = [], fl = [], st = [];
+  let enSum = 0, onScreen = 0, partsSum = 0, numsSum = 0, gemsSum = 0;
+  for (let i = 0; i < frames; i++) {
+    if (stress) { while (sim.enemies.length < 220) { const q = sim.edgePos(150); sim.spawnAt(sim.pickType(), q.x, q.y); } for (const e of sim.enemies) if (e.hp < 1e6) e.hp = e.maxHp = 1e9; }
+    const s0 = performance.now(); ff(1 / 60); const snap = sim.snapshot(); const s1 = performance.now();
+    R.events(snap.ev, "host");
+    if (abl === "nonums") R.nums.length = 0;
+    if (abl === "noparts") R.parts.length = 0;
+    if (abl === "nonums_noparts") { R.nums.length = 0; R.parts.length = 0; }
+    const V = view(snap, "host");
+    const t0 = performance.now(); R.frame(V, 1 / 60); const t1 = performance.now();
+    ctx.getImageData(0, 0, 1, 1); const t2 = performance.now();
+    ft.push(t1 - t0); fl.push(t2 - t1); st.push(s1 - s0);
+    enSum += sim.enemies.length; partsSum += R.parts.length; numsSum += R.nums.length; gemsSum += snap.G.length / 3;
+    if (i % 30 === 29) await new Promise(r => setTimeout(r, 0));
+  }
+  const q = (a, p) => { const s = [...a].sort((x, y) => x - y); return +s[Math.floor(p * (s.length - 1))].toFixed(2); };
+  const mean = a => +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(2);
+  return { map, warmT: stress ? "estres" : warmT, abl, bw: R.bw, bh: R.bh, scale: R.s, cv: [cv.width, cv.height], enemies: Math.round(enSum / frames), parts: Math.round(partsSum / frames), nums: Math.round(numsSum / frames), gems: Math.round(gemsSum / frames), frameMs: { mean: mean(ft), p50: q(ft, 0.5), p95: q(ft, 0.95), max: q(ft, 1) }, flushMs: { mean: mean(fl), p95: q(fl, 0.95) }, simMs: { mean: mean(st) } };
+};
+window.ready = true;
+</script></body></html>
