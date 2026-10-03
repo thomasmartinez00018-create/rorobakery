@@ -154,4 +154,28 @@ body[data-screen="run"] #ui{display:none}
 .opt small{font:18px var(--data);color:#7ff0ff}
 .opt .on>span{font-size:13px;color:var(--muted)}
 .opt .evo{font:16px/1.1 var(--data);font-style:normal;color:#ff8ad8;margin-top:2px}
+/* ---------- armas que tenés ---------- */
+.build{position:absolute;left:calc(10px + env(safe-area-inset-left,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));max-width:calc(100% - 210px);display:flex;flex-direction:column-reverse;gap:4px;opacity:.9}
+.build>div{display:flex;flex-wrap:wrap;gap:3px}
+.build span{display:flex;flex-direction:column;align-items:center;width:30px;padding:2px 0 1px;background:rgba(11,13,28,.72);border:2px solid #000;clip-path:var(--notch)}
+.build span.pas{width:24px;opacity:.85}
+.build span.evo{border-color:#ff5fd2;background:rgba(80,20,70,.8)}
+.build img{width:22px;height:22px;object-fit:contain;image-rendering:pixelated}
+.build span.pas img{width:16px;height:16px}
+.build i{font:11px/1 var(--data);font-style:normal;color:var(--amber);letter-spacing:-1px}
+.build span.evo i{color:#ff8ad8;letter-spacing:0}
+.movehint{position:absolute;left:50%;top:58%;transform:translateX(-50%);width:min(320px,86vw);text-align:center;font:22px/1.15 var(--data);color:#fff;background:rgba(11,13,28,.8);border:3px solid var(--amber);clip-path:var(--notch);padding:10px 12px;animation:blink 1.4s steps(2) 2}
+.movehint[hidden]{display:none}
+/* ---------- pausa ---------- */
+.pausemenu{position:absolute;inset:0;z-index:7;display:grid;place-items:center;padding:16px;background:rgba(6,7,18,.78);pointer-events:auto}
+.pausemenu[hidden]{display:none}
+.pausemenu .panel{width:min(360px,100%)}
+.pausemenu h2{margin:0;text-align:center;font:56px/1 var(--display);color:var(--amber)}
+.pausemenu .hint{text-align:center}
+.toggles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.toggles .mid{font-size:22px}
+.toggles .mid.off{color:var(--muted);background:transparent}
+.toggles .mid[hidden]{display:none}
+/* en celu parado, la barra del jefe va debajo de las dos barras de vida */
+@media (max-width:560px){.bossbar{top:calc(126px + env(safe-area-inset-top,0px));width:min(300px,80vw)}}
 @media (prefers-reduced-motion:reduce){.panel,.lvbox,.press,.ultbtn.ready,.banner.on{animation:none}.banner.on{opacity:1}}

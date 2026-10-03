@@ -54,13 +54,15 @@ function netHandlers() {
       me.connected = st === "connected";
       if (st === "connected") { sfx.join(); if (me.side === "guest") me.net.send({ t: "hello", who: prof.who, meta: prof.up }); else sendLobby(); }
       if (st === "busy") { errMsg = "Esa sala ya está llena."; leave(); }
-      if (st === "closed" && runOn) banner(me.side === "host" ? "Se desconectó tu pareja" : "Se cortó la conexión", "Vuelvan al menú y armen la sala de nuevo");
+      if (st === "closed") onPartnerLost();
       draw();
     },
     data(d) {
       if (!d || typeof d !== "object") return;
       if (me.side === "host") {
+        lastGuestMsg = performance.now(); guestAway = false;
         if (d.t === "hello") { me.partner = d.who === "rocio" ? "rocio" : "thomas"; me.partnerMeta = cleanMeta(d.meta); sendLobby(); draw(); }
+        if (d.t === "in" && sim && isFinite(d.vw) && isFinite(d.vh)) sim.setView("guest", +d.vw, +d.vh);
         if (d.t === "in" && d.pos && isFinite(d.pos.x) && isFinite(d.pos.y)) { guestInput.pos = { x: +d.pos.x, y: +d.pos.y }; guestInput.face = d.face < 0 ? -1 : 1; guestInput.moving = d.moving ? 1 : 0; if (d.ult) guestInput.ult = true; if (d.dash) guestInput.dash = true; }
         if (d.t === "pick" && sim) sim.pick("guest", d.i | 0);
       } else {
@@ -93,6 +95,18 @@ async function joinRoom(code) {
   catch (e) { busyMsg = null; me.side = "host"; errMsg = e && e.type === "peer-unavailable" ? `No existe la sala ${code}.` : "No se pudo conectar."; draw(); }
 }
 function leave() { if (me.net) me.net.close(); me.net = null; me.connected = false; me.side = "host"; me.partner = null; }
+// se cortó la conexión: el anfitrión sigue solo; el invitado vuelve al menú
+function onPartnerLost() {
+  const who = (me.partner && NAME[me.partner]) || "tu pareja";
+  if (me.side === "host") {
+    if (runOn && sim && sim.players.guest) { sim.dropPlayer("guest"); banner(`Se desconectó ${who}`, "Seguís solo. Pausa disponible"); }
+    else if (!runOn) me.partner = null;
+    return;
+  }
+  leave(); me.code = null;
+  if (runOn) { endRun(); errMsg = "Se cortó la conexión con la sala."; toMenu(); }
+  else if (screen === "room" || screen === "results") { errMsg = "Tu pareja cerró la sala."; screen = "menu"; }
+}
 
 /* ---------------- partida ---------------- */
 function hostStart() {
@@ -102,7 +116,7 @@ function hostStart() {
 }
 function startRun(m, chars) {
   map = THEMES[m] ? m : "plaza"; R.setMap(map);
-  runId++; runOn = true; paused = false; endShown = false; earned = 0; smooth.clear(); pendingEv = [];
+  runId++; runOn = true; paused = false; lastGuestMsg = lastSeen = performance.now(); guestAway = false; endShown = false; earned = 0; smooth.clear(); pendingEv = [];
   if (me.side === "host") {
     sim = new Sim(map);
     sim.addPlayer("host", chars.host || "thomas", prof.up);
@@ -110,16 +124,21 @@ function startRun(m, chars) {
     snap = sim.snapshot();
   } else { sim = null; snap = null; guestPos = null; }
   screen = "run"; music.set("run"); sfx.play("levelup");
+  hintT = prof.runs < 3 ? 9 : 0; keepAwake(true); setPaused(false);
   banner(THEMES[map].name, map === "bielli" && (chars.host === "thomas" || chars.guest === "thomas") ? "Thomas juega de local: +15% de daño" : "Aguanten hasta que aparezca Linda");
   draw();
 }
-function endRun() { runOn = false; sim = null; }
+function endRun() { runOn = false; sim = null; keepAwake(false); setPaused(false); }
 function toMenu() { screen = me.net && me.code ? "room" : "menu"; music.set("menu"); newDemo(); R.setMap(map); draw(); }
 
 function onEvents(ev) {
   const sounds = R.events(ev, me.side);
   for (const s of sounds) if (s) sfx.play(s);
   for (const e of ev) {
+    if (e[0] === "hurt" && e[3] === me.side) buzz(25, 140);
+    if ((e[0] === "down" || e[0] === "revive") && e[3] === me.side) buzz(e[0] === "down" ? [90, 60, 180] : 60);
+    if (e[0] === "boss") buzz(150);
+    if (e[0] === "chest" && e[1] === me.side) buzz(e[2] === "evo" ? [40, 40, 90] : 40);
     if (e[0] === "boss") { banner(e[1] === "luz" ? "¡LUZ!" : "¡LINDA!", e[1] === "luz" ? "La gata de la abuela está furiosa" : "La jefa en persona. Derrótenla para ganar"); music.set("boss"); }
     if (e[0] === "bossdown") { banner("¡Luz se rindió!", "Dejó un alfajor"); music.set("run"); }
     if (e[0] === "horde") banner("¡HORDA!", "Los rodearon");
@@ -149,6 +168,8 @@ function loop(now) {
   if (screen === "run" && me.side === "host" && sim) {
     const inp = { host: { dir: input.vec, ult: input.takeUlt(), dash: input.takeDash() || hostDash } }; hostDash = false;
     if (sim.players.guest) { inp.guest = { ...guestInput }; guestInput.ult = false; guestInput.dash = false; }
+    sim.setView("host", R.bw, R.bh);
+    if (sim.players.guest) heartbeat(now);
     if (!paused) sim.step(dt, inp);
     snap = sim.snapshot();
     onEvents(snap.ev); pendingEv.push(...snap.ev);
@@ -156,6 +177,9 @@ function loop(now) {
     if (me.net && me.net.connected && sendAcc >= 0.05) { sendAcc = 0; me.net.send({ t: "s", s: { ...snap, ev: pendingEv } }); pendingEv = []; }
     V = view(snap, "host");
   } else if (screen === "run" && me.side === "guest") {
+    if (runOn && now - lastSeen > 6000 && !guestAway) { guestAway = true; banner("Tu pareja no responde", "Esperando la conexión…"); }
+    if (runOn && now - lastSeen > 25000) onPartnerLost();
+    if (now - lastSeen < 1000) guestAway = false;
     if (snap) {
       const mine = snap.P.guest;
       if (mine) {
@@ -178,7 +202,7 @@ function loop(now) {
         guestDash = false;
         sendAcc += dt;
         const ult = input.takeUlt() || guestUlt;
-        if (me.net && (sendAcc >= 0.05 || ult || dash)) { sendAcc = 0; me.net.send({ t: "in", pos: { x: guestPos.x, y: guestPos.y }, face: guestPos.face, moving: guestPos.moving, ult, dash }); guestUlt = false; }
+        if (me.net && (sendAcc >= 0.05 || ult || dash)) { sendAcc = 0; me.net.send({ t: "in", pos: { x: guestPos.x, y: guestPos.y }, face: guestPos.face, moving: guestPos.moving, ult, dash, vw: R.bw, vh: R.bh }); guestUlt = false; }
       }
       V = view(snap, "guest", guestPos);
     }
@@ -196,6 +220,16 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 let guestUlt = false, guestDash = false, hostDash = false;
+// si la pareja no manda nada (celu bloqueado, sin señal), no se traba la partida:
+// a los 4 s se le elige la mejora sola y a los 25 s se sigue sin ella
+let lastGuestMsg = 0, guestAway = false;
+function heartbeat(now) {
+  const quiet = now - lastGuestMsg;
+  if (quiet < 4000) return;
+  if (!guestAway) { guestAway = true; banner(`${(me.partner && NAME[me.partner]) || "Tu pareja"} no responde`, "Si tarda, sus mejoras se eligen solas"); }
+  const of = sim.offers.guest; if (sim.state === "levelup" && of && of.pick === null) sim.pick("guest", 0);
+  if (quiet > 25000 && me.net) { me.net.dropConn(); me.connected = false; onPartnerLost(); }
+}
 
 function view(s, local, override) {
   const players = {};
@@ -231,7 +265,15 @@ function buildHud() {
     <button class="ultbtn" id="ultbtn" data-act="ult"><span id="ultlabel">COMBO</span></button>
     <button class="dashbtn" id="dashbtn" data-act="dash"><span>ESQUIVE</span></button>
     <div class="objhud" id="objhud" hidden><img src="${portrait("regalo", 3)}" alt=""><span id="objtxt"></span></div>
-    <div class="banner" id="banner"><b id="btitle"></b><span id="bsub"></span></div>`;
+    <div class="build" id="build"></div>
+    <div class="movehint" id="movehint" hidden>${TOUCH ? "Apoyá el dedo en cualquier lado y arrastrá para moverte.<br>Las armas atacan solas." : "Movete con WASD o las flechas.<br>Shift esquiva · Espacio tira el combo."}</div>
+    <div class="banner" id="banner"><b id="btitle"></b><span id="bsub"></span></div>
+    <div class="pausemenu" id="pausemenu" hidden><div class="panel">
+      <h2>Pausa</h2><p class="hint" id="pausenote"></p>
+      <button class="big" data-act="resume">Seguir</button>
+      <div class="toggles"><button class="mid" data-act="snd" id="tsnd"></button><button class="mid" data-act="mus" id="tmus"></button><button class="mid" data-act="vib" id="tvib"></button></div>
+      <button class="mid ghost" data-act="quit">Salir al menú</button>
+    </div></div>`;
   hudBuilt = true;
 }
 function banner(title, sub) { bannerT = 2.6; const b = $("#banner"); if (!b) return; $("#btitle").textContent = title; $("#bsub").textContent = sub || ""; b.classList.remove("on"); void b.offsetWidth; b.classList.add("on"); }
@@ -252,6 +294,12 @@ function updateHud(dt) {
     $("#ultlabel").textContent = mine.c === "thomas" ? "COMBO" : "TORTAS";
     const d = $("#dashbtn"); d.style.setProperty("--k", Math.round((1 - Math.min(1, (me.side === "guest" && guestPos ? Math.max(guestPos.dcd, mine.dc) : mine.dc) / 2.4)) * 100) + "%");
   }
+  if (mine) {
+    const bk = JSON.stringify([mine.w, mine.pa, mine.e]), bEl = $("#build");
+    if (bEl.dataset.v !== bk) { bEl.dataset.v = bk; bEl.innerHTML = buildIcons(mine); }
+  }
+  const mh = $("#movehint");
+  if (hintT > 0) { hintT -= dt; const v = input.vec; if (v.x || v.y) hintT = Math.min(hintT, 0.6); mh.hidden = hintT <= 0 || s.st !== "run"; } else mh.hidden = true;
   const oh = $("#objhud");
   if (s.ob) { oh.hidden = false; $("#objtxt").textContent = `Pedido de Roro's ${s.ob[2]}% · ${s.ob[3]}s`; } else oh.hidden = true;
   const bb = $("#bossbar");
@@ -261,16 +309,24 @@ function updateHud(dt) {
   const of = s.st === "levelup" ? s.of && s.of[me.side] : null;
   const key = s.st + ":" + s.lv + ":" + (of ? of.pick : "-") + ":" + JSON.stringify(of && of.opts);
   if (key !== lastOffersKey) { lastOffersKey = key; renderLevelUp(s, of); }
-  if (s.st === "run" && music.mode === "pause") music.set(s.boss ? "boss" : "run");
+  if (s.st === "run" && music.mode === "pause" && $("#pausemenu").hidden) music.set(s.boss ? "boss" : "run");
   // fin
   if ((s.st === "over" || s.st === "win") && !endShown) {
     resultTimer += dt;
     if (resultTimer > 1.6) { endShown = true; resultTimer = 0; finish(s); }
   }
 }
+function buildIcons(p) {
+  const pip = (lv, max) => `<i>${"▮".repeat(lv)}${"▯".repeat(Math.max(0, max - lv))}</i>`;
+  const w = Object.entries(p.w || {}).map(([id, lv]) => `<span class="${p.e && p.e[id] ? "evo" : ""}"><img src="${portrait(ICON[id] || "gem1", 2)}" alt="${esc(WEAPONS[id].name)}">${p.e && p.e[id] ? "<i>EVO</i>" : pip(lv, WEAPONS[id].max)}</span>`).join("");
+  const pa = Object.entries(p.pa || {}).map(([id, lv]) => `<span class="pas"><img src="${portrait(ICON[id] || "gem1", 2)}" alt="${esc(PASSIVES[id].name)}">${pip(lv, PASSIVES[id].max)}</span>`).join("");
+  return `<div>${w}</div>${pa ? `<div>${pa}</div>` : ""}`;
+}
+let lvShownAt = 0;
 function renderLevelUp(s, of) {
   const box = $("#levelup");
   if (!of) { box.hidden = true; box.innerHTML = ""; return; }
+  lvShownAt = performance.now();
   box.hidden = false;
   if (of.pick !== null) { box.innerHTML = `<div class="lvbox"><h2>¡Nivel ${s.lv}!</h2><p class="wait">Esperando que tu pareja elija…</p></div>`; return; }
   const mine = s.P[me.side];
@@ -294,7 +350,7 @@ function finish(s) {
   const newBest = s.t > prof.best.t;
   prof.best = { t: Math.max(prof.best.t, s.t), k: Math.max(prof.best.k, s.kl), lv: Math.max(prof.best.lv, s.lv) };
   save();
-  hud.hidden = true; $("#levelup").hidden = true;
+  hud.hidden = true; $("#levelup").hidden = true; keepAwake(false); setPaused(false);
   screen = "results"; music.set("menu");
   const duel = Object.values(s.P).map(p => ({ c: p.c, k: p.k })).sort((a, b) => b.k - a.k);
   draw({ win, t: s.t, k: s.kl, lv: s.lv, newBest, duel });
@@ -338,6 +394,7 @@ function draw(result) {
         <button class="mid ghost" data-act="shop">Taller de mejoras</button>
       </div>`}
       <p class="rec">Récord: ${fmt(prof.best.t)} · ${prof.best.k} gatos · ${prof.wins} victorias</p>
+      <button class="link" data-act="snd">${sfx.muted ? "Sonido: apagado" : "Sonido: prendido"}</button>
     </section>`;
     return;
   }
@@ -379,6 +436,41 @@ function draw(result) {
   }
 }
 
+/* ---------------- pausa, sonido, vibración y pantalla encendida ---------------- */
+const TOUCH = matchMedia("(pointer: coarse)").matches;
+let hintT = 0;
+let vibOn = (() => { try { return localStorage.getItem("gdl-vib") !== "0"; } catch (e) { return true; } })();
+let lastBuzz = 0;
+function buzz(pattern, gap = 0) {
+  if (!vibOn || !navigator.vibrate || (navigator.userActivation && !navigator.userActivation.hasBeenActive)) return;
+  const now = performance.now(); if (gap && now - lastBuzz < gap) return; lastBuzz = now;
+  try { navigator.vibrate(pattern); } catch (e) {}
+}
+// la pausa frena el juego solo si jugás solo; de a dos el menú se abre pero la partida sigue
+const soloRun = () => me.side === "host" && !(me.net && me.net.connected);
+function setPaused(on) {
+  const pm = $("#pausemenu"); if (!pm) { paused = false; return; }
+  pm.hidden = !on; paused = on && soloRun();
+  if (on) { $("#pausenote").textContent = soloRun() ? "El juego está frenado." : "De a dos la partida sigue corriendo."; paintToggles(); music.set("pause"); }
+  else if (screen === "run" && snap) music.set(snap.st === "levelup" ? "pause" : snap.boss ? "boss" : "run");
+}
+function paintToggles() {
+  const t = (id, label, on) => { const el = $(id); if (el) { el.textContent = `${label}: ${on ? "sí" : "no"}`; el.classList.toggle("off", !on); } };
+  t("#tsnd", "Sonido", !sfx.muted); t("#tmus", "Música", music.on); t("#tvib", "Vibrar", vibOn);
+  const v = $("#tvib"); if (v) v.hidden = !navigator.vibrate;
+}
+let wake = null;
+async function keepAwake(on) {
+  try {
+    if (on && !wake && navigator.wakeLock && document.visibilityState === "visible") { wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => { wake = null; }); }
+    else if (!on && wake) { const w = wake; wake = null; await w.release(); }
+  } catch (e) { wake = null; }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") { if (screen === "run" && soloRun() && snap && snap.st === "run") setPaused(true); }
+  else if (runOn) keepAwake(true);
+});
+
 /* ---------------- eventos de la interfaz ---------------- */
 document.addEventListener("click", e => {
   const b = e.target.closest("[data-act]"); if (!b || b.disabled) return;
@@ -400,16 +492,21 @@ document.addEventListener("click", e => {
     case "menu": if (me.side === "host" && me.net && me.net.connected) me.net.send({ t: "menu" }); endRun(); toMenu(); break;
     case "back": if (screen === "shop") screen = shopBack || "menu"; else { leave(); screen = "menu"; me.code = null; } errMsg = null; draw(); break;
     case "share": { const url = location.origin + location.pathname + "?sala=" + me.code; if (navigator.share) navigator.share({ title: "Gatos de Linda", text: "Entrá a mi sala", url }).catch(() => {}); else navigator.clipboard && navigator.clipboard.writeText(url).then(() => banner("Link copiado", "")).catch(() => {}); break; }
-    case "pick": { const i = +b.dataset.i; if (me.side === "host") sim && sim.pick("host", i); else me.net && me.net.send({ t: "pick", i }); sfx.play("coin"); break; }
+    case "pick": { if (performance.now() - lvShownAt < 350) break; const i = +b.dataset.i; if (me.side === "host") sim && sim.pick("host", i); else me.net && me.net.send({ t: "pick", i }); sfx.play("coin"); break; }
 
-    case "pause":
-      if (me.side === "host" && !(me.net && me.net.connected)) { paused = !paused; b.textContent = paused ? "▶" : "II"; if (paused) banner("Pausa", "Tocá ▶ para seguir"); }
-      else if (confirmQuit) { if (me.net && me.side === "host") me.net.send({ t: "menu" }); endRun(); toMenu(); confirmQuit = false; }
-      else { confirmQuit = true; banner("¿Salir?", "Tocá II otra vez para volver al menú"); setTimeout(() => { confirmQuit = false; }, 2500); }
+    case "pause": setPaused(true); break;
+    case "resume": setPaused(false); break;
+    case "snd": sfx.toggle(); if (screen === "run") paintToggles(); else draw(); break;
+    case "mus": music.toggle(); paintToggles(); break;
+    case "vib": vibOn = !vibOn; try { localStorage.setItem("gdl-vib", vibOn ? "1" : "0"); } catch (e) {} paintToggles(); buzz(40); break;
+    case "quit":
+      setPaused(false);
+      if (me.side === "host") { if (me.net && me.net.connected) me.net.send({ t: "menu" }); endRun(); toMenu(); }
+      else { endRun(); leave(); me.code = null; screen = "menu"; music.set("menu"); newDemo(); R.setMap(map); draw(); }
       break;
   }
 });
-let confirmQuit = false, shopBack = "menu";
+let shopBack = "menu";
 // esquive y combo responden al apoyar el dedo, sin esperar a soltar
 document.addEventListener("pointerdown", e => {
   const b = e.target.closest('[data-act="dash"],[data-act="ult"]'); if (!b) return;
@@ -417,6 +514,7 @@ document.addEventListener("pointerdown", e => {
   if (b.dataset.act === "ult") { if (me.side === "host") input.ultPressed = true; else guestUlt = true; }
   else { if (me.side === "host") hostDash = true; else guestDash = true; }
 });
+addEventListener("keydown", e => { if (screen === "run" && (e.key === "Escape" || e.key === "p" || e.key === "P")) { const pm = $("#pausemenu"); setPaused(!!(pm && pm.hidden)); } });
 document.addEventListener("input", e => { if (e.target.id === "code") { joinDraft = cleanCode(e.target.value); e.target.value = joinDraft; } });
 
 if (new URLSearchParams(location.search).has("debug")) window.__g = () => ({ sim, snap, me, R, prof, input });

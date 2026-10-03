@@ -61,6 +61,9 @@ export class Net {
     c.on("error", () => {});
   }
 
+  // corta la conexión actual sin cerrar la sala (el anfitrión puede recibir a otro)
+  dropConn() { const c = this.conn; this.conn = null; try { c && c.close(); } catch (e) {} }
+
   send(o) { if (this.connected) try { this.conn.send(o); } catch (e) {} }
 
   close() {

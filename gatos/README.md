@@ -13,6 +13,9 @@ Supervivientes cooperativo para dos, cada uno en su celu. Thomas (patadas del Te
 - **Esquive** (botón celeste, o Shift en la compu): un salto corto en el que no te pueden pegar.
 - Parados cerca uno del otro aparece el hilo de corazón: **juntos pegan 20% más**.
 - Las monedas de cada partida se gastan en el **Taller** (mejoras permanentes) y en desbloquear mapas.
+- Abajo a la izquierda ves las armas y pasivas que tenés, con su nivel (**EVO** si ya evolucionó).
+- **Pausa** (botón II, Escape o P en la compu): seguir, sonido, música, vibración y salir al menú. Jugando solo frena el juego (y se pausa sola si cambiás de app); de a dos la partida sigue.
+- Si a tu pareja se le corta la conexión o bloquea el celu: a los 4 segundos sus mejoras se eligen solas para que no te trabes, y a los 25 seguís solo.
 
 ### Dificultad pensada
 
@@ -61,5 +64,7 @@ Cada mapa es más difícil y da más monedas, y tiene su propio peligro que cruz
 - El anfitrión corre la simulación (`js/engine.js`) y manda el estado 20 veces por segundo por WebRTC (PeerJS). Cada jugador controla su propio movimiento, así no se siente demora al moverse.
 - Música chiptune y sonidos sintetizados con WebAudio.
 - El progreso (monedas, mejoras, récords) queda guardado en cada dispositivo.
+- Los gatos aparecen justo afuera de la pantalla de cada jugador (cada celu le avisa al anfitrión cuánto ve).
+- Durante la partida la pantalla no se apaga sola (Wake Lock) y el celu vibra al recibir golpes, caer o abrir una caja (Android).
 
 Para probar local: `python3 -m http.server` dentro de `gatos/`.

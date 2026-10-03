@@ -81,6 +81,7 @@ export class Sim {
     this.eliteNext = 70; this.crateNext = 12; this.hzNext = this.cfg.hzFirst || 9e9;
     this.objTimes = [95, 250, 365]; this.obj = null;
     this.bond = false;
+    this.view = {};                 // medio ancho y medio alto de lo que ve cada jugador, para que los gatos aparezcan fuera de cámara
     this.grid = new Map();
   }
 
@@ -98,6 +99,20 @@ export class Sim {
     this.players[side] = p;
     return p;
   }
+
+  // si se corta la conexión, el que queda sigue solo (y no se traba esperando que el otro elija mejora)
+  dropPlayer(side) {
+    const p = this.players[side]; if (!p) return;
+    delete this.players[side]; delete this.view[side];
+    if (this.offers[side]) {
+      delete this.offers[side];
+      if (this.state === "levelup" && Object.values(this.offers).every(x => x.pick !== null)) { this.offers = {}; this.state = "run"; if (this.pendingLevels) this.openLevelUp(); }
+    }
+    if (this.alive().length === 0 && this.state !== "win") { this.state = "over"; this.ev.push(["over"]); }
+  }
+  setView(side, w, h) { this.view[side] = { hw: clamp(w / 2, 60, 400), hh: clamp(h / 2, 60, 400) }; }
+  // dentro de la cámara de algún jugador
+  onScreen(x, y, m = 0) { for (const p of this.alive()) { const v = this.view[p.side]; if (v && Math.abs(x - p.x) < v.hw + m && Math.abs(y - p.y) < v.hh + m) return true; } return false; }
 
   alive() { return Object.values(this.players).filter(p => !p.downed); }
   inB(x, y, m = 0) { const b = this.cfg.b; return x >= b[0] + m && x <= b[2] - m && y >= b[1] + m && y <= b[3] - m; }
@@ -179,6 +194,18 @@ export class Sim {
     const a = Math.random() * Math.PI * 2;
     return { x: p.x + Math.cos(a) * dist, y: p.y + Math.sin(a) * dist, p };
   }
+  // justo afuera de la pantalla (si no sabemos el tamaño de pantalla, a distancia fija como antes)
+  edgePos(min = 140, from) {
+    const ps = this.alive(); const p = from || ps[Math.floor(Math.random() * ps.length)] || Object.values(this.players)[0];
+    const v = this.view[p.side]; if (!v) return this.ringPos(rnd(min, min + 40), p);
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2, c = Math.abs(Math.cos(a)) || 1e-6, s = Math.abs(Math.sin(a)) || 1e-6;
+      const d = Math.max(min, Math.min(v.hw / c, v.hh / s) + rnd(14, 34));
+      const x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
+      if (this.inB(x, y, 6) && !this.onScreen(x, y, 8)) return { x, y, p };
+    }
+    return this.ringPos(rnd(min, min + 40), p);
+  }
   pressure() {
     const n = Object.keys(this.players).length;
     if (this.alive().length < n) return 0.5;                  // si uno cayó, aflojan para dar chance de levantarlo
@@ -206,7 +233,7 @@ export class Sim {
     // bandada de palomas que cruza
     const pe = this.cfg.pigeons || 42;
     if (t > 50 && crossed(pe)) {
-      const q = this.ringPos(170); const dx = q.p.x - q.x, dy = q.p.y - q.y, m = Math.hypot(dx, dy);
+      const q = this.edgePos(170); const dx = q.p.x - q.x, dy = q.p.y - q.y, m = Math.hypot(dx, dy);
       for (let i = 0; i < 12; i++) { const e = this.spawnAt("paloma", q.x + rnd(-20, 20), q.y + rnd(-20, 20)); e.vx = dx / m; e.vy = dy / m; }
     }
     // gato de élite: duro, lento, suelta una caja
@@ -233,7 +260,7 @@ export class Sim {
     this.spawnAcc += rate * dt;
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
-      const q = this.ringPos(rnd(140, 180));
+      const q = this.edgePos(150);
       this.spawnAt(this.pickType(), q.x, q.y);
     }
   }
@@ -252,7 +279,7 @@ export class Sim {
   spawnElite() {
     const t = this.t;
     const pool = t < 110 ? ["gato", "saltarin"] : t < 200 ? ["saltarin", "negro", "madre"] : ["negro", "gordo", "madre", "saltarin"];
-    const q = this.ringPos(160);
+    const q = this.edgePos(160);
     const e = this.spawnAt(pool[Math.floor(Math.random() * pool.length)], q.x, q.y, 8);
     e.elite = true; e.r = Math.round(e.r * 1.8); e.dmg *= 1.4; e.spd *= 0.85;
     this.ev.push(["elite", Math.round(e.x), Math.round(e.y)]);
