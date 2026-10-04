@@ -119,6 +119,7 @@ export class Renderer {
       if (k === "warn") snd.push(e[1] === "tren" ? "horn" : "warn");
       if (k === "pass") { this.shake = Math.max(this.shake, e[1] === "tren" ? 4 : 1); snd.push(e[1] === "tren" ? "train" : "whoosh"); }
       if (k === "obj") snd.push(["objfail", "objok", "obj"][e[1]]);
+      if (k === "combo") { this.rings.push({ x: e[2], y: e[3], r: 26, life: 0.4, c: "#ff8ad8" }); for (let i = 0; i < 6; i++) this.part(e[2], e[3], "#ff8ad8", 50, 0.5); } // dinámica 5
       if (k === "summon") this.rings.push({ x: e[1], y: e[2], r: 40, life: 0.5, c: "#b36aff" });
       if (["bus", "boss", "horde", "levelup", "throw", "hairball", "bossdown", "win", "over"].includes(k)) snd.push(k === "boss" ? "boss:" + e[1] : k);
     }

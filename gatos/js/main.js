@@ -55,6 +55,8 @@ let guestPos = null, guestInput = { pos: null, face: 1, moving: 0, ult: false, d
 const smooth = new Map();
 let luzMsgAt = 0; // dinámica 2: para no repetir el cartel de Luz en cada carga
 let stealAt = 0; // dinámica 3
+const comboMsgAt = {}; // dinámica 5
+const COMBO_BANNER = { mate: ["¡Medialuna al mate!", "Sale mojada: pega más y frena"], torta: ["¡Patada a la torta!", "Gato pateado a la explosión: doble daño"], juli: ["¡Juli marca, Romero muerde!", "Triple daño al gato marcado"] };
 let arcadeRuns = 0; // dinámica 4: partidas de arcade en esta sesión (el anfitrión decide el arranque rápido)
 let bannerT = 0, errMsg = null, busyMsg = null, joinDraft = cleanCode(new URLSearchParams(location.search).get("sala") || "");
 
@@ -199,6 +201,8 @@ function onEvents(ev) {
     if (e[0] === "stun") { luzMsgAt = performance.now(); banner("¡Luz se frenó!", "Está aturdida: le pegan el doble"); }
     // dinámica 3: evento de mitad de partida y gato ladrón
     if (e[0] === "mid") { const b = MID_BANNER[e[1]]; if (b) { const [t, sub] = e[2] ? b[0] : e[3] && b[2] ? b[2] : b[1]; banner(t, sub); } }
+    // dinámica 5: combos de pareja (un cartel por combo cada 15 s)
+    if (e[0] === "combo" && performance.now() - (comboMsgAt[e[1]] || -1e9) > 15000) { comboMsgAt[e[1]] = performance.now(); const c = COMBO_BANNER[e[1]]; if (c) banner(c[0], c[1]); }
     if (e[0] === "fast") banner("Arranque rápido", "Revancha: arrancan en 0:30 con una mejora");
     if (e[0] === "ladron") banner("¡Gato ladrón!", "Se roba la experiencia del piso: agárrenlo antes de que escape");
     if (e[0] === "steal" && performance.now() - stealAt > 8000) { stealAt = performance.now(); banner("¡Se escapó un ladrón!", `Se llevó ${e[3]} de experiencia`); }

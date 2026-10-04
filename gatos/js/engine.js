@@ -70,6 +70,12 @@ export const F_BAG = 256;         // dinámica 3: gato ladrón que lleva gemas r
    jugadores). sparring: un élite con guantes (jab doble); si le ganan antes del final, monedas extra. riego: aspersores
    que mojan y frenan gatos. promo: 2x1, salen el doble de gatos con 60% de vida. salida: salida del cine, los autos
    pasan cada 5 s. stats.mid cuenta lo de cada evento para las metas del mapa. */
+/* dinámica 5: combos de pareja entre armas, activos con el hilo de corazón (los dos a menos de 72 px) y siempre entre
+   armas de los DOS (la de uno con la del otro). Cada arma → el arma de la pareja con la que combina:
+   medialuna que cruza un charco de mate de la pareja sale mojada (x1,5 y frena); un gato pateado que cae en una
+   explosión de torta de la pareja recibe x2; un gato que Juli arañó lo muerde el Romero de la pareja con x3. */
+export const COMBO_OF = { medialuna: "mate", mate: "medialuna", patada: "torta", torta: "patada", juli: "romero", romero: "juli" };
+export const COMBO = { mate: 1.5, torta: 2, juli: 3, win: 0.8, mark: 2 }; // multiplicadores; win: s que dura la patada; mark: s que dura la marca de Juli
 export const MID_IDS = ["corbata", "apagon", "liquidacion", "sparring", "riego", "promo", "salida"];
 export const MID_OF = { plaza: "corbata", estacion: "apagon", feria: "liquidacion", bielli: "sparring", cancha: "riego", tortugas: "promo", terrazas: "salida" };
 export const GOALS = ["none", "survive", "defend", "escort", "trains", "track", "boss", "reach", "protect"];
@@ -202,7 +208,8 @@ export class Sim {
     // modo historia: diálogo, objetivo, aliados y cámara (en el arcade quedan vacíos y no tocan el azar)
     this.dlg = null; this.dlgQueue = []; this.dlgN = 0; this.goal = null; this.allies = []; this.lures = []; this.cam = null; this.begun = false;
     this.bond = false;
-    this.mid = null; this.midNext = G.mid ? G.mid.t : 9e9; this.stats = { mid: 0 }; // dinámica 3
+    this.mid = null; this.midNext = G.mid ? G.mid.t : 9e9; this.stats = { mid: 0, cb: { mate: 0, torta: 0, juli: 0 } }; // dinámica 3 y 5
+    this.comboAt = {};                                                                                // dinámica 5
     this.view = {};                 // medio ancho y medio alto de lo que ve cada jugador, para que los gatos aparezcan fuera de cámara
     this.grid = new Map();
   }
@@ -784,6 +791,18 @@ export class Sim {
     if (p.cds[id] > 0) return false;
     p.cds[id] = base * p.cdMul; return true;
   }
+  // dinámica 5: gato arañado hace poco por la Juli de la pareja, el más cercano al perro
+  markedFor(p, dog, R) {
+    let best = null, bd = R * R;
+    for (const e of this.enemies) { if (!this.foe(e) || !(e.juli > this.t - COMBO.mark) || e.juliBy === p.side) continue; const d = d2(dog, e); if (d < bd) { bd = d; best = e; } }
+    return best;
+  }
+  // dinámica 5: anota el combo y avisa (como mucho un aviso cada 0,6 s por combo, para no llenar la red)
+  combo(k, x, y) {
+    this.stats.cb[k]++;
+    if ((this.comboAt[k] || -9) > this.t - 0.6) return;
+    this.comboAt[k] = this.t; this.ev.push(["combo", k, Math.round(x), Math.round(y)]);
+  }
   targets(p, R, n) { return this.enemies.filter(e => this.foe(e) && d2(p, e) < R * R).sort((a, b) => d2(p, a) - d2(p, b)).slice(0, n); }
   weapons(p, dt) {
     this.dt = dt;
@@ -791,7 +810,7 @@ export class Sim {
     if (W.patada && this.cd(p, "patada", (1.05 - W.patada * 0.07) * (X.patada ? 0.8 : 1))) {
       const lv = W.patada, r = (30 + lv * 3) * A * (X.patada ? 1.35 : 1), both = lv >= 3 || X.patada, dmg = (13 + lv * 6) * (X.patada ? 1.6 : 1), kb = X.patada ? 220 : 120;
       this.ev.push(["slash", Math.round(p.x), Math.round(p.y), p.face, Math.round(r), X.patada ? 2 : both ? 1 : 0]);
-      this.near(p.x, p.y, r, e => { const dx = e.x - p.x, dy = e.y - p.y; if (dx * dx + dy * dy > r * r) return; if (!both && dx * p.face < -6) return; const m = Math.hypot(dx, dy) || 1; this.damage(e, dmg, p, X.patada ? dx / m * kb : Math.sign(dx || p.face) * kb, X.patada ? dy / m * kb : dy * 2); });
+      this.near(p.x, p.y, r, e => { const dx = e.x - p.x, dy = e.y - p.y; if (dx * dx + dy * dy > r * r) return; if (!both && dx * p.face < -6) return; const m = Math.hypot(dx, dy) || 1; e.kick = this.t; e.kickBy = p.side; this.damage(e, dmg, p, X.patada ? dx / m * kb : Math.sign(dx || p.face) * kb, X.patada ? dy / m * kb : dy * 2); });
     }
     if (W.medialuna && this.cd(p, "medialuna", X.medialuna ? 0.75 : 0.95 - W.medialuna * 0.07)) {
       const lv = W.medialuna, dmg = 10 + lv * 4;
@@ -813,13 +832,14 @@ export class Sim {
       for (let i = 0; i < n; i++) {
         const a = p.orbA + i * Math.PI * 2 / n, ox = p.x + Math.cos(a) * r, oy = p.y + Math.sin(a) * r * 0.7;
         p.orbs.push([Math.round(ox), Math.round(oy)]);
-        this.near(ox, oy, 10, e => { if (d2({ x: ox, y: oy }, e) > (e.r + 6) ** 2) return; if ((e.hits.juli || 0) > this.t) return; e.hits.juli = this.t + 0.35; this.damage(e, dmg, p, Math.cos(a) * 80, Math.sin(a) * 80); if (X.juli) p.hp = Math.min(p.maxHp, p.hp + 0.35); });
+        this.near(ox, oy, 10, e => { if (d2({ x: ox, y: oy }, e) > (e.r + 6) ** 2) return; if ((e.hits.juli || 0) > this.t) return; e.hits.juli = this.t + 0.35; e.juli = this.t; e.juliBy = p.side; this.damage(e, dmg, p, Math.cos(a) * 80, Math.sin(a) * 80); if (X.juli) p.hp = Math.min(p.maxHp, p.hp + 0.35); });
       }
     } else p.orbs = null;
     if (W.romero) {
       if (!p.dog) p.dog = { x: p.x, y: p.y, bite: 0 };
       const lv = W.romero, dog = p.dog, spd = (110 + lv * 12) * (X.romero ? 1.4 : 1);
-      const tgt = this.nearest(dog, 140);
+      // dinámica 5: con el hilo, Romero va primero al gato que arañó la Juli de la pareja
+      const marked = p.bond ? this.markedFor(p, dog, 140) : null, tgt = marked || this.nearest(dog, 140);
       const gx = tgt ? tgt.x : p.x + 16, gy = tgt ? tgt.y : p.y + 8;
       const dx = gx - dog.x, dy = gy - dog.y, m = Math.hypot(dx, dy) || 1;
       if (m > 4) { dog.x += dx / m * spd * dt; dog.y += dy / m * spd * dt; dog.face = Math.sign(dx) || 1; }
@@ -827,7 +847,8 @@ export class Sim {
       dog.bite -= dt;
       if (tgt && m < tgt.r + 6 && dog.bite <= 0) {
         dog.bite = (0.55 - lv * 0.04) * (X.romero ? 0.7 : 1);
-        const dmg = 14 + lv * 7;
+        let dmg = 14 + lv * 7;
+        if (p.bond && tgt.juli > this.t - COMBO.mark && tgt.juliBy !== p.side) { dmg *= COMBO.juli; this.combo("juli", tgt.x, tgt.y); } // dinámica 5
         if (X.romero) { this.near(tgt.x, tgt.y, 22, e => { if (d2(e, tgt) < 22 * 22) this.damage(e, dmg, p, dx / m * 90, dy / m * 90); }); this.ev.push(["boom", Math.round(tgt.x), Math.round(tgt.y), 14]); }
         else this.damage(tgt, dmg, p, dx / m * 60, dy / m * 60);
         this.ev.push(["bite", tgt.x, tgt.y]);
@@ -880,12 +901,14 @@ export class Sim {
   updateProjectiles(dt) {
     const byside = s => this.players[s];
     for (const b of this.proj) {
+      // dinámica 5: medialuna que cruza un charco de mate de la pareja, con el hilo, sale mojada
+      if (b.k === 0 && !b.wet && this.bond) for (const pl of this.pools) if (pl.own !== b.own && d2(b, pl) < pl.r * pl.r) { b.wet = true; b.dmg *= COMBO.mate; this.combo("mate", b.x, b.y); break; }
       b.life -= dt;
       if (b.back) { b.t += dt; const p = byside(b.own); if (b.t > 0.55 && p) { const dx = p.x - b.x, dy = p.y - b.y, m = Math.hypot(dx, dy) || 1; b.vx += dx / m * 900 * dt; b.vy += dy / m * 900 * dt; const sp = Math.hypot(b.vx, b.vy); if (sp > 230) { b.vx *= 230 / sp; b.vy *= 230 / sp; } if (m < 10) b.life = 0; if (!b.cleared) { b.hit.clear(); b.cleared = true; } } else { b.vx *= Math.pow(0.35, dt); b.vy *= Math.pow(0.35, dt); } }
       b.x += b.vx * dt; b.y += b.vy * dt;
       this.near(b.x, b.y, 12, e => {
         if (b.pierce <= 0 || b.hit.has(e.id)) return;
-        if (d2(b, e) < (e.r + 4) ** 2) { b.hit.add(e.id); b.pierce--; this.damage(e, b.dmg, byside(b.own), b.vx * 0.4, b.vy * 0.4); }
+        if (d2(b, e) < (e.r + 4) ** 2) { b.hit.add(e.id); b.pierce--; if (b.wet) e.slow = Math.max(e.slow, 1.5); this.damage(e, b.dmg, byside(b.own), b.vx * 0.4, b.vy * 0.4); }
       });
       if (b.pierce <= 0) b.life = 0;
     }
@@ -898,7 +921,12 @@ export class Sim {
       bm.t += dt;
       if (bm.t >= bm.dur && !bm.done) {
         bm.done = true; this.ev.push(["boom", Math.round(bm.x), Math.round(bm.y), bm.r]);
-        this.near(bm.x, bm.y, bm.r, e => { const dx = e.x - bm.x, dy = e.y - bm.y, m = Math.hypot(dx, dy) || 1; if (m < bm.r) this.damage(e, bm.dmg, byside(bm.own), dx / m * 150, dy / m * 150); });
+        this.near(bm.x, bm.y, bm.r, e => {
+          const dx = e.x - bm.x, dy = e.y - bm.y, m = Math.hypot(dx, dy) || 1; if (m >= bm.r) return;
+          // dinámica 5: gato pateado por la pareja que cae en la explosión
+          const kicked = this.bond && e.kick > this.t - COMBO.win && e.kickBy !== bm.own; if (kicked) this.combo("torta", e.x, e.y);
+          this.damage(e, bm.dmg * (kicked ? COMBO.torta : 1), byside(bm.own), dx / m * 150, dy / m * 150);
+        });
         if (bm.cl) for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2 + this.rr(0, 1); extra.push({ x0: bm.x, y0: bm.y, x: bm.x + Math.cos(a) * bm.r * 1.2, y: bm.y + Math.sin(a) * bm.r * 1.2, t: 0, dur: 0.4, r: Math.round(bm.r * 0.7), dmg: bm.dmg * 0.6, own: bm.own }); }
       }
     }
