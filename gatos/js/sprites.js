@@ -32,45 +32,355 @@ function white(c) { const o = document.createElement("canvas"); o.width = c.widt
 function scaled(c, s) { const o = document.createElement("canvas"); o.width = c.width * s; o.height = c.height * s; const g = o.getContext("2d"); g.imageSmoothingEnabled = false; g.drawImage(c, 0, 0, o.width, o.height); return o; }
 
 /* ---------- personas ---------- */
-function human(o, f) {
+// Vista 3/4 mirando a la derecha (el espejo da la izquierda). Lienzo 16x20, pies en y=19.
+// Cuadros de cada persona: 0 quieto, 1 paso A, 2 paso cruzado, 3 paso B (la caminata es [1,2,3,0]),
+// 4 ataque A, 5 ataque B, 6 esquive. El caído es un sprite aparte: "<id>Caido".
+const DK = "#1a1420";
+const POSES = {
+  idle: { far: 5, near: 9, dy: 0, dx: 0, aF: "down", aN: "down" },
+  pasoA: { far: 4, near: 10, dy: 1, dx: 0, aF: "fwd", aN: "back" },
+  cruce: { far: 6, near: 8, dy: 0, dx: 0, liftF: 1, aF: "down", aN: "down" },
+  pasoB: { far: 9, near: 5, dy: 1, dx: 0, aF: "back", aN: "fwd" },
+  golpe: { far: 3, near: 9, dy: 1, dx: 1, aF: "guard", aN: "punch" },
+  patada: { far: 5, near: "kick", dy: 0, dx: -1, aF: "guard", aN: "guard" },
+  cargar: { far: 4, near: 10, dy: 1, dx: -1, aF: "fwd", aN: "up" },
+  lanzar: { far: 3, near: 10, dy: 1, dx: 1, aF: "back", aN: "throw" },
+  esquive: { far: 2, near: 11, dy: 3, dx: 1, aF: "back", aN: "back" }
+};
+const WALK = ["idle", "pasoA", "cruce", "pasoB"];
+
+function person(o, pz) {
+  const Q = POSES[pz];
   return mk(16, 20, ({ R, P }) => {
-    const L = [0, 1, 0, -1][f];
-    const ll = 4 - (L > 0 ? 1 : 0), rl = 4 - (L < 0 ? 1 : 0);
-    R(5, 14, 2, ll, o.pants); R(9, 14, 2, rl, o.pants);
-    if (o.stripe) { R(5, 14, 1, ll, o.stripe); R(10, 14, 1, rl, o.stripe); }
-    R(4, 14 + ll, 3, 1, o.shoes); R(9, 14 + rl, 3, 1, o.shoes);
-    if (o.shoeStripe) { P(5, 14 + ll, o.shoeStripe); P(10, 14 + rl, o.shoeStripe); }
-    R(4, 9, 8, 5, o.shirt);
-    if (o.print) R(6, 11, 4, 1, o.print);
-    if (o.necklace) { P(6, 9, o.necklace); P(9, 9, o.necklace); P(7, 10, o.necklace); P(8, 10, o.necklace); }
-    const arm = o.sleeveless ? o.skin : o.shirt;
-    const la = L > 0 ? 1 : 0, ra = L < 0 ? 1 : 0;
-    R(3, 9 + la, 1, 3, arm); R(12, 9 + ra, 1, 3, arm);
-    if (!o.sleeveless) { R(3, 11 + la, 1, 1, o.skin); R(12, 11 + ra, 1, 1, o.skin); }
-    P(3, 12 + la, o.skin); P(12, 12 + ra, o.skin);
-    R(4, 2, 8, 7, o.skin); R(5, 1, 6, 1, o.skin);
-    R(6, 5, 1, 2, "#1a1420"); R(9, 5, 1, 2, "#1a1420");
-    P(5, 7, "#f19a9a"); P(10, 7, "#f19a9a"); R(7, 7, 2, 1, "#b8574c");
-    if (o.hair === "rulos") {
-      R(4, 0, 8, 3, o.hairC); R(3, 1, 10, 3, o.hairC);
-      [[2, 2], [13, 2], [3, 0], [12, 0], [6, -1], [9, -1]].forEach(([x, y]) => P(x, y, o.hairC));
-      R(4, 3, 8, 1, o.hairC); [[4, 4], [6, 4], [9, 4], [11, 4]].forEach(([x, y]) => P(x, y, o.hairC));
-      R(3, 3, 1, 3, o.hairC); R(12, 3, 1, 3, o.hairC);
-      P(5, 1, o.hairL); P(9, 0, o.hairL); P(11, 2, o.hairL);
-    } else {
-      R(4, 0, 8, 2, o.hairC); R(3, 1, 10, 3, o.hairC);
-      R(4, 3, 3, 1, o.hairC); R(9, 3, 3, 1, o.hairC); P(7, 2, o.skin);
-      R(2, 3, 2, 9, o.hairC); R(12, 3, 2, 9, o.hairC);
-      P(5, 1, o.hairL); P(10, 1, o.hairL); P(2, 6, o.hairL);
+    const dy = Q.dy + (o.low || 0), dx = Q.dx;
+    const guard = o.guard && (Q.aN === "down" || Q.aN === "fwd" || Q.aN === "back") && pz !== "esquive";
+    const aF = guard ? "guard" : Q.aF, aN = guard ? "guard" : Q.aN;
+    const skin = o.skin, skinD = o.skinD;
+    const hand = o.gloves || skin;
+    // pelo largo por detrás (cae sobre la espalda)
+    if (o.hair === "largo") { R(3 + dx, 4 + dy, 2, 9, o.hairC); R(5 + dx, 11 + dy, 1, 2, o.hairC); P(3 + dx, 8 + dy, o.hairL); }
+    if (o.hair === "coleta") { R(2 + dx, 5 + dy, 2, 2, o.hairC); R(1 + dx, 7 + dy, 2, 3, o.hairC); P(2 + dx, 6 + dy, o.hairL); }
+    if (o.cape) { R(3 + dx, 10 + dy, 2, 6, o.cape); P(2 + dx, 14 + dy, o.cape); P(2 + dx, 15 + dy, o.cape); }
+    // brazo lejano (detrás del torso)
+    const arm = (sx, sy, mode, near) => {
+      const sl = o.sleeveless ? skin : (near ? o.shirt : o.shirtD);
+      const sk = near ? skin : skinD;
+      const hc = o.gloves ? (near ? o.gloves : o.glovesD) : sk;
+      const big = !!o.gloves;
+      if (mode === "down") { P(sx, sy, sl); P(sx, sy + 1, o.sleeveless ? sk : sl); P(sx, sy + 2, sk); big ? R(sx - (near ? 0 : 1), sy + 3, 2, 2, hc) : P(sx, sy + 3, hc); }
+      else if (mode === "fwd") { P(sx, sy, sl); P(sx + 1, sy + 1, o.sleeveless ? sk : sl); P(sx + 1, sy + 2, sk); big ? R(sx + 1, sy + 3, 2, 2, hc) : P(sx + 2, sy + 3, hc); }
+      else if (mode === "back") { P(sx, sy, sl); P(sx - 1, sy + 1, o.sleeveless ? sk : sl); P(sx - 1, sy + 2, sk); big ? R(sx - 2, sy + 2, 2, 2, hc) : P(sx - 2, sy + 3, hc); }
+      else if (mode === "guard") {
+        P(sx, sy, sl); P(sx + 1, sy, o.sleeveless ? sk : sl);
+        if (near) { P(sx, sy - 1, o.sleeveless ? sk : sl); R(sx, sy - 3, 2, 2, hc); if (big) P(sx, sy - 3, o.gloveL || hc); }
+        else { R(sx + 5, sy - 1, 2, 2, hc); if (big) P(sx + 5, sy - 1, o.gloveL || hc); }
+      }
+      else if (mode === "punch") { R(sx, sy + 1, 2, 1, sl); R(sx + 2, sy + 1, 1, 1, o.sleeveless ? sk : sl); P(sx + 3, sy + 1, sk); big ? (R(sx + 3, sy, 2, 2, hc), P(sx + 3, sy, o.gloveL || hc)) : R(sx + 3, sy, 1, 2, hc); }
+      else if (mode === "up") { P(sx, sy, sl); P(sx - 1, sy - 1, o.sleeveless ? sk : sl); P(sx - 1, sy - 2, sk); P(sx - 1, sy - 3, hc); }
+      else if (mode === "throw") { P(sx, sy, sl); P(sx + 1, sy, o.sleeveless ? sk : sl); P(sx + 2, sy - 1, sk); P(sx + 3, sy - 1, hc); P(sx + 4, sy - 2, hc); }
+    };
+    arm(4 + dx, 10 + dy, aF, false);
+    // piernas
+    const leg = (x, lift, far) => {
+      const pc = far ? o.pantsD : o.pants, sc = far ? skinD : skin;
+      let top = 15 + dy, bot = 17 - lift;
+      if (top > bot) { top = bot = 18 - lift - 1 + 1; }
+      for (let y = top, i = 0; y <= bot; y++, i++) {
+        const isShort = o.shorts != null && i >= o.shorts;
+        R(x, y, 2, 1, isShort ? sc : pc);
+        if (o.stripe && !isShort) P(x + (far ? 0 : 1), y, o.stripe);
+      }
+      const fy = Math.max(bot + 1, 18 - lift);
+      foot(x, fy, far);
+    };
+    const foot = (x, fy, far) => {
+      const sk = far ? skinD : skin;
+      if (o.feet === "ojotas") { R(x, fy, 3, 1, sk); P(x + 1, fy, o.shoes); if (fy + 1 <= 19) { R(x, fy + 1, 3, 1, o.shoes); P(x + 2, fy + 1, o.shoeStripe); } }
+      else if (o.feet === "descalzo") { R(x, fy, 2, 1, sk); if (fy + 1 <= 19) R(x, fy + 1, 3, 1, sk); }
+      else { R(x, fy, 3, 1, far ? o.shoesD || o.shoes : o.shoes); if (fy + 1 <= 19) R(x, fy + 1, 3, 1, o.sole || o.shoes); }
+    };
+    leg(Q.far, Q.liftF || 0, true);
+    if (Q.near === "kick") {
+      const th = o.pants, sh = o.shorts != null ? skin : o.pants;
+      R(9, 14 + dy, 2, 2, th); R(11, 13 + dy, 3, 2, sh);
+      if (o.stripe && o.shorts == null) R(11, 13 + dy, 3, 1, o.stripe);
+      if (o.feet === "descalzo" || o.feet === "ojotas") { R(14, 12 + dy, 1, 3, skin); P(15, 12 + dy, skin); if (o.feet === "ojotas") P(14, 14 + dy, o.shoes); }
+      else { R(14, 12 + dy, 2, 3, o.shoes); }
+    } else leg(Q.near, Q.liftN || 0, false);
+    // torso
+    const tx = 5 + dx, ty = 10 + dy;
+    R(tx, ty, 6, 4, o.shirt); P(tx, ty, o.shirtD); R(tx, ty + 3, 1, 1, o.shirtD);
+    if (o.sleeveless) { P(tx, ty, skinD); P(tx + 5, ty, skin); }
+    R(tx, ty + 4, 6, 1, o.pants);
+    if (o.belt) { R(tx, ty + 4, 6, 1, o.belt); P(tx + 3, ty + 4, o.beltG || o.belt); }
+    if (o.shortsWide) {
+      const sy = ty + 5; R(tx - 1, sy, 8, Math.min(2, 20 - sy), o.pants); R(tx + 4, sy, 3, Math.min(2, 20 - sy), o.shortsSide);
+      if (o.shortsGold) { P(tx + 5, sy, o.shortsGold); P(tx, sy + 1, o.shortsGold); }
     }
+    if (o.print) { R(tx + 1, ty + 2, 4, 1, o.print); }
+    if (o.trim) { R(tx, ty, 6, 1, o.trim); }
+    if (o.apron) {
+      R(tx + 1, ty, 4, 1, o.apronL); R(tx + 1, ty + 1, 5, 6, o.apron); R(tx + 2, ty + 3, 2, 2, o.apronL);
+      P(tx + 1, ty, o.apronL); if (ty + 7 <= 19) R(tx + 1, ty + 7, 5, 1, o.apron);
+    }
+    if (o.necklace) { P(tx + 2, ty, o.necklace); P(tx + 4, ty, o.necklace); P(tx + 3, ty + 1, o.necklace); }
+    if (o.star) { P(tx + 3, ty + 1, o.star); R(tx + 2, ty + 2, 3, 1, o.star); P(tx + 3, ty + 3, o.star); }
+    // cabeza
+    const hx = 5 + dx, hy = 3 + dy;
+    R(hx, hy, 7, 6, skin); R(hx + 1, hy + 6, 5, 1, skin); P(hx, hy + 5, skinD);
+    P(hx + 1, hy + 3, skinD); P(hx + 1, hy + 4, skinD);
+    if (o.mask) { R(hx + 1, hy + 2, 6, 2, o.mask); P(hx + 3, hy + 3, "#ffffff"); P(hx + 5, hy + 3, "#ffffff"); P(hx + 7, hy + 2, o.mask); }
+    else {
+      if (o.brows) { R(hx + 2, hy + 2, 2, 1, o.brows); R(hx + 5, hy + 2, 2, 1, o.brows); P(hx + 3, hy + 4, DK); P(hx + 5, hy + 4, DK); P(hx + 3, hy + 3, o.eyeW || "#f6efe8"); P(hx + 5, hy + 3, o.eyeW || "#f6efe8"); }
+      else { P(hx + 3, hy + 3, DK); P(hx + 3, hy + 4, DK); P(hx + 5, hy + 3, DK); P(hx + 5, hy + 4, DK); }
+      if (o.lash) { P(hx + 6, hy + 3, DK); }
+    }
+    P(hx + 2, hy + 5, o.blush || "#ee9a90"); P(hx + 4, hy + 5, o.mouth || "#a85048"); P(hx + 5, hy + 5, o.mouth || "#a85048");
+    if (pz === "golpe" || pz === "patada" || pz === "lanzar") { P(hx + 4, hy + 5, DK); P(hx + 5, hy + 5, DK); }
+    hair(R, P, o, hx, hy);
+    if (o.headgear) {
+      const c = o.headgear; R(hx - 1, hy - 2, 8, 2, c); R(hx - 1, hy, 2, 5, c); R(hx + 6, hy, 1, 2, c); P(hx + 1, hy - 3, c); R(hx + 1, hy - 3, 5, 1, c);
+      P(hx + 1, hy - 2, o.headgearL); P(hx + 2, hy - 3, o.headgearL); R(hx, hy + 5, 2, 1, c);
+    }
+    arm(11 + dx, 10 + dy, aN, true);
   });
 }
-const THOMAS = { skin: "#e8b48e", hair: "rulos", hairC: "#1e1612", hairL: "#3a2a20", shirt: "#17191f", print: "#dcdcdc", sleeveless: true, pants: "#8b8e96", stripe: "#e9e9e9", shoes: "#2a4fb0", shoeStripe: "#ffffff" };
-const ALUMNO = { skin: "#d8a07a", hair: "rulos", hairC: "#241a14", hairL: "#3a2a20", shirt: "#1c1c20", print: "#f2d21e", pants: "#1c1c20", stripe: "#f2d21e", shoes: "#d8a07a" };
-const ALUMNA = { skin: "#e8b48e", hair: "largo", hairC: "#3a2418", hairL: "#5a3a28", shirt: "#1c1c20", print: "#f2d21e", pants: "#1c1c20", shoes: "#e8b48e" };
-const ROCIO = { skin: "#f0c4a2", hair: "largo", hairC: "#2b1a13", hairL: "#4a2f22", shirt: "#c7b3ea", necklace: "#e9edf2", pants: "#1d1d24", shoes: "#f2f2f2" };
 
-/* ---------- gatos ---------- */
+function hair(R, P, o, hx, hy) {
+  const c = o.hairC, l = o.hairL;
+  if (o.hair === "rulos") {
+    // volumen arriba, costados cortos con degradé, rulos que caen sobre la frente
+    [[1, -3], [2, -3], [4, -3], [5, -3]].forEach(([x, y]) => P(hx + x, hy + y, c));
+    R(hx, hy - 2, 7, 1, c); R(hx - 1, hy - 1, 9, 1, c); R(hx - 1, hy, 8, 1, c);
+    P(hx, hy - 3, c); P(hx + 6, hy - 2, c);
+    P(hx + 7, hy - 1, c); P(hx + 7, hy - 2, c); P(hx - 1, hy - 2, c); P(hx + 3, hy + 1, c);
+    R(hx - 1, hy + 1, 2, 1, c); P(hx, hy + 2, c); P(hx, hy + 3, o.fade);
+    [[1, -2], [4, -2], [0, -1], [3, -1], [6, -1], [2, 0], [5, 0]].forEach(([x, y]) => P(hx + x, hy + y, l));
+  } else if (o.hair === "largo") {
+    R(hx + 1, hy - 2, 5, 1, c); R(hx, hy - 1, 7, 1, c); R(hx - 1, hy, 8, 1, c);
+    R(hx - 1, hy + 1, 4, 1, c); R(hx - 1, hy + 2, 2, 3, c); P(hx + 6, hy + 1, c);
+    P(hx + 2, hy - 1, l); P(hx + 4, hy - 2, l); P(hx + 1, hy, l);
+  } else if (o.hair === "coleta") {
+    R(hx + 1, hy - 2, 5, 1, c); R(hx, hy - 1, 7, 1, c); R(hx - 1, hy, 8, 1, c); R(hx - 1, hy + 1, 3, 1, c); R(hx - 1, hy + 2, 2, 2, c);
+    P(hx + 3, hy - 1, l);
+  } else if (o.hair === "corto") {
+    R(hx, hy - 2, 7, 1, c); R(hx - 1, hy - 1, 8, 2, c); R(hx - 1, hy + 1, 2, 2, c); P(hx + 3, hy + 1, c); P(hx + 5, hy + 1, c);
+    P(hx + 2, hy - 2, l); P(hx + 4, hy - 1, l);
+  }
+}
+
+// caído: boca arriba, la cabeza a la izquierda
+function fallen(o) {
+  return mk(22, 9, ({ R, P }) => {
+    const sk = o.skin;
+    // piernas y pies
+    R(14, 3, 6, 2, o.shorts != null ? o.pants : o.pants); R(14, 5, 6, 2, o.pantsD);
+    if (o.shorts != null) { R(17, 3, 3, 4, sk); }
+    if (o.stripe && o.shorts == null) { R(14, 4, 6, 1, o.stripe); }
+    const ft = o.feet === "descalzo" ? sk : o.shoes;
+    R(20, 2, 2, 2, ft); R(20, 5, 2, 2, ft); if (o.feet === "ojotas") { P(20, 2, sk); P(20, 5, sk); }
+    // torso
+    R(8, 2, 6, 5, o.shirt); R(8, 6, 6, 1, o.shirtD);
+    if (o.apron) { R(9, 2, 5, 5, o.apron); R(10, 3, 2, 2, o.apronL); }
+    if (o.print) R(10, 4, 1, 2, o.print);
+    if (o.star) { R(10, 3, 1, 3, o.star); P(9, 4, o.star); P(11, 4, o.star); }
+    if (o.necklace) { P(8, 3, o.necklace); P(8, 5, o.necklace); }
+    // brazos tirados
+    const hc = o.gloves || sk;
+    R(9, 0, 3, 2, o.sleeveless ? sk : o.shirt); R(12, 0, 2, 1, hc);
+    R(9, 7, 3, 1, o.sleeveless ? sk : o.shirtD); R(12, 7, 2, 2, hc);
+    if (o.cape) { R(8, 7, 7, 1, o.cape); }
+    // cabeza (cara hacia arriba: la vemos de costado)
+    R(2, 1, 6, 7, sk); P(2, 1, "rgba(0,0,0,0)");
+    const c = o.headgear || o.hairC;
+    if (o.hair === "rulos") { R(0, 1, 3, 6, c); P(1, 0, c); P(-1, 2, c); P(-1, 5, c); P(0, 7, c); P(1, 3, o.hairL); P(0, 5, o.hairL); }
+    else if (o.hair === "largo") { R(0, 1, 3, 7, c); R(-1, 2, 1, 5, c); R(3, 0, 3, 1, c); R(3, 8, 5, 1, c); P(1, 3, o.hairL); }
+    else { R(0, 1, 3, 6, c); P(1, 3, o.hairL || c); }
+    if (o.mask) { R(4, 2, 2, 5, o.mask); }
+    // ojos cerrados y boca
+    R(4, 3, 2, 1, DK); R(4, 5, 2, 1, DK); P(6, 4, o.mouth || "#a85048");
+    if (o.brows) { P(3, 3, o.brows); P(3, 5, o.brows); }
+  });
+}
+
+const THOMAS = {
+  skin: "#e2b08e", skinD: "#c08a6c", hair: "rulos", hairC: "#1f1714", hairL: "#4a3529", fade: "#7a5a48", brows: "#1f1714",
+  shirt: "#17191f", shirtD: "#0f1014", print: "#b9bcc4", sleeveless: true,
+  pants: "#8b8e96", pantsD: "#6d7078", stripe: "#eeeeee", feet: "ojotas", shoes: "#1d2a52", shoeStripe: "#ffffff"
+};
+const THOMAS_BIELLI = {
+  ...THOMAS, sleeveless: false, print: null, shirt: "#1b1b22", shirtD: "#101015",
+  pants: "#17161b", pantsD: "#17161b", stripe: null, shorts: 1, shortsWide: true, shortsSide: "#c42a30", shortsGold: "#e0a83a", belt: "#c42a30", beltG: "#e0a83a",
+  feet: "descalzo", gloves: "#2a2a34", glovesD: "#22222b", gloveL: "#8a8a9a", guard: true
+};
+const ROCIO = {
+  skin: "#f0c4a2", skinD: "#d4a482", hair: "largo", hairC: "#2b1a13", hairL: "#4a2f22", lash: true,
+  shirt: "#c7b3ea", shirtD: "#a491cf", necklace: "#e9edf2", pants: "#1d1d24", pantsD: "#121218", shoes: "#f2f2f2", shoesD: "#d6d6dc", sole: "#c9ccd4"
+};
+const ROCIO_ROROS = { ...ROCIO, apron: "#7aafc4", apronL: "#b8d8e8" };
+const MAITENA = {
+  skin: "#e2b08e", skinD: "#c08a6c", hair: "coleta", hairC: "#2a1c16", hairL: "#4a3529", lash: true, low: 1,
+  shirt: "#1b1b22", shirtD: "#101015", trim: "#f2d21e", pants: "#1b1b22", pantsD: "#1b1b22", shorts: 1, shortsWide: true, shortsSide: "#f2d21e",
+  feet: "descalzo", gloves: "#d83a3a", glovesD: "#a82a2a", gloveL: "#ff8a8a", guard: true, headgear: "#f2c21e", headgearL: "#fff0a0"
+};
+const ALUMNO = { skin: "#d8a07a", skinD: "#b8805c", hair: "rulos", hairC: "#241a14", hairL: "#3a2a20", fade: "#5a4030", shirt: "#1c1c20", shirtD: "#111114", print: "#f2d21e", pants: "#1c1c20", pantsD: "#111114", stripe: "#f2d21e", feet: "descalzo" };
+const ALUMNA = { skin: "#e8b48e", skinD: "#c8946e", hair: "largo", hairC: "#3a2418", hairL: "#5a3a28", shirt: "#1c1c20", shirtD: "#111114", print: "#f2d21e", pants: "#1c1c20", pantsD: "#111114", feet: "descalzo" };
+
+// Carmelo: 4 años, más bajito (12x15). Pijama de superhéroe genérico: naranja con estrella, antifaz y capa azul.
+const CARMELO = { skin: "#e8b48e", skinD: "#c8946e", hairC: "#3a2618", hairL: "#5a3c28", suit: "#f08a24", suitD: "#c86a14", star: "#ffe14a", cape: "#2b46a8", capeD: "#1e3278", mask: "#2b46a8" };
+function kid(o, pz) {
+  return mk(12, 15, ({ R, P }) => {
+    const step = { idle: [3, 6, 0], pasoA: [2, 7, 1], cruce: [4, 5, 0], pasoB: [6, 3, 1], patadita: [3, "kick", 0], corre: [1, 8, 1] }[pz];
+    const [fx, nx, dy] = step;
+    // capa (vuela más al correr)
+    const flap = pz === "pasoA" || pz === "pasoB" || pz === "corre";
+    if (flap) { R(0, 7 + dy, 3, 4, o.cape); P(0, 11 + dy, o.capeD); R(1, 6 + dy, 2, 1, o.cape); }
+    else { R(1, 7 + dy, 2, 5, o.cape); P(1, 12, o.capeD); }
+    // piernas (enterito con pies)
+    const leg = (x, far) => { const c = far ? o.suitD : o.suit; R(x, 12, 2, 1, c); R(x, 13, 3, 1, far ? "#d8b830" : o.star); };
+    leg(fx, true);
+    if (nx === "kick") { R(7, 10, 3, 2, o.suit); R(10, 10, 1, 2, o.star); }
+    else leg(nx, false);
+    // cuerpo
+    R(3, 8 + dy, 6, 4 - dy, o.suit); P(3, 8 + dy, o.suitD);
+    P(5, 8 + dy, o.star); R(4, 9 + dy, 3, 1, o.star); P(5, 10 + dy, o.star);
+    // brazos
+    R(2, 8 + dy, 1, 2, o.suitD); P(2, 10 + dy, o.skinD);
+    if (pz === "patadita") { R(9, 7, 1, 2, o.suit); P(9, 6, o.skin); }
+    else { R(9, 8 + dy, 1, 2, o.suit); P(9, 10 + dy, o.skin); }
+    // cabeza grande de nene
+    const hy = 1 + dy;
+    R(3, hy, 7, 7, o.skin); R(2, hy + 1, 1, 5, o.skin); P(3, hy + 6, o.skinD);
+    R(2, hy - 1, 8, 2, o.hairC); R(1, hy, 2, 3, o.hairC); P(9, hy, o.hairC); P(4, hy + 1, o.hairC); P(7, hy + 1, o.hairC); P(5, hy - 1, o.hairL); P(8, hy - 1, o.hairL);
+    R(4, hy + 3, 6, 2, o.mask); P(6, hy + 4, "#ffffff"); P(8, hy + 4, "#ffffff"); P(3, hy + 3, o.mask);
+    P(5, hy + 6, "#ee9a90"); P(8, hy + 6, pz === "patadita" ? DK : "#a85048");
+  });
+}
+
+/* ---------- gatos de la historia (más detalle que los enemigos comunes) ---------- */
+// 18x15 como el gato común. Cuadros 0 y 1 son los extremos del paso (sirven solos como antes);
+// la caminata completa es [0,2,1,3].
+const LEGOFF = [[-1, 1, -1, 1, 0, 0], [1, -1, 1, -1, 0, 0], [0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 1, 0]];
+function cat2(o, f) {
+  return mk(18, 15, ({ R, P, E, g }) => {
+    g.translate(0, 2);
+    const [o1, o2, o3, o4, liftF, liftN] = LEGOFF[f];
+    const fd = o.furD, fu = o.fur;
+    // patas lejanas
+    R(4 + o1, 10, 1, 2 - liftF, fd); R(11 + o3, 10, 1, 2 - liftF, fd);
+    // cola (peluda si corresponde), se balancea
+    const sw = f === 1 || f === 3 ? 1 : 0;
+    if (o.fluffy) { R(2, 4 + sw, 2, 4, fu); R(1, 2 + sw, 2, 3, fu); P(0, 2 + sw, fu); P(1, 1 + sw, o.tip || fu); P(2, 5 + sw, fd); P(1, 3 + sw, o.stripe || fd); }
+    else { R(2, 4 + sw, 1, 4, fu); P(1, 3 + sw, fu); P(1, 2 + sw, o.tip || fu); if (o.stripe) P(2, 6 + sw, o.stripe); }
+    // cuerpo
+    E(8.5, 7.5, o.fat ? 6 : 5.2, o.fat ? 3.5 : 3, fu);
+    if (o.belly) E(8.5, 9.4, 4, 1.3, o.belly);
+    if (o.stripe) [5, 7, 9].forEach(x => { R(x, 5, 1, 2, o.stripe); P(x + 1, 7, o.stripe); });
+    if (o.fluffy) { [[4, 4], [7, 4], [10, 4], [3, 9], [6, 11], [9, 11], [12, 10]].forEach(([x, y]) => P(x, y, fu)); P(5, 11, fu); }
+    // patas cercanas
+    R(6 + o2, 10, 1, 2 - liftN, fu); R(13 + o4, 10, 1, 2 - liftN, fu);
+    if (o.paws) { P(6 + o2, 11 - liftN, o.paws); P(13 + o4, 11 - liftN, o.paws); P(4 + o1, 11 - liftF, o.paws); P(11 + o3, 11 - liftF, o.paws); }
+    // cabeza
+    E(14.2, 4.6, 3, 2.8, fu); R(12, 3, 5, 4, fu);
+    P(12, 0, fu); R(12, 1, 2, 1, fu); P(16, 0, fu); R(15, 1, 2, 1, fu); P(13, 1, o.inner || "#f0a0a0");
+    if (o.ruff) { R(11, 5, 2, 4, o.ruff); P(10, 6, o.ruff); P(12, 8, o.ruff); P(13, 8, o.ruff); }
+    if (o.bib) { R(13, 6, 3, 2, o.bib); R(12, 7, 2, 2, o.bib); P(14, 8, o.bib); }
+    if (o.blaze) { P(14, 1, o.blaze); P(14, 2, o.blaze); P(15, 3, o.blaze); }
+    if (o.muzzle) { R(15, 5, 2, 2, o.muzzle); P(17, 5, o.muzzle); }
+    if (o.stripe) { P(13, 2, o.stripe); P(15, 2, o.stripe); P(12, 4, o.stripe); }
+    
+    // ojos, nariz
+    P(14, 4, o.eye); P(16, 4, o.eye);
+    if (o.grumpy) { P(13, 3, DK); P(14, 3, DK); P(16, 3, DK); P(15, 2, o.stripe || DK); }
+    P(17, 5, "#e88a8a");
+    if (o.stache) { P(15, 6, o.stache); P(16, 6, o.stache); P(17, 6, o.stache); P(14, 5, o.stache); P(18, 5, o.stache); }
+    if (o.crown) { R(12, -1, 5, 1, "#f2c230"); P(12, -2, "#f2c230"); P(14, -2, "#f2c230"); P(16, -2, "#f2c230"); P(14, -1, "#e0483c"); }
+    if (o.mini) { R(13, 0, 3, 1, "#f2c230"); P(13, -1, "#f2c230"); P(15, -1, "#f2c230"); P(14, 0, "#4ac8ff"); }
+  });
+}
+const CATS2 = {
+  juli: { fur: "#8a8d96", furD: "#6f727b", bib: "#f4f4f4", blaze: "#f4f4f4", muzzle: "#f4f4f4", paws: "#f4f4f4", eye: "#7ed957", fluffy: true, tip: "#f4f4f4" },
+  luz: { fur: "#8d8170", furD: "#6e6355", stripe: "#3e342b", belly: "#e08a3a", eye: "#e0a53a", grumpy: true },
+  linda: { fur: "#8a7a66", furD: "#6c5e4d", stripe: "#3e342b", bib: "#f6f3ee", ruff: "#a8987f", paws: "#f6f3ee", eye: "#ff5a3a", grumpy: true, fluffy: true, fat: true, crown: true },
+  gataLinda: { fur: "#8a7a66", furD: "#6c5e4d", stripe: "#3e342b", bib: "#f6f3ee", ruff: "#a8987f", paws: "#f6f3ee", eye: "#ff8a3a", grumpy: true, fluffy: true, fat: true }
+};
+CATS2.juliano = { ...CATS2.juli, mini: true, stache: "#2b2833" };
+
+// gatitos de Juli (el Chema y Amanda): iguales a Juli pero chiquitos y con cara medio boba.
+// 12x10, cuatro cuadros, caminata [0,2,1,3]
+function kitten2(o, f) {
+  return mk(12, 10, ({ R, P, E }) => {
+    const [o1, o2, o3, o4, lF, lN] = LEGOFF[f];
+    const c = o.fur, d = o.furD, w = o.white;
+    R(3 + o1, 7, 1, 2 - lF, d); R(8 + o3, 7, 1, 2 - lF, d); P(3 + o1, 8 - lF, w); P(8 + o3, 8 - lF, w);
+    const sw = f === 1 || f === 3 ? 1 : 0;
+    R(1, 2 + sw, 2, 3, c); P(0, 1 + sw, c); P(1, 1 + sw, w);
+    E(5.5, 5.3, 3.6, 2.2, c); P(3, 3, c); P(6, 3, c);
+    E(7.4, 6.4, 1.6, 1, w);
+    R(4 + o2, 7, 1, 2 - lN, c); R(9 + o4, 7, 1, 2 - lN, c); P(4 + o2, 8 - lN, w); P(9 + o4, 8 - lN, w);
+    E(9, 3.2, 2.6, 2.4, c); P(7, 0, c); P(11, 0, c); P(7, 1, "#f0a0a0"); P(11, 1, c);
+    P(9, 1, w); P(9, 2, w); R(9, 4, 3, 2, w);
+    // cara boba: ojos grandes y desparejos, lengüita afuera
+    const ry = o.cross ? 3 : 2;
+    P(8, 2, o.eye); P(8, 3, DK); P(10, ry, o.eye); P(10, ry + 1, DK);
+    P(11, 4, "#e88a8a"); if (o.tongue) P(10, 6, "#ff7a9a");
+  });
+}
+const JULI_KIT = { fur: "#8a8d96", furD: "#6f727b", white: "#f4f4f4", eye: "#7ed957" };
+const KITTENS = { chema: { ...JULI_KIT, tongue: true }, amanda: { ...JULI_KIT, cross: true } };
+
+/* ---------- perros ---------- */
+// caniche: 17x13, cuatro cuadros, caminata [0,2,1,3]
+function poodle(o, f) {
+  return mk(17, 13, ({ R, P, E }) => {
+    const [o1, o2, o3, o4, lF, lN] = LEGOFF[f];
+    const c = o.fur, d = o.dark, l = o.light;
+    // patas lejanas
+    R(4 + o1, 8, 1, 3 - lF, d); R(10 + o3, 8, 1, 3 - lF, d); R(3 + o1, 10 - lF, 2, 1, d); R(10 + o3, 10 - lF, 2, 1, d);
+    // cola pompón
+    const sw = f === 1 || f === 3 ? 1 : 0;
+    P(3, 5, c); P(2, 4, c); E(1.6, 2.6 + sw * 0.5, 1.6, 1.5, c); P(1, 2 + sw, l);
+    // cuerpo con rulos
+    E(7.5, 6.6, 4.4, 2.6, c);
+    [[5, 5], [8, 4], [10, 6], [6, 7], [9, 8], [4, 7]].forEach(([x, y]) => P(x, y, d));
+    [[6, 4], [9, 5], [7, 6]].forEach(([x, y]) => P(x, y, l));
+    // patas cercanas
+    R(6 + o2, 8, 1, 3 - lN, c); R(12 + o4, 8, 1, 3 - lN, c); R(6 + o2, 10 - lN, 2, 1, c); R(12 + o4, 10 - lN, 2, 1, c);
+    // cabeza: copete, oreja colgante, hocico
+    E(12.5, 3.6, 2.6, 2.4, c); E(12, 1, 2.2, 1.6, c); P(11, 0, l); P(13, 0, d);
+    R(10, 3, 2, 4, d); P(11, 7, d); P(10, 4, c);
+    R(14, 4, 2, 2, l); P(16, 4, DK); P(15, 5, l);
+    P(13, 3, DK);
+    if (o.bow) { R(11, -1, 1, 2, o.bow); R(13, -1, 1, 2, o.bow); P(12, 0, o.bowD); if (o.boss) { P(10, -2, o.bow); P(14, -2, o.bow); R(10, -1, 1, 2, o.bow); R(14, -1, 1, 2, o.bow); } }
+    if (o.boss) { P(12, 2, DK); P(13, 2, DK); P(13, 3, "#ff3a6a"); }
+    if (o.beret) { R(10, -1, 5, 2, o.beret); P(15, 0, o.beret); P(12, -2, o.beret); P(11, -1, o.beretL); }
+    if (o.stache) { P(14, 6, o.stache); P(15, 6, o.stache); P(16, 5, o.stache); P(13, 6, o.stache); }
+  });
+}
+const ROMERO = { fur: "#b8652f", dark: "#8e4a1f", light: "#d68548" };
+const GOMEGHOOO = { ...ROMERO, beret: "#22222c", beretL: "#40404e", stache: "#2a1a12" };
+const CANICHE = { fur: "#efe5d3", dark: "#cdbfa5", light: "#fffaf0", bow: "#ff5fa0", bowD: "#c83a78" };
+const CANICHE_BOSS = { ...CANICHE, boss: true, dark: "#c4b495" };
+
+// Corbata: perro negro de pelo corto con pecho blanco. 20x14, caminata [0,2,1,3]
+function corbata(f) {
+  return mk(20, 14, ({ R, P, E }) => {
+    const [o1, o2, o3, o4, lF, lN] = LEGOFF[f];
+    const c = "#2c2833", d = "#1f1c25", l = "#4a4554", w = "#f2ece0";
+    R(5 + o1, 9, 2, 3 - lF, d); R(13 + o3, 9, 2, 3 - lF, d);
+    const sw = f === 1 || f === 3 ? 1 : 0;
+    R(2, 3 + sw, 1, 3, c); P(1, 2 + sw, c); P(3, 6, c);
+    E(9.5, 7, 5.8, 2.8, c); R(5, 5, 8, 1, l);
+    R(7 + o2, 9, 2, 3 - lN, c); R(15 + o4, 9, 2, 3 - lN, c);
+    // pecho blanco en forma de corbata
+    R(14, 6, 2, 2, w); P(15, 8, w); P(14, 9, w);
+    E(16, 3.6, 2.8, 2.6, c); R(18, 3, 2, 3, c); P(20, 4, DK); R(18, 5, 2, 1, l);
+    R(14, 1, 2, 4, d); P(14, 5, d);
+    P(17, 2, "#8a5a2b"); P(17, 3, "#8a5a2b"); P(16, 1, l);
+  });
+}
+
+/* ---------- gatos enemigos ---------- */
 function cat(o, f) {
   return mk(18, 15, ({ R, P, E, g }) => {
     g.translate(0, 2);
@@ -103,9 +413,6 @@ const CATS = {
   gato: { fur: "#8d8f98", stripe: "#6b6d76", eye: "#f2d24a", paws: "#c9ccd4" },
   negro: { fur: "#2b2833", eye: "#9dff6a", inner: "#6a3b4a" },
   gordo: { fur: "#e08a3a", stripe: "#b8662a", belly: "#f4d0a4", eye: "#6ad14a", fat: true },
-  juli: { fur: "#8a8d96", bib: "#f4f4f4", blaze: "#f4f4f4", paws: "#f4f4f4", eye: "#bcd25a", fluffy: true },
-  luz: { fur: "#8d8170", stripe: "#4a3f34", belly: "#d19356", eye: "#e0a53a", grumpy: true },
-  linda: { fur: "#8a7a66", stripe: "#3e342b", bib: "#f6f3ee", paws: "#f6f3ee", eye: "#ff5a3a", grumpy: true, fluffy: true, fat: true, crown: true },
   saltarin: { fur: "#e8e2d6", patch: "#e0822e", eye: "#ffd24a", paws: "#ffffff", tip: "#e0822e" },
   escupidor: { fur: "#efe0c4", face: "#4a3326", eye: "#5ab8ff", paws: "#4a3326", tip: "#4a3326", inner: "#4a3326" },
   madre: { fur: "#f4f1ea", patch: "#e0822e", patch2: "#2b2833", eye: "#6ad14a", fat: true }
@@ -121,20 +428,6 @@ function kitten(f) {
   });
 }
 
-function dog(o, f) {
-  return mk(15, 12, ({ R, P, E }) => {
-    const up = f % 2;
-    [[4, up], [6, 1 - up], [10, 1 - up], [12, up]].forEach(([x, u]) => { R(x, 9, 1, 2 - u, o.fur); P(x, 10 - u, o.dark); });
-    E(8, 7, 4.8, 2.8, o.fur);
-    [[5, 5], [8, 5], [10, 6], [6, 8], [9, 8]].forEach(([x, y]) => P(x, y, o.dark));
-    E(12, 3.5, 2.8, 2.8, o.fur); P(11, 2, o.dark); P(13, 4, o.dark);
-    R(14, 4, 1, 2, o.fur); P(15, 4, "#1a1420");
-    P(13, 3, "#1a1420");
-    E(10.5, 5, 1, 1.8, o.dark);
-    E(2.5, 4 + up, 1.6, 1.6, o.fur);
-  });
-}
-const ROMERO = { fur: "#b8652f", dark: "#8e4a1f" };
 
 function paloma(f) {
   return mk(12, 9, ({ R, P, E }) => {
@@ -146,6 +439,7 @@ function paloma(f) {
     P(5, 8, "#d27a5a"); P(7, 8, "#d27a5a");
   });
 }
+
 
 /* ---------- objetos ---------- */
 function booth(back) {
@@ -191,7 +485,7 @@ const ITEMS = {
   jacaranda: () => mk(24, 32, ({ R, E }) => { R(10, 20, 4, 12, "#6b4a2f"); E(12, 12, 11, 10, "#6f4fa8"); E(9, 9, 6, 5, "#8e6bbf"); E(16, 15, 6, 5, "#5a3f8c"); E(8, 7, 2, 2, "#b79be0"); }),
   farol: () => mk(8, 30, ({ R }) => { R(3, 6, 2, 22, "#2d2d33"); R(2, 27, 4, 3, "#2d2d33"); R(1, 2, 6, 4, "#2d2d33"); R(2, 5, 4, 1, "#ffe7a8"); R(3, 0, 2, 2, "#2d2d33"); }),
   mate: () => mk(9, 10, ({ R, E }) => { E(4.5, 6, 4, 3.6, "#8a5a33"); R(2, 2, 5, 2, "#6fae4a"); R(6, 0, 1, 5, "#d6d6d6"); R(3, 5, 1, 2, "#a8743f"); }),
-  guante: () => mk(9, 9, ({ R, E }) => { E(4.5, 3.6, 4, 3.4, "#d32f2f"); R(1, 6, 7, 3, "#f2f2f2"); R(2, 2, 2, 1, "#ff6a6a"); }),
+  guante: () => mk(9, 9, ({ R, E, P }) => { E(4.5, 3.6, 4, 3.4, "#2a2a34"); R(1, 6, 7, 3, "#f2f2f2"); R(2, 2, 2, 1, "#8a8a9a"); P(2, 3, "#5a5a68"); R(1, 7, 7, 1, "#c42a30"); }),
   zapa: () => mk(10, 7, ({ R, P }) => { R(1, 1, 5, 3, "#2a4fb0"); R(0, 3, 10, 2, "#2a4fb0"); R(0, 5, 10, 1, "#ffffff"); P(3, 2, "#ffffff"); P(5, 3, "#ffffff"); P(7, 3, "#ffffff"); }),
   termo: () => mk(6, 11, ({ R }) => { R(0, 2, 6, 9, "#f2f2f2"); R(1, 0, 4, 2, "#7fc6c1"); R(1, 4, 4, 3, "#7fc6c1"); R(1, 3, 1, 7, "#ffffff"); }),
   iman: () => mk(9, 9, ({ R }) => { R(0, 0, 3, 7, "#d32f2f"); R(6, 0, 3, 7, "#d32f2f"); R(0, 6, 9, 3, "#d32f2f"); R(0, 0, 3, 2, "#d6d6d6"); R(6, 0, 3, 2, "#d6d6d6"); }),
@@ -294,29 +588,263 @@ const ITEMS = {
   banco: () => mk(20, 10, ({ R }) => { R(0, 0, 20, 2, "#2f4f3a"); R(0, 4, 20, 2, "#3b6048"); R(1, 6, 1, 4, "#1f1f1f"); R(18, 6, 1, 4, "#1f1f1f"); R(1, 2, 1, 2, "#1f1f1f"); R(18, 2, 1, 2, "#1f1f1f"); })
 };
 
+
 export const SPR = {};
-function add(name, frames, anchorY) {
-  SPR[name] = { f: frames, fl: frames.map(flipped), wh: frames.map(white), w: frames[0].width, h: frames[0].height, ay: anchorY ?? frames[0].height - 1 };
+// anim: nombre de animación -> índices de cuadro (y "caido" -> id del sprite de caído)
+function add(name, frames, anchorY, anim) {
+  SPR[name] = { f: frames, fl: frames.map(flipped), wh: frames.map(white), w: frames[0].width, h: frames[0].height, ay: anchorY ?? frames[0].height - 1, anim: anim || null };
 }
+const PERSONA_ANIM = (id, a, b) => ({ quieto: [0], caminar: [1, 2, 3, 0], [a]: [4], [b]: [5], ataque: [4, 5], esquive: [6], caido: id + "Caido" });
+const BICHO_ANIM = { quieto: [0], caminar: [0, 2, 1, 3] };
 export function buildSprites() {
-  add("thomas", [0, 1, 2, 3].map(f => human(THOMAS, f)));
-  add("rocio", [0, 1, 2, 3].map(f => human(ROCIO, f)));
-  add("alumno", [0, 1, 2, 3].map(f => human(ALUMNO, f)));
-  add("alumna", [0, 1, 2, 3].map(f => human(ALUMNA, f)));
-  for (const [k, o] of Object.entries(CATS)) {
-    const fr = [0, 1].map(f => cat(o, f));
-    const s = k === "luz" ? 2 : k === "linda" ? 3 : 1;
-    add(k, s > 1 ? fr.map(c => scaled(c, s)) : fr);
-  }
+  const persona = (id, o, atk, nA, nB) => {
+    add(id, [...WALK, ...atk, "esquive"].map(p => person(o, p)), undefined, PERSONA_ANIM(id, nA, nB));
+    add(id + "Caido", [fallen(o)]);
+  };
+  persona("thomas", THOMAS, ["golpe", "patada"], "golpe", "patada");
+  persona("thomasBielli", THOMAS_BIELLI, ["golpe", "patada"], "golpe", "patada");
+  persona("rocio", ROCIO, ["cargar", "lanzar"], "cargar", "lanzar");
+  persona("rocioRoros", ROCIO_ROROS, ["cargar", "lanzar"], "cargar", "lanzar");
+  persona("maitena", MAITENA, ["golpe", "patada"], "golpeFuerte", "patada");
+  add("carmelo", ["idle", "pasoA", "cruce", "pasoB", "patadita"].map(p => kid(CARMELO, p)), undefined, { quieto: [0], caminar: [1, 2, 3, 0], patadita: [4], ataque: [4] });
+  add("alumno", WALK.map(p => person(ALUMNO, p)));
+  add("alumna", WALK.map(p => person(ALUMNA, p)));
+  // enemigos comunes
+  for (const [k, o] of Object.entries(CATS)) add(k, [0, 1].map(f => cat(o, f)));
   for (const k of ["gato", "negro", "gordo", "saltarin", "escupidor", "madre"]) add(k + "E", SPR[k].f.map(c => scaled(c, 2)));
+  // gatos de la historia (cuadros 0 y 1 = extremos del paso, compatibles con el uso viejo de 2 cuadros)
+  const SC = { luz: 2, linda: 3, gataLinda: 2 };
+  for (const [k, o] of Object.entries(CATS2)) { const fr = [0, 1, 2, 3].map(f => cat2(o, f)); const s = SC[k] || 1; add(k, s > 1 ? fr.map(c => scaled(c, s)) : fr, undefined, BICHO_ANIM); }
+  for (const [k, o] of Object.entries(KITTENS)) add(k, [0, 1, 2, 3].map(f => kitten2(o, f)), undefined, BICHO_ANIM);
   add("gatito", [0, 1].map(kitten));
-  add("romero", [0, 1].map(f => dog(ROMERO, f)));
+  add("romero", [0, 1, 2, 3].map(f => poodle(ROMERO, f)), undefined, BICHO_ANIM);
+  add("gomeghooo", [0, 1, 2, 3].map(f => poodle(GOMEGHOOO, f)), undefined, BICHO_ANIM);
+  add("caniche", [0, 1, 2, 3].map(f => poodle(CANICHE, f)), undefined, BICHO_ANIM);
+  add("canicheBoss", [0, 1, 2, 3].map(f => scaled(poodle(CANICHE_BOSS, f), 3)), undefined, BICHO_ANIM);
+  add("corbata", [0, 1, 2, 3].map(corbata), undefined, BICHO_ANIM);
   add("paloma", [0, 1].map(paloma));
   for (const [k, fn] of Object.entries(ITEMS)) add(k, [fn()]);
 }
 
-// retrato grande para la interfaz
+// retrato grande para la interfaz (memorizado por nombre y escala)
+const _por = {};
 export function portrait(name, scale = 6) {
+  const k = name + "@" + scale; if (_por[k]) return _por[k];
   const s = SPR[name]; if (!s) return "";
-  return scaled(s.f[0], scale).toDataURL();
+  return (_por[k] = scaled(s.f[0], scale).toDataURL());
+}
+
+/* ---------- retratos de diálogo 32x32 (de frente) ---------- */
+const W = "#ffffff";
+function eyes2(R, P, y, col, opt = {}) {
+  // ojos de persona: 2x3 con brillo
+  const lx = opt.lx ?? 10, rx = opt.rx ?? 18, h = opt.h ?? 3;
+  R(lx, y, 2, h, col); R(rx, y, 2, h, col); P(lx, y, W); P(rx, y, W);
+}
+function bust(o) {
+  return mk(30, 30, ({ R, P, E }) => {
+    const sk = o.skin, sd = o.skinD;
+    if (o.cape) { R(1, 21, 28, 9, o.cape); R(1, 21, 28, 1, o.capeD); }
+    if (o.hair === "largo") { E(15, 12, 10.5, 10, o.hairC); R(4, 12, 22, 18, o.hairC); }
+    if (o.headgear) E(15, 12.5, 10.5, 11, o.headgear);
+    // torso y cuello
+    E(15, 31, 13.5, 8, o.shirt); R(2, 26, 26, 4, o.shirt);
+    if (o.sleeveless) { E(3.5, 28, 3, 4, sk); E(26.5, 28, 3, 4, sk); R(6, 24, 1, 6, o.shirtD); R(23, 24, 1, 6, o.shirtD); }
+    R(12, 19, 6, 5, sd); R(12, 23, 6, 1, o.shirtD);
+    if (o.print) { R(10, 27, 10, 1, o.print); P(12, 27, o.shirt); P(15, 27, o.shirt); P(18, 27, o.shirt); }
+    if (o.trim) { R(9, 23, 12, 1, o.trim); }
+    if (o.apron) { R(9, 24, 12, 6, o.apron); R(9, 22, 2, 2, o.apron); R(19, 22, 2, 2, o.apron); R(12, 26, 6, 3, o.apronL); R(9, 24, 12, 1, o.apronL); }
+    if (o.star) { R(14, 24, 2, 6, o.star); R(11, 26, 8, 2, o.star); P(12, 28, o.star); P(17, 28, o.star); P(13, 29, o.star); P(16, 29, o.star); }
+    if (o.necklace) { [[10, 22], [11, 23], [12, 24], [13, 25], [16, 25], [17, 24], [18, 23], [19, 22]].forEach(([x, y]) => P(x, y, o.necklace)); R(14, 25, 2, 2, o.necklace); P(14, 26, "#b8c4d4"); }
+    // cara
+    E(7, 14, 1.6, 2.2, sk); E(23, 14, 1.6, 2.2, sk); P(7, 14, sd); P(23, 14, sd);
+    if (o.headgear) { E(15, 14.5, 6.6, 7.8, sk); }
+    else E(15, 13, 7.6, 8.6, sk);
+    R(10, 21, 10, 1, sd);
+    // ojos, cejas, nariz, boca
+    if (o.mask) {
+      R(7, 11, 16, 5, o.mask); P(6, 12, o.mask); P(23, 12, o.mask); P(5, 11, o.mask); P(24, 11, o.mask);
+      R(10, 12, 3, 3, W); R(17, 12, 3, 3, W); R(11, 13, 2, 2, DK); R(18, 13, 2, 2, DK); P(10, 12, W);
+    } else {
+      eyes2(R, P, 13, DK, { h: o.kid ? 4 : 3 });
+      if (o.lash) { P(9, 13, DK); P(20, 13, DK); }
+      if (o.brows) { R(9, 10, 4, 2, o.brows); R(17, 10, 4, 2, o.brows); P(8, 11, o.brows); P(21, 11, o.brows); }
+      else { R(9, 11, 4, 1, o.browC || o.hairC); R(17, 11, 4, 1, o.browC || o.hairC); }
+    }
+    P(15, 16, sd); P(14, 17, sd); P(16, 17, sd);
+    R(9, 17, 2, 1, o.blush || "#ee9a90"); R(19, 17, 2, 1, o.blush || "#ee9a90");
+    const m = o.mouth || "#a85048";
+    if (o.grit) { R(12, 19, 6, 2, m); R(13, 19, 4, 1, W); }
+    else { R(13, 19, 4, 1, m); P(12, 18, m); P(17, 18, m); if (o.teeth) R(13, 19, 4, 1, W), R(13, 20, 4, 1, m); }
+    // pelo
+    const c = o.hairC, l = o.hairL;
+    if (o.hair === "rulos") {
+      E(15, 5.5, 9.4, 4.8, c);
+      [[7, 5.5], [9.5, 3.2], [13, 2.4], [17, 2.4], [20.5, 3.2], [23, 5.5]].forEach(([x, y]) => E(x, y, 2.6, 2.3, c));
+      R(6, 6, 2, 6, c); R(22, 6, 2, 5, c); P(6, 12, o.fade); P(7, 12, o.fade); P(22, 11, o.fade); P(23, 11, o.fade);
+      [[9, 9], [10, 10], [13, 9], [14, 10], [18, 9], [17, 10], [21, 9]].forEach(([x, y]) => P(x, y, c));
+      R(8, 8, 15, 1, c);
+      [[9, 3], [12, 2], [16, 2], [19, 3], [22, 5], [7, 5], [11, 5], [15, 4], [19, 5], [13, 7], [17, 7], [9, 7], [21, 7], [10, 3], [14, 2], [18, 3]].forEach(([x, y]) => P(x, y, l));
+    } else if (o.hair === "largo") {
+      E(15, 6, 9, 5, c); R(6, 6, 3, 10, c); R(21, 6, 3, 9, c);
+      // flequillo de costado
+      for (let y = 5; y <= 10; y++) R(8, y, Math.max(0, 14 - (y - 5) * 2), 1, c);
+      R(4, 18, 4, 12, c); R(22, 18, 4, 12, c); P(5, 22, l); P(24, 22, l); P(23, 26, l);
+      [[10, 3], [13, 2], [17, 2], [20, 4], [11, 6], [7, 12]].forEach(([x, y]) => P(x, y, l));
+    } else if (o.hair === "corto") {
+      E(15, 6, 8.6, 4.4, c); R(7, 6, 2, 5, c); R(21, 6, 2, 5, c); R(9, 8, 12, 1, c); P(11, 9, c); P(15, 9, c); P(19, 9, c); P(15, 1, c); P(16, 0, c);
+      P(11, 4, l); P(16, 3, l); P(19, 5, l);
+    }
+    if (o.headgear) {
+      const h = o.headgear, hl = o.headgearL; R(9, 4, 12, 3, h); R(7, 6, 3, 9, h); R(20, 6, 3, 9, h); P(10, 7, h); P(19, 7, h);
+      R(10, 2, 10, 1, hl); P(9, 3, hl); R(8, 8, 1, 5, hl); R(10, 7, 10, 1, o.hairC); P(12, 8, o.hairC); P(17, 8, o.hairC);
+    }
+    if (o.gloves) {
+      E(5, 25, 4.6, 4.6, o.gloves); E(25, 25, 4.6, 4.6, o.gloves); P(3, 22, o.gloveL); P(4, 22, o.gloveL); P(23, 22, o.gloveL); P(24, 22, o.gloveL);
+      R(2, 28, 7, 2, o.cuff || o.glovesD); R(22, 28, 7, 2, o.cuff || o.glovesD);
+    }
+  });
+}
+
+function catFace(o) {
+  return mk(30, 30, ({ R, P, E }) => {
+    const c = o.fur, d = o.furD, kit = o.kit;
+    const hcx = 15, hcy = kit ? 18 : 17, rx = kit ? 9.6 : 11.4, ry = kit ? 8.6 : 9.4;
+    if (o.ruff) { E(15, 19, 14.4, 10.6, o.ruff); [[1, 16], [0, 20], [1, 24], [28, 16], [29, 20], [28, 24], [5, 28], [24, 28]].forEach(([x, y]) => P(x, y, o.ruff)); }
+    // orejas
+    const ear = (side) => {
+      const ex = kit ? 7 : 6, top = kit ? 3 : 2;
+      for (let k = 0; k < 8; k++) {
+        const x0 = ex - (k >> 2), x1 = ex + 1 + k; const y = top + k;
+        for (let x = x0; x <= x1; x++) P(side ? 29 - x : x, y, c);
+        if (k >= 2 && k <= 6) for (let x = x0 + 2; x <= x1 - 2; x++) P(side ? 29 - x : x, y, o.inner || "#f0a0a0");
+      }
+    };
+    ear(0); ear(1);
+    if (o.earC) { for (let k = 0; k < 3; k++) { P((kit ? 7 : 6) + k, (kit ? 3 : 2) + k, o.earC); P(29 - ((kit ? 7 : 6) + k), (kit ? 3 : 2) + k, o.earC); } }
+    // cabeza
+    E(hcx, hcy, rx, ry, c);
+    if (o.fluffy) { const L = Math.round(hcx - rx), Rr = Math.round(hcx + rx) - 1; [[L - 1, hcy], [L - 2, hcy + 2], [L - 1, hcy + 4], [Rr + 1, hcy], [Rr + 2, hcy + 2], [Rr + 1, hcy + 4]].forEach(([x, y]) => P(x, y, c)); }
+    if (o.bib) E(15, 29.5, 8, 3, o.bib);
+    if (o.belly) E(15, 29.5, 9, 3, o.belly);
+    if (o.blaze) { R(14, hcy - 9, 2, 6, o.blaze); R(13, hcy - 3, 4, 3, o.blaze); }
+    if (o.stripe) { R(11, hcy - 8, 1, 3, o.stripe); R(15, hcy - 9, 1, 4, o.stripe); R(19, hcy - 8, 1, 3, o.stripe); P(12, hcy - 5, o.stripe); P(18, hcy - 5, o.stripe); R(4, hcy, 3, 1, o.stripe); R(23, hcy, 3, 1, o.stripe); R(5, hcy + 2, 2, 1, o.stripe); R(23, hcy + 2, 2, 1, o.stripe); }
+    if (o.muzzle) E(15, hcy + 5, kit ? 4 : 5, 2.8, o.muzzle);
+    // ojos
+    const ey = hcy - 2, es = kit ? 5 : 4;
+    const eye = (x, y, s) => {
+      R(x, y, s, s, o.eye); P(x, y, c); P(x + s - 1, y, c); P(x, y + s - 1, c); P(x + s - 1, y + s - 1, c);
+      R(x + (s >> 1) - (s > 4 ? 1 : 0), y, s > 4 ? 2 : 1, s, DK); P(x + 1, y + 1, W);
+    };
+    const lx = kit ? 8 : 9, rxx = kit ? 17 : 17;
+    eye(lx, ey - (o.cross ? 1 : 0), es); eye(rxx, ey + (o.cross ? 2 : 0), o.cross ? es - 2 : es);
+    if (o.grumpy) { R(lx, ey, es, 1, d); R(rxx, ey, es, 1, d); P(lx, ey - 2, DK); P(lx + 1, ey - 2, DK); P(lx + 2, ey - 1, DK); P(lx + 3, ey - 1, DK); P(rxx + 3, ey - 2, DK); P(rxx + 2, ey - 2, DK); P(rxx + 1, ey - 1, DK); P(rxx, ey - 1, DK); }
+    // nariz y boca
+    const ny = hcy + 3;
+    R(14, ny, 3, 1, "#e8868e"); P(15, ny + 1, "#e8868e");
+    P(15, ny + 2, DK); P(14, ny + 3, DK); P(13, ny + 3, DK); P(16, ny + 3, DK); P(17, ny + 3, DK);
+    if (o.tongue) { R(14, ny + 4, 2, 2, "#ff7a9a"); P(14, ny + 5, "#e85a7a"); }
+    // bigotes
+    [[4, ny], [6, ny + 1], [8, ny + 1], [25, ny], [23, ny + 1], [21, ny + 1], [5, ny + 3], [7, ny + 2], [24, ny + 3], [22, ny + 2]].forEach(([x, y]) => P(x, y, o.whisk || "#e8e8ee"));
+    if (o.stache) { R(11, ny + 2, 3, 1, o.stache); R(16, ny + 2, 3, 1, o.stache); P(10, ny + 1, o.stache); P(19, ny + 1, o.stache); P(9, ny, o.stache); P(20, ny, o.stache); }
+    if (o.crown) { R(11, 3, 8, 3, "#f2c230"); P(11, 2, "#f2c230"); P(14, 1, "#f2c230"); P(15, 1, "#f2c230"); P(18, 2, "#f2c230"); P(14, 4, "#4ac8ff"); P(15, 4, "#4ac8ff"); R(11, 5, 8, 1, "#c79520"); P(12, 3, "#fff2b0"); }
+    if (o.bigCrown) { R(9, 1, 12, 4, "#f2c230"); P(9, 0, "#f2c230"); P(12, 0, "#f2c230"); P(15, 0, "#f2c230"); P(17, 0, "#f2c230"); P(20, 0, "#f2c230"); P(14, 2, "#e0483c"); P(15, 2, "#e0483c"); R(9, 4, 12, 1, "#c79520"); }
+  });
+}
+const FACES = {
+  juli: { fur: "#8a8d96", furD: "#6f727b", bib: "#f4f4f4", blaze: "#f4f4f4", muzzle: "#f4f4f4", eye: "#7ed957", fluffy: true },
+  luz: { fur: "#8d8170", furD: "#6e6355", stripe: "#3e342b", belly: "#e08a3a", eye: "#e0a53a", grumpy: true, muzzle: "#b8ab98" },
+  linda: { fur: "#8a7a66", furD: "#6c5e4d", stripe: "#3e342b", ruff: "#b0a088", bib: "#f6f3ee", muzzle: "#f6f3ee", eye: "#ff6a3a", grumpy: true, fluffy: true }
+};
+FACES.juliano = { ...FACES.juli, crown: true, stache: "#2b2833" };
+FACES.chema = { ...FACES.juli, kit: true, tongue: true, fluffy: false };
+FACES.amanda = { ...FACES.juli, kit: true, cross: true, fluffy: false, tongue: false };
+FACES.lindaJefa = { ...FACES.linda, bigCrown: true };
+
+function dogFace(o) {
+  return mk(30, 30, ({ R, P, E }) => {
+    const c = o.fur, d = o.dark, l = o.light;
+    if (o.poodle) {
+      E(6, 18, 3.6, 7.5, d); E(24, 18, 3.6, 7.5, d); [[4, 13], [6, 15], [5, 19], [7, 22], [24, 14], [23, 18], [25, 21]].forEach(([x, y]) => P(x, y, c));
+      E(15, 16, 8.4, 8.4, c);
+      E(15, 7, 8, 5.5, c); [[10, 5], [13, 3], [17, 4], [20, 6], [12, 8], [16, 7], [19, 9], [9, 8]].forEach(([x, y]) => P(x, y, d)); [[11, 4], [15, 3], [18, 6], [14, 6]].forEach(([x, y]) => P(x, y, l));
+      E(15, 29, 7, 3, c);
+      E(15, 21, 4.6, 3.6, l); R(13, 18, 4, 2, DK); P(13, 18, "#5a5a66");
+      R(10, 14, 3, 3, DK); R(18, 14, 3, 3, DK); P(10, 14, W); P(18, 14, W);
+      R(14, 23, 2, 1, DK);
+      if (o.tongue) R(14, 24, 2, 2, "#ff7a9a");
+      if (o.bow) { R(8, 1, 4, 5, o.bow); R(18, 1, 4, 5, o.bow); R(12, 2, 6, 3, o.bowD); P(9, 2, "#ffb3d0"); P(19, 2, "#ffb3d0"); if (o.boss) { P(7, 0, o.bow); P(22, 0, o.bow); R(7, 1, 1, 5, o.bow); R(22, 1, 1, 5, o.bow); } }
+      if (o.boss) { R(9, 12, 4, 1, DK); P(12, 13, DK); R(17, 12, 4, 1, DK); P(17, 13, DK); P(11, 15, "#ff3a6a"); P(19, 15, "#ff3a6a"); R(13, 23, 4, 1, DK); P(12, 22, DK); P(17, 22, DK); }
+      if (o.beret) { E(14, 4, 10, 3.4, o.beret); P(14, 0, o.beret); P(15, 0, o.beret); R(6, 5, 16, 1, o.beretD); P(9, 3, o.beretL); P(10, 2, o.beretL); }
+      if (o.stache) { R(10, 21, 4, 1, o.stache); R(16, 21, 4, 1, o.stache); P(9, 20, o.stache); P(20, 20, o.stache); P(8, 19, o.stache); P(21, 19, o.stache); }
+    } else {
+      // Corbata
+      E(5, 14, 3.4, 7, d); E(25, 14, 3.4, 7, d);
+      E(15, 14, 9, 8.6, c); R(4, 24, 22, 6, c); E(15, 25, 10, 4, c);
+      R(13, 23, 4, 2, W); R(14, 25, 2, 2, W); R(13, 27, 4, 3, W); P(12, 29, W); P(17, 29, W); R(13, 23, 4, 1, "#d8d2c6");
+      E(15, 19, 5.4, 4, l); R(13, 16, 4, 3, DK); P(13, 16, "#6a6a76");
+      R(10, 12, 3, 3, "#8a5a2b"); R(17, 12, 3, 3, "#8a5a2b"); R(11, 13, 1, 2, DK); R(18, 13, 1, 2, DK); P(10, 12, W); P(17, 12, W);
+      P(10, 10, l); P(11, 10, l); P(18, 10, l); P(19, 10, l);
+      R(14, 21, 2, 1, DK); R(14, 22, 2, 2, "#ff7a9a");
+    }
+  });
+}
+const DOGFACES = {
+  romero: { poodle: true, fur: "#b8652f", dark: "#8e4a1f", light: "#d68548" },
+  caniche: { poodle: true, fur: "#efe5d3", dark: "#cdbfa5", light: "#fffaf0", bow: "#ff5fa0", bowD: "#c83a78" },
+  corbata: { fur: "#2c2833", dark: "#1f1c25", light: "#4a4554" }
+};
+DOGFACES.corbata.fur = "#2c2833";
+DOGFACES.gomeghooo = { ...DOGFACES.romero, beret: "#22222c", beretD: "#15151c", beretL: "#40404e", stache: "#2a1a12" };
+DOGFACES.canicheBoss = { ...DOGFACES.caniche, boss: true };
+
+// el comisario: solo una voz por teléfono
+function telefono() {
+  return mk(30, 30, ({ R, P, E }) => {
+    const c = "#c8262e", d = "#8e1a20", l = "#ff6a6a";
+    R(5, 16, 20, 12, c); R(4, 20, 22, 8, c); R(4, 27, 22, 2, d); R(6, 16, 18, 1, l);
+    E(15, 22, 5, 4.6, "#f2ece0"); E(15, 22, 1.6, 1.6, d);
+    [[12, 19], [15, 18], [18, 19], [19, 22], [18, 25], [11, 22], [12, 25]].forEach(([x, y]) => P(x, y, "#3a3a44"));
+    R(4, 10, 22, 3, c); R(3, 8, 6, 6, c); R(21, 8, 6, 6, c); R(4, 13, 4, 2, d); R(22, 13, 4, 2, d); R(5, 9, 18, 1, l);
+    R(13, 13, 4, 3, d);
+    // timbre sonando
+    [[0, 3], [1, 2], [2, 1], [29, 3], [28, 2], [27, 1], [0, 8], [1, 7], [29, 8], [28, 7]].forEach(([x, y]) => P(x, y, "#ffd24a"));
+    R(1, 5, 1, 1, "#ffd24a"); R(28, 5, 1, 1, "#ffd24a");
+  });
+}
+
+const PORTRAIT_FN = {
+  thomas: () => bust({ ...THOMAS, fade: "#7a5a48", mouth: "#b0544a", teeth: true }),
+  thomasBielli: () => bust({ ...THOMAS_BIELLI, sleeveless: false, fade: "#7a5a48", mouth: "#b0544a", gloves: "#1f1f26", glovesD: "#15151a", gloveL: "#4a4a56", cuff: "#c42a30" }),
+  rocio: () => bust({ ...ROCIO }),
+  rocioRoros: () => bust({ ...ROCIO_ROROS }),
+  carmelo: () => bust({ skin: CARMELO.skin, skinD: CARMELO.skinD, hair: "corto", hairC: CARMELO.hairC, hairL: CARMELO.hairL, shirt: CARMELO.suit, shirtD: CARMELO.suitD, star: CARMELO.star, cape: CARMELO.cape, capeD: CARMELO.capeD, mask: CARMELO.mask, kid: true }),
+  maitena: () => bust({ ...MAITENA, hair: null, grit: true, browC: "#2a1c16" }),
+  juli: () => catFace(FACES.juli),
+  juliano: () => catFace(FACES.juliano),
+  chema: () => catFace(FACES.chema),
+  amanda: () => catFace(FACES.amanda),
+  luz: () => catFace(FACES.luz),
+  linda: () => catFace(FACES.linda),
+  lindaJefa: () => catFace(FACES.lindaJefa),
+  romero: () => dogFace(DOGFACES.romero),
+  gomeghooo: () => dogFace(DOGFACES.gomeghooo),
+  caniche: () => dogFace(DOGFACES.caniche),
+  canicheBoss: () => dogFace(DOGFACES.canicheBoss),
+  corbata: () => dogFace(DOGFACES.corbata),
+  comisario: telefono
+};
+export const PORTRAIT_IDS = Object.keys(PORTRAIT_FN);
+const _pc = {}, _pu = {};
+// canvas 32x32 del retrato (memorizado)
+export function dialogCanvas(id) {
+  if (!PORTRAIT_FN[id]) return null;
+  return _pc[id] || (_pc[id] = PORTRAIT_FN[id]());
+}
+// dataURL del retrato de diálogo, ampliado sin suavizar; se calcula una sola vez por id y escala
+export function dialogPortrait(id, scale = 3) {
+  const k = id + "@" + scale;
+  if (_pu[k] != null) return _pu[k];
+  const c = dialogCanvas(id);
+  return (_pu[k] = c ? (scale === 1 ? c : scaled(c, scale)).toDataURL() : "");
 }
