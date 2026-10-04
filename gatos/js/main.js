@@ -366,6 +366,7 @@ function updateHud(dt) {
   if (s.st === "run" && music.mode === "pause" && $("#pausemenu").hidden) music.set(s.boss ? "boss" : "run");
   // fin
   if ((s.st === "over" || s.st === "win") && !endShown) {
+    if (resultTimer === 0) R.wipe("cierre"); // gráficos: el iris se cierra sobre tu personaje mientras llegan los resultados
     resultTimer += dt;
     if (resultTimer > 1.6) { endShown = true; resultTimer = 0; finish(s); }
   }
@@ -469,8 +470,16 @@ function capCards() {
   return `<p class="label">Historia</p><div class="maps caps">${list.map(c => { const on = (capSel || "") === c.id; return `<button class="mapc ${on ? "on" : ""}" data-act="cap" data-v="${esc(c.id)}"><div><b>${esc(c.title || c.id)}</b><small>${esc(c.sub || "")}${prof.story.done[c.id] ? " · hecho" : ""}</small></div><span>${on ? "Elegido" : "Elegir"}</span></button>`; }).join("")}</div>`;
 }
 let lastResult = null;
+// gráficos: transición pixelada al cambiar de pantalla (R.wipe en render.js). Iris al entrar a jugar (rosa si es un
+// capítulo) y mosaico al salir del título, de la partida o al mostrar los resultados. Lo demás cambia sin transición.
+let shownScreen = screen;
+function screenFx(from, to) {
+  if (to === "run") R.wipe(curCap ? "capitulo" : "iris");
+  else if (from === "title" || from === "run" || to === "results") R.wipe("mosaico");
+}
 function draw(result) {
   if (result) lastResult = result;
+  if (screen !== shownScreen) { screenFx(shownScreen, screen); shownScreen = screen; }
   document.body.dataset.screen = screen;
   if (screen !== "run") hud.hidden = true;
   if (screen === "title") {

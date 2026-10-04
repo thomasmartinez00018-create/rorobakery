@@ -81,6 +81,72 @@ const SAME = new Map();
 
 // color del número: crítico ámbar (más grande), crítico muy fuerte naranja; golpes chicos un poco apagados
 const numCol = (n, crit) => crit ? (n >= 100 ? "#ff8a3a" : "#ffd24a") : n < 5 ? "#c8cad8" : "#ffffff";
+/* ---------- postproceso barato: todo precalculado ---------- */
+// gradación de color por mapa: se hornea UNA vez en el piso y en los objetos del mapa al cargarlo (cero costo por cuadro).
+// Encima va el tinte de AMBIENCE en modo soft-light. sat: saturación, con: contraste, lift: color que levanta las sombras.
+const GRADE = {
+  plaza:    { sat: 1.06, con: 1.05, lift: [4, 8, 22] },
+  estacion: { sat: 0.94, con: 1.07, lift: [4, 6, 20] },
+  feria:    { sat: 1.10, con: 1.04, lift: [14, 4, 22] },
+  bielli:   { sat: 1.08, con: 1.08, lift: [8, 5, 0] },
+  cancha:   { sat: 1.06, con: 1.05, lift: [0, 10, 14] },
+  tortugas: { sat: 1.06, con: 1.04, lift: [0, 8, 22] },
+  terrazas: { sat: 1.08, con: 1.06, lift: [16, 4, 20] },
+  abuela:   { sat: 1.00, con: 1.04, lift: [14, 8, 0] },
+  roros:    { sat: 1.04, con: 1.03, lift: [0, 6, 12] }
+};
+const softLight = (b, s) => s <= 0.5 ? b - (1 - 2 * s) * b * (1 - b) : b + (2 * s - 1) * ((b <= 0.25 ? ((16 * b - 12) * b + 4) * b : Math.sqrt(b)) - b);
+function gradeLut(theme) {
+  const G = GRADE[theme] || { sat: 1, con: 1, lift: [0, 0, 0] }, A = AMBIENCE[theme], lut = new Uint8ClampedArray(768);
+  const tint = A && A.tint ? hexRgb(A.tint.color).map(v => v / 255) : null, ta = A && A.tint ? Math.min(1, A.tint.alpha * 1.5) : 0;
+  for (let ch = 0; ch < 3; ch++) for (let v = 0; v < 256; v++) {
+    let b = v / 255;
+    if (tint) b += (softLight(b, tint[ch]) - b) * ta;
+    b = (b - 0.5) * G.con + 0.5;
+    b += G.lift[ch] / 255 * (1 - b) * (1 - b);
+    lut[ch * 256 + v] = Math.round(b * 255);
+  }
+  return { lut, sat: G.sat };
+}
+function gradeCanvas(src, gr) {
+  const w = src.width, h = src.height, c = document.createElement("canvas"); c.width = w; c.height = h;
+  const g = c.getContext("2d"); g.drawImage(src, 0, 0);
+  const d = g.getImageData(0, 0, w, h), a = d.data, L = gr.lut, sat = gr.sat;
+  for (let i = 0; i < a.length; i += 4) {
+    if (!a[i + 3]) continue;
+    let r = L[a[i]], gg = L[256 + a[i + 1]], b = L[512 + a[i + 2]];
+    if (sat !== 1) { const l = r * 0.299 + gg * 0.587 + b * 0.114; r = l + (r - l) * sat; gg = l + (gg - l) * sat; b = l + (b - l) * sat; }
+    a[i] = r; a[i + 1] = gg; a[i + 2] = b;
+  }
+  g.putImageData(d, 0, 0);
+  return c;
+}
+// brillo falso (bloom): discos escalonados pre-dibujados por color y radio, que se suman con "lighter"
+const glowSprites = new Map();
+function glowSprite(col, r) {
+  const k = col + r; let c = glowSprites.get(k); if (c) return c;
+  if (glowSprites.size > 160) glowSprites.clear();
+  c = document.createElement("canvas"); c.width = c.height = r * 2 + 1;
+  const g = c.getContext("2d"), [R, G, B] = hexRgb(col);
+  for (const [f, a] of [[1, 0.10], [0.68, 0.14], [0.4, 0.2]]) {
+    const rr = Math.max(1, Math.round(r * f)); g.fillStyle = `rgba(${R},${G},${B},${a})`;
+    for (let y = -rr; y <= rr; y++) { const w = Math.floor(Math.sqrt(rr * rr - y * y)); g.fillRect(r - w, r + y, w * 2 + 1, 1); }
+  }
+  glowSprites.set(k, c);
+  return c;
+}
+// sombras de contacto suaves: elipse de dos tonos por ancho
+const shadowSprites = new Map();
+function shadowSprite(w) {
+  w = Math.max(4, Math.min(48, w | 0)); let c = shadowSprites.get(w); if (c) return c;
+  c = document.createElement("canvas"); c.width = w; c.height = 4; const g = c.getContext("2d");
+  const row = (y, f, a) => { const ww = Math.max(2, Math.round(w * f)); g.fillStyle = `rgba(8,6,18,${a})`; g.fillRect((w - ww) >> 1, y, ww, 1); };
+  row(0, 0.6, 0.14); row(1, 1, 0.26); row(1, 0.7, 0.14); row(2, 0.9, 0.3); row(3, 0.5, 0.14);
+  shadowSprites.set(w, c);
+  return c;
+}
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+const INK = "#0b0d1c";
 const hexRgb = h => { const n = parseInt(h.slice(1, 7), 16); return [n >> 16, n >> 8 & 255, n & 255]; };
 const FUR = { 0: "#8d8f98", 1: "#2b2833", 2: "#8f96a3", 3: "#e08a3a", 4: "#8d8170", 5: "#8a7a66", 6: "#e0822e", 7: "#efe0c4", 8: "#f4f1ea", 9: "#b7b9c2", 10: "#b07a42" };
 const PICK_SPR = { alfajor: "alfajor", moneda: "moneda", caja: "regalo", iman: "iman", manguera: "manguera" };
@@ -104,6 +170,12 @@ export class Renderer {
     this.amb = new Pool(AMB_N); this.em = []; this.ambCfg = null; this.ambWarm = false; this.tmpL = new Array(16);
     this.nightC = document.createElement("canvas"); this.nightKey = "";
     this.q = "alta";
+    // bloom: lista de brillos del cuadro (coordenadas del mundo), dibujados juntos al final
+    this.glN = 0; this.glX = new Float32Array(128); this.glY = new Float32Array(128); this.glR = new Uint8Array(128); this.glC = new Uint8Array(128); this.glA = new Float32Array(128);
+    this.mapG = null; this.propG = new Map();
+    // transición de pantalla: canvas propio encima de todo (también tapa la interfaz), en bloques grandes
+    this.wc = document.createElement("canvas"); this.wc.className = "wipe"; this.wx = this.wc.getContext("2d"); this.wp = null; this.wRaf = 0;
+    document.body.appendChild(this.wc);
     this.cam = { x: MAP / 2, y: MAP / 2 }; this.shake = 0; this.t = 0;
     this.resize();
     addEventListener("resize", () => this.resize());
@@ -128,6 +200,79 @@ export class Renderer {
     this.map.lights.forEach((L, i) => { L.kk = (L.k ?? 1) * (LK.k ?? 1); L.fl = fk.includes(L.kind); L.seed = i * 7919 + 13; L.now = L.kk; });
     this.flk = LK.flicker || { amount: 0, rate: 0 };
     this.amb.clear(); this.ambWarm = true; this.nightKey = ""; this.ambDim = 1;
+    this.mapG = null; this.propG.clear(); this.grade();
+  }
+  // gradación horneada (solo en calidad Alta): el piso y cada objeto distinto del mapa, una vez
+  grade() {
+    if (!this.hi || this.mapG) return;
+    const gr = gradeLut(this.theme);
+    this.mapG = gradeCanvas(this.map.canvas, gr);
+    for (const p of this.map.props) {
+      if (this.propG.has(p.s)) continue; const s = SPR[p.s]; if (!s) continue;
+      this.propG.set(p.s, { f: gradeCanvas(s.f[0], gr), fl: gradeCanvas(s.fl[0], gr) });
+    }
+  }
+  glow(x, y, r, col, a = 1) {
+    const i = this.glN; if (!this.hi || i >= 128 || a <= 0.03) return;
+    this.glX[i] = x; this.glY[i] = y; this.glR[i] = Math.max(2, Math.min(60, Math.round(r / 2) * 2)); this.glC[i] = ci(col); this.glA[i] = Math.min(1, a); this.glN = i + 1;
+  }
+  drawGlows(g, cx, cy) {
+    const n = this.glN; this.glN = 0; if (!n) return;
+    const bw = this.bw, bh = this.bh;
+    g.globalCompositeOperation = "lighter";
+    for (let i = 0; i < n; i++) {
+      const r = this.glR[i], x = Math.round(this.glX[i] - cx), y = Math.round(this.glY[i] - cy);
+      if (x < -r || y < -r || x > bw + r || y > bh + r) continue;
+      g.globalAlpha = this.glA[i]; g.drawImage(glowSprite(PAL[this.glC[i]], r), x - r, y - r);
+    }
+    g.globalAlpha = 1; g.globalCompositeOperation = "source-over";
+  }
+  shadow(g, x, y, w, a) {
+    if (this.hi) { const s = shadowSprite(w); g.drawImage(s, x - (s.width >> 1), y - 1); }
+    else { g.fillStyle = `rgba(0,0,0,${a})`; g.fillRect(x - (w >> 1), y, w, 2); }
+  }
+
+  /* ---------- transición pixelada entre pantallas ----------
+     "iris": se abre un círculo desde tu personaje (entrar a jugar o a un capítulo)
+     "cierre": el círculo se cierra sobre tu personaje y queda negro (fin de la partida, hasta los resultados)
+     "mosaico": la pantalla se destapa en bloques con orden de matriz Bayer (menú, resultados) */
+  wipe(kind) {
+    if (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const B = 6, cw = Math.ceil(innerWidth / B), ch = Math.ceil(innerHeight / B), c = this.wc;
+    if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
+    this.wp = { kind, t: 0, dur: kind === "cierre" ? 1.2 : kind === "mosaico" ? 0.42 : kind === "capitulo" ? 0.8 : 0.55 };
+    c.style.display = "block";
+    if (!this.wRaf) {
+      let last = performance.now();
+      const step = now => { const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; this.wRaf = this.wipeStep(dt) ? requestAnimationFrame(step) : 0; };
+      this.wRaf = requestAnimationFrame(step);
+    }
+    this.wipeStep(0);
+  }
+  wipeStep(dt) {
+    const w = this.wp, c = this.wc, x = this.wx;
+    if (!w) { c.style.display = "none"; return false; }
+    w.t += dt;
+    const k = Math.min(1, w.t / w.dur), cw = c.width, ch = c.height;
+    x.clearRect(0, 0, cw, ch); x.fillStyle = INK;
+    if (w.kind === "mosaico") {
+      const S = 3;
+      for (let by = 0, ny = Math.ceil(ch / S); by < ny; by++) for (let bx = 0, nx = Math.ceil(cw / S); bx < nx; bx++) if (BAYER[(by & 3) * 4 + (bx & 3)] / 16 >= k) x.fillRect(bx * S, by * S, S, S);
+    } else {
+      // iris: círculo en píxeles grandes (una fila a la vez), con borde de color
+      const open = w.kind !== "cierre", e = open ? 1 - (1 - k) ** 3 : (1 - k) ** 2;
+      const ox = cw / 2, oy = ch / 2 + 1, R = e * Math.hypot(cw, ch) * 0.56, edge = w.kind === "capitulo" ? "#ff5fb0" : "#ffb938";
+      for (let y = 0; y < ch; y++) {
+        const dy = y + 0.5 - oy, d = R * R - dy * dy;
+        if (d <= 0) { x.fillRect(0, y, cw, 1); continue; }
+        const half = Math.sqrt(d), a = Math.max(0, Math.round(ox - half)), b = Math.min(cw, Math.round(ox + half));
+        x.fillRect(0, y, a, 1); x.fillRect(b, y, cw - b, 1);
+        if (R > 1 && k < 1) { x.fillStyle = edge; x.fillRect(a - 1, y, 1, 1); x.fillRect(b, y, 1, 1); x.fillStyle = INK; }
+      }
+    }
+    if (w.kind === "cierre") { if (w.t > w.dur + 4) { this.wp = null; c.style.display = "none"; return false; } return true; }
+    if (k >= 1) { this.wp = null; x.clearRect(0, 0, cw, ch); c.style.display = "none"; return false; }
+    return true;
   }
 
   /* efectos a partir de los eventos de la simulación */
@@ -227,16 +372,17 @@ export class Renderer {
     let cy = Math.round(Math.max(bh / 2, Math.min(MAP - bh / 2, this.cam.y)) - bh / 2 + (Math.random() - 0.5) * this.shake);
     const vis = (x, y, m = 40) => x > cx - m && x < cx + bw + m && y > cy - m && y < cy + bh + m;
     g.fillStyle = "#101018"; g.fillRect(0, 0, bw, bh);
-    g.drawImage(this.map.canvas, cx, cy, bw, bh, 0, 0, bw, bh);
+    const hi = this.hi; if (hi && !this.mapG) this.grade();
+    g.drawImage(hi && this.mapG ? this.mapG : this.map.canvas, cx, cy, bw, bh, 0, 0, bw, bh);
     const X = x => Math.round(x - cx), Y = y => Math.round(y - cy);
 
     // charcos de mate
     for (const [x, y, r, life, big] of V.pools) { if (!vis(x, y)) continue; g.fillStyle = big ? "rgba(140,170,40,.8)" : "rgba(92,122,40,.75)"; g.beginPath(); g.ellipse(X(x), Y(y), r, r * 0.6, 0, 0, Math.PI * 2); g.fill(); g.fillStyle = "#b8d86a"; for (let i = 0; i < 4; i++) { const a = this.t * 2 + i * 1.7; g.fillRect(X(x + Math.cos(a) * r * 0.5), Y(y + Math.sin(a * 1.3) * r * 0.3), 1, 1); } }
     // gemas y objetos
-    for (let i = 0; i < V.gems.length; i += 3) { const x = V.gems[i], y = V.gems[i + 1], v = V.gems[i + 2]; if (!vis(x, y, 8)) continue; const s = SPR[v >= 5 ? "gem5" : v >= 2 ? "gem2" : "gem1"]; g.drawImage(s.f[0], X(x) - (s.w >> 1), Y(y) - s.h + Math.round(Math.sin(this.t * 5 + x) * 1)); }
+    for (let i = 0; i < V.gems.length; i += 3) { const x = V.gems[i], y = V.gems[i + 1], v = V.gems[i + 2]; if (!vis(x, y, 8)) continue; const s = SPR[v >= 5 ? "gem5" : v >= 2 ? "gem2" : "gem1"]; if (v >= 5) this.glow(x, y - 4, 6, "#ff5fd2", 0.4); g.drawImage(s.f[0], X(x) - (s.w >> 1), Y(y) - s.h + Math.round(Math.sin(this.t * 5 + x) * 1)); }
     for (const [k, x, y, blink] of V.pickups) {
       if (!vis(x, y) || (blink && Math.floor(this.t * 8) % 2)) continue; const s = SPR[PICK_SPR[PICKS[k]]] || SPR.moneda, bob = Math.round(Math.abs(Math.sin(this.t * 4)) * 2);
-      if (k >= 2) { g.fillStyle = k === 2 ? "rgba(255,138,194,.35)" : "rgba(127,240,255,.3)"; g.beginPath(); g.ellipse(X(x), Y(y), 9 + Math.sin(this.t * 6), 4, 0, 0, Math.PI * 2); g.fill(); }
+      if (k >= 2) { this.glow(x, y - 4, 12, k === 2 ? "#ff8ac2" : "#7ff0ff", 0.45 + Math.sin(this.t * 5) * 0.12); g.fillStyle = k === 2 ? "rgba(255,138,194,.35)" : "rgba(127,240,255,.3)"; g.beginPath(); g.ellipse(X(x), Y(y), 9 + Math.sin(this.t * 6), 4, 0, 0, Math.PI * 2); g.fill(); }
       g.drawImage(s.f[0], X(x) - (s.w >> 1), Y(y) - s.h - bob);
     }
     // zonas donde va a caer algo (Linda)
@@ -256,7 +402,7 @@ export class Renderer {
     }
     // pedido de Roro's
     if (V.obj) {
-      const [x, y, pct, left] = V.obj, pulse = 1 + Math.sin(this.t * 5) * 0.08;
+      const [x, y, pct, left] = V.obj, pulse = 1 + Math.sin(this.t * 5) * 0.08; this.glow(x, y - 6, 18, "#ff5fb0", 0.35 * pulse);
       g.fillStyle = "rgba(255,95,176,.18)"; g.beginPath(); g.ellipse(X(x), Y(y), 22 * pulse, 13 * pulse, 0, 0, Math.PI * 2); g.fill();
       g.strokeStyle = "#ff5fb0"; g.lineWidth = 1; g.beginPath(); g.ellipse(X(x) + 0.5, Y(y) + 0.5, 22, 13, 0, 0, Math.PI * 2); g.stroke();
       g.strokeStyle = "#ffffff"; g.lineWidth = 2; g.beginPath(); g.ellipse(X(x), Y(y), 22, 13, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct / 100); g.stroke();
@@ -278,7 +424,7 @@ export class Renderer {
     for (const b of V.buses) list.push([b[1], 5, b]);
     list.sort((a, b) => a[0] - b[0]);
     for (const [, kind, o, side] of list) {
-      if (kind === 0) { const s = SPR[o.s]; g.drawImage(o.fl ? s.fl[0] : s.f[0], X(o.x) - (s.w >> 1), Y(o.y) - s.ay); continue; }
+      if (kind === 0) { const s = SPR[o.s], q = hi && this.propG.get(o.s); g.drawImage(q ? (o.fl ? q.fl : q.f) : o.fl ? s.fl[0] : s.f[0], X(o.x) - (s.w >> 1), Y(o.y) - s.ay); continue; }
       if (kind === 1) { this.drawEnemy(g, o, X, Y); continue; }
       if (kind === 6) { this.drawHazard(g, o, X, Y); continue; }
       if (kind === 7) { this.drawAlly(g, o, X, Y); continue; }
@@ -293,7 +439,7 @@ export class Renderer {
       const s = SPR[k === 0 ? "medialuna" : "rodillo"];
       g.save(); g.translate(X(x), Y(y)); g.rotate(k === 1 ? this.t * 18 : a); g.drawImage(s.f[0], -(s.w >> 1), -(s.h >> 1)); g.restore();
     }
-    for (let i = 0; i < V.eproj.length; i += 3) { const s = V.eproj[i + 2] ? SPR.saliva : SPR.hairball; g.drawImage(s.f[0], X(V.eproj[i]) - (s.w >> 1), Y(V.eproj[i + 1]) - (s.h >> 1)); }
+    for (let i = 0; i < V.eproj.length; i += 3) { const sal = V.eproj[i + 2], s = sal ? SPR.saliva : SPR.hairball; g.drawImage(s.f[0], X(V.eproj[i]) - (s.w >> 1), Y(V.eproj[i + 1]) - (s.h >> 1)); this.glow(V.eproj[i], V.eproj[i + 1], 7, sal ? "#b6ff7a" : "#ff5a5a", 0.6); }
     for (const [x0, y0, x, y, pct, done] of V.bombs) {
       if (done) continue; const k = pct / 100, bx = x0 + (x - x0) * k, by = y0 + (y - y0) * k - Math.sin(k * Math.PI) * 30;
       const s = SPR.torta; g.drawImage(s.f[0], X(bx) - (s.w >> 1), Y(by) - s.h);
@@ -303,11 +449,11 @@ export class Renderer {
       s.life -= dt; const k = 1 - s.life / 0.16;
       g.strokeStyle = `rgba(255,255,255,${0.9 - k * 0.6})`; g.lineWidth = 2;
       const arc = (dir) => { g.beginPath(); const a0 = dir > 0 ? -1.1 : Math.PI - 1.1; g.arc(X(s.x), Y(s.y) - 6, s.r * (0.6 + k * 0.4), a0, a0 + 2.2); g.stroke(); };
-      if (s.both === 2) { g.strokeStyle = `rgba(255,210,74,${0.9 - k * 0.6})`; g.beginPath(); g.ellipse(X(s.x), Y(s.y) - 4, s.r * (0.6 + k * 0.4), s.r * (0.6 + k * 0.4) * 0.7, 0, 0, Math.PI * 2); g.stroke(); }
+      if (s.both === 2) { this.glow(s.x, s.y - 4, s.r * 0.5, "#ffd24a", 0.6 - k * 0.5); g.strokeStyle = `rgba(255,210,74,${0.9 - k * 0.6})`; g.beginPath(); g.ellipse(X(s.x), Y(s.y) - 4, s.r * (0.6 + k * 0.4), s.r * (0.6 + k * 0.4) * 0.7, 0, 0, Math.PI * 2); g.stroke(); }
       else { arc(s.f); if (s.both) arc(-s.f); }
     }
     this.slashes = this.slashes.filter(s => s.life > 0);
-    for (const r of this.rings) { r.life -= dt; const k = 1 - r.life / 0.45; g.strokeStyle = r.c; g.globalAlpha = Math.max(0, r.life * 3); g.lineWidth = 2; g.beginPath(); g.ellipse(X(r.x), Y(r.y) - 4, r.r * (0.3 + k), r.r * (0.3 + k) * 0.7, 0, 0, Math.PI * 2); g.stroke(); g.globalAlpha = 1; }
+    for (const r of this.rings) { this.glow(r.x, r.y - 4, Math.min(44, r.r * 0.5), r.c, r.life * 2.2); r.life -= dt; const k = 1 - r.life / 0.45; g.strokeStyle = r.c; g.globalAlpha = Math.max(0, r.life * 3); g.lineWidth = 2; g.beginPath(); g.ellipse(X(r.x), Y(r.y) - 4, r.r * (0.3 + k), r.r * (0.3 + k) * 0.7, 0, 0, Math.PI * 2); g.stroke(); g.globalAlpha = 1; }
     this.rings = this.rings.filter(r => r.life > 0);
     this.drawPops(g, dt, X, Y);
     this.drawFx(g, dt, cx, cy);
@@ -322,6 +468,7 @@ export class Renderer {
     this.lighting(V, cx, cy);
     // las del ambiente van encima de la noche: las normales un poco apagadas, las que brillan con suma de luz
     if (amb) { this.ambDim = 1 - THEMES[this.theme].night[3] * 0.45; this.ambDraw(g, 0, cx, cy); this.ambDraw(g, 1, cx, cy); }
+    this.drawGlows(g, cx, cy);
 
     // números de daño arriba de todo
     { let j = 0; const ns = this.nums;
@@ -391,7 +538,7 @@ export class Renderer {
     const fr = tele ? 0 : cyc ? cyc[step] : step;
     const img = (f & F_FLASH) || (tele && Math.floor(this.t * 16) % 2) ? s.wh[fr] : o.fx < 0 ? s.fl[fr] : s.f[fr];
     if (elite) { const k = 1 + Math.sin(this.t * 6 + o.id) * 0.15; g.fillStyle = "rgba(255,210,74,.35)"; g.beginPath(); g.ellipse(x, y, s.w * 0.4 * k, 5 * k, 0, 0, Math.PI * 2); g.fill(); }
-    g.fillStyle = "rgba(0,0,0,.28)"; g.fillRect(x - (s.w >> 2), y, s.w >> 1, 2);
+    this.shadow(g, x, y, Math.round(s.w * 0.62), 0.28);
     // la carga de Luz: línea roja que marca por dónde va a pasar
     if (tele && name === "luz") {
       const a = o.a / 10; g.strokeStyle = Math.floor(this.t * 12) % 2 ? "rgba(255,74,90,.8)" : "rgba(255,210,210,.6)"; g.lineWidth = 2; g.setLineDash([4, 3]);
@@ -406,7 +553,7 @@ export class Renderer {
     const name = ENEMY_NAME[o.type], cfg = ALLY[name], f = o.f;
     const s = SPR[name] || SPR[ALLY_FALLBACK[cfg ? cfg.kind : "gato"]]; if (!s) return;
     const x = X(o.x), y = Y(o.y), n = s.f.length;
-    g.fillStyle = "rgba(0,0,0,.28)"; g.fillRect(x - (s.w >> 2), y, s.w >> 1, 2);
+    this.shadow(g, x, y, Math.round(s.w * 0.62), 0.28);
     if (f & F_DOWN) {
       g.save(); g.globalAlpha = 0.6; g.translate(x, y - 4); g.rotate(-Math.PI / 2); g.drawImage(s.f[0], -(s.w >> 1), -(s.h >> 1)); g.restore();
       return;
@@ -480,7 +627,7 @@ export class Renderer {
     const A = s.anim, st = this.ps(side), x = X(p.x), y = Y(p.y);
     st.act = Math.max(0, st.act - dt);
     const wasDash = st.dash > 0; st.dash = Math.max(0, st.dash - dt); if (wasDash && st.dash <= 0) st.land = 0.09; st.land = Math.max(0, st.land - dt);
-    g.fillStyle = "rgba(0,0,0,.35)"; g.fillRect(x - 5, y, 10, 2);
+    this.shadow(g, x, y, p.d ? 18 : 12, 0.35);
     if (p.d) {
       // caído: el sprite propio de caído (boca arriba) si existe; si no, el de parado acostado
       const cs = A && A.caido && SPR[A.caido];
@@ -560,7 +707,8 @@ export class Renderer {
       lg.globalAlpha = Math.min(1, k); lg.drawImage(s, X - h, Y - h);
     };
     const lights = this.map.lights;
-    for (let i = 0; i < lights.length; i++) { const L = lights[i], k = L.now = this.lightK(L); hole(L.x, L.y, k > 1 ? L.r * (1 + (k - 1) * 0.6) : L.r, k); }
+    // k < 1 achica un poco el radio y aclara menos (con el k crudo como alfa, los mapas con luces bajas quedaban barrosos)
+    for (let i = 0; i < lights.length; i++) { const L = lights[i], k = L.now = this.lightK(L); hole(L.x, L.y, k > 1 ? L.r * (1 + (k - 1) * 0.6) : L.r * (0.8 + 0.2 * k), 0.35 + 0.65 * k); }
     for (const p of Object.values(V.players)) hole(p.x, p.y - 6, 58, 0.95);
     for (const [x, y] of V.pools) hole(x, y, 22, 0.5);
     for (const r of this.rings) hole(r.x, r.y, r.r * 1.3, Math.min(1, r.life * 3));
