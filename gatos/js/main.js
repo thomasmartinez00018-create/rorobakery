@@ -1,7 +1,8 @@
 // Gatos de Linda — menús, salas, bucle de juego y sincronización entre los dos celus.
 import { Sim, WEAPONS, PASSIVES, MAPS, EVO_OF, chapterGuion } from "./engine.js";
-import { buildSprites, SPR, portrait as portraitPng } from "./sprites.js";
+import { buildSprites, SPR, portrait as portraitPng, dialogPortrait } from "./sprites.js";
 import { Renderer, THEMES } from "./render.js";
+import { STORY_MAPS } from "./maps.js";
 import { Net, makeCode, cleanCode, PROTO } from "./net.js";
 import { sfx } from "./sfx.js";
 import { music } from "./music.js";
@@ -457,9 +458,14 @@ function charCard(c) {
   return `<button class="char ${prof.who === c ? "on" : ""}" data-act="who" data-v="${c}">
     <img src="${portrait(c, 6)}" alt=""><b>${NAME[c]}</b><span>${c === "thomas" ? "Patada Bielli · cuerpo a cuerpo" : "Medialunas · a distancia"}</span></button>`;
 }
+// gráficos: los mapas de la historia (abuela, roros) aparecen en el arcade solo si la historia los desbloqueó
+// (prof.unlock["map:<id>"], lo guarda saveChapter con el `unlock` de cada capítulo) y si el motor ya tiene su
+// entrada en MAPS (engine.js). Mientras falte cualquiera de las dos cosas, el menú queda como antes.
+function mapaHistoriaJugable(k) { return !!(prof.unlock && prof.unlock["map:" + k]) && !!MAPS[k] && !!THEMES[k]; }
+function mapList() { return [...Object.keys(THEMES), ...STORY_MAPS.filter(mapaHistoriaJugable)]; }
 function mapCards() {
-  return `<div class="maps">${Object.entries(THEMES).map(([k, t]) => {
-    const owned = prof.maps[k];
+  return `<div class="maps">${mapList().map(k => [k, THEMES[k]]).map(([k, t]) => {
+    const owned = prof.maps[k] || STORY_MAPS.includes(k);
     const tier = MAPS[k].tier;
     return `<button class="mapc ${map === k ? "on" : ""} ${owned ? "" : "locked"}" data-act="${owned ? "map" : "buymap"}" data-v="${k}"><div><b>${t.name}</b><small>${"★".repeat(tier + 1)}${"☆".repeat(5 - tier)} · ${esc(t.sub)}${tier ? ` · +${tier * 12}%${COIN()}` : ""}</small></div><span>${owned ? (map === k ? "Elegido" : "Elegir") : `${MAP_COST[k]}${COIN()}`}</span></button>`;
   }).join("")}</div>`;
@@ -483,10 +489,13 @@ function draw(result) {
   document.body.dataset.screen = screen;
   if (screen !== "run") hud.hidden = true;
   if (screen === "title") {
+    // gráficos: pantalla de título con los tres protagonistas (retratos de diálogo), el logo y la demo de fondo
+    const cast = [["thomas", "c-a"], ["linda", "c-b"], ["rocio", "c-c"]].map(([id, cl]) => { const src = dialogPortrait(id, 3); return src ? `<img class="${cl}" src="${src}" alt="">` : ""; }).join("");
     ui.innerHTML = `<section class="title" data-act="start">
-      <h1 class="logo"><span>GATOS</span><span>de LINDA</span></h1>
+      <div class="cast" aria-hidden="true">${cast}</div>
+      <h1 class="logo"><span>GATOS</span><span>de LINDA</span><em class="ver">2.0</em></h1>
       <p class="tag">Supervivientes del barrio · para dos</p>
-      <button class="press" data-act="start">Tocá para empezar</button></section>`;
+      <button class="press" data-act="start"><i aria-hidden="true"></i>Tocá para empezar<i aria-hidden="true"></i></button></section>`;
     return;
   }
   if (screen === "menu") {
