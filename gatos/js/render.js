@@ -6,15 +6,52 @@ export { THEMES };
 
 /* ---------- números en pixel ---------- */
 const DIG = ["111101101101111", "010110010010111", "111001111100111", "111001111001111", "101101111001001", "111100111001111", "111100111101111", "111001010010010", "111101111101111", "111101111001111"];
+// los diez dígitos se dibujan una vez por color (con su sombra) y después se copian con un drawImage por dígito
+const digitSheets = new Map();
+function digitSheet(col) {
+  let c = digitSheets.get(col); if (c) return c;
+  c = document.createElement("canvas"); c.width = 40; c.height = 6;
+  const g = c.getContext("2d");
+  for (const [fill, off] of [["#16121c", 1], [col, 0]]) {
+    g.fillStyle = fill;
+    DIG.forEach((bits, d) => { for (let i = 0; i < 15; i++) if (bits[i] === "1") g.fillRect(d * 4 + (i % 3) + off, Math.floor(i / 3) + off, 1, 1); });
+  }
+  digitSheets.set(col, c);
+  return c;
+}
 function drawNum(g, n, x, y, col) {
-  const s = String(n);
+  const s = String(n), sheet = digitSheet(col);
   const w = s.length * 4 - 1;
-  let ox = Math.round(x - w / 2);
-  for (const ch of s) {
-    const bits = DIG[+ch]; if (!bits) { ox += 4; continue; }
-    for (let i = 0; i < 15; i++) if (bits[i] === "1") { const px = ox + (i % 3), py = Math.round(y) + Math.floor(i / 3); g.fillStyle = "#16121c"; g.fillRect(px + 1, py + 1, 1, 1); g.fillStyle = col; g.fillRect(px, py, 1, 1); }
+  let ox = Math.round(x - w / 2); const oy = Math.round(y);
+  for (let i = 0; i < s.length; i++) {
+    const d = s.charCodeAt(i) - 48;
+    if (d >= 0 && d <= 9) g.drawImage(sheet, d * 4, 0, 4, 6, ox, oy, 4, 6);
     ox += 4;
   }
+}
+// huecos de luz y tintes: degradés pre-dibujados una vez por radio (antes, un createRadialGradient por luz y por cuadro)
+const holeSprites = new Map(), tintSprites = new Map();
+function holeSprite(rad) {
+  rad = Math.max(1, Math.round(rad));
+  let c = holeSprites.get(rad); if (c) return c;
+  if (holeSprites.size > 300) holeSprites.clear();
+  c = document.createElement("canvas"); c.width = c.height = rad * 2;
+  const g = c.getContext("2d"), gr = g.createRadialGradient(rad, rad, 0, rad, rad, rad);
+  gr.addColorStop(0, "rgba(0,0,0,1)"); gr.addColorStop(0.6, "rgba(0,0,0,0.6)"); gr.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = gr; g.fillRect(0, 0, rad * 2, rad * 2);
+  holeSprites.set(rad, c);
+  return c;
+}
+function tintSprite(col, r) {
+  const k = col + r; let c = tintSprites.get(k); if (c) return c;
+  if (tintSprites.size > 100) tintSprites.clear();
+  const rr = Math.max(1, Math.ceil(r * 0.7));
+  c = document.createElement("canvas"); c.width = c.height = rr * 2;
+  const g = c.getContext("2d"), gr = g.createRadialGradient(rr, rr, 0, rr, rr, r * 0.7);
+  gr.addColorStop(0, col + "38"); gr.addColorStop(1, col + "00");
+  g.fillStyle = gr; g.fillRect(0, 0, rr * 2, rr * 2);
+  tintSprites.set(k, c);
+  return c;
 }
 
 const FUR = { 0: "#8d8f98", 1: "#2b2833", 2: "#8f96a3", 3: "#e08a3a", 4: "#8d8170", 5: "#8a7a66", 6: "#e0822e", 7: "#efe0c4", 8: "#f4f1ea", 9: "#b7b9c2", 10: "#b07a42" };
@@ -44,9 +81,15 @@ export class Renderer {
   /* efectos a partir de los eventos de la simulación */
   events(ev, localSide) {
     const snd = [];
+    let same = null; // golpes al mismo gato en el mismo lote: un solo número con la suma
     for (const e of ev) {
       const k = e[0];
-      if (k === "hit") { this.nums.push({ x: e[1], y: e[2], n: e[3], c: e[4] ? "#ffd24a" : "#ffffff", life: 0.6, big: e[4] }); for (let i = 0; i < 3; i++) this.part(e[1], e[2] + 6, "#ffffff", 40, 0.2); snd.push("hit"); }
+      if (k === "hit") {
+        const key = e[1] * 4096 + e[2], prev = same && same.get(key);
+        if (prev) { prev.n += e[3]; if (e[4]) { prev.c = "#ffd24a"; prev.big = 1; } }
+        else { const n = { x: e[1], y: e[2], n: e[3], c: e[4] ? "#ffd24a" : "#ffffff", life: 0.6, big: e[4] }; this.nums.push(n); (same || (same = new Map())).set(key, n); }
+        for (let i = 0; i < 3; i++) this.part(e[1], e[2] + 6, "#ffffff", 40, 0.2); snd.push("hit");
+      }
       if (k === "die") { const col = FUR[e[3]] || "#888"; for (let i = 0; i < 10; i++) this.part(e[1], e[2], col, 70, 0.45); this.part(e[1], e[2], "#ffffff", 20, 0.3); snd.push("die"); }
       if (k === "slash") this.slashes.push({ x: e[1], y: e[2], f: e[3], r: e[4], both: e[5], life: 0.16 });
       if (k === "boom") { this.rings.push({ x: e[1], y: e[2], r: e[3], life: 0.3, c: "#ffb04a" }); for (let i = 0; i < 16; i++) this.part(e[1], e[2], i % 2 ? "#ffcf5a" : "#ff6a3a", 110, 0.5); this.shake = Math.max(this.shake, 2); snd.push("boom"); }
@@ -96,8 +139,8 @@ export class Renderer {
     for (const [x, y, r, life, big] of V.pools) { if (!vis(x, y)) continue; g.fillStyle = big ? "rgba(140,170,40,.8)" : "rgba(92,122,40,.75)"; g.beginPath(); g.ellipse(X(x), Y(y), r, r * 0.6, 0, 0, Math.PI * 2); g.fill(); g.fillStyle = "#b8d86a"; for (let i = 0; i < 4; i++) { const a = this.t * 2 + i * 1.7; g.fillRect(X(x + Math.cos(a) * r * 0.5), Y(y + Math.sin(a * 1.3) * r * 0.3), 1, 1); } }
     // gemas y objetos
     for (let i = 0; i < V.gems.length; i += 3) { const x = V.gems[i], y = V.gems[i + 1], v = V.gems[i + 2]; if (!vis(x, y, 8)) continue; const s = SPR[v >= 5 ? "gem5" : v >= 2 ? "gem2" : "gem1"]; g.drawImage(s.f[0], X(x) - (s.w >> 1), Y(y) - s.h + Math.round(Math.sin(this.t * 5 + x) * 1)); }
-    for (const [k, x, y] of V.pickups) {
-      if (!vis(x, y)) continue; const s = SPR[PICK_SPR[PICKS[k]]] || SPR.moneda, bob = Math.round(Math.abs(Math.sin(this.t * 4)) * 2);
+    for (const [k, x, y, blink] of V.pickups) {
+      if (!vis(x, y) || (blink && Math.floor(this.t * 8) % 2)) continue; const s = SPR[PICK_SPR[PICKS[k]]] || SPR.moneda, bob = Math.round(Math.abs(Math.sin(this.t * 4)) * 2);
       if (k >= 2) { g.fillStyle = k === 2 ? "rgba(255,138,194,.35)" : "rgba(127,240,255,.3)"; g.beginPath(); g.ellipse(X(x), Y(y), 9 + Math.sin(this.t * 6), 4, 0, 0, Math.PI * 2); g.fill(); }
       g.drawImage(s.f[0], X(x) - (s.w >> 1), Y(y) - s.h - bob);
     }
@@ -178,7 +221,7 @@ export class Renderer {
     // números de daño arriba de todo
     for (const n of this.nums) { n.life -= dt; n.y -= 22 * dt; if (vis(n.x, n.y)) drawNum(g, n.n, X(n.x), Y(n.y), n.c); }
     this.nums = this.nums.filter(n => n.life > 0);
-    if (this.nums.length > 80) this.nums.splice(0, this.nums.length - 80);
+    if (this.nums.length > 30) this.nums.splice(0, this.nums.length - 30);
     // juntos: hilo de corazón entre los dos
     if (V.bond) {
       const ps = Object.values(V.players); if (ps.length === 2) {
@@ -276,25 +319,25 @@ export class Renderer {
     lg.fillStyle = `rgba(${r},${gC},${b},${a})`; lg.fillRect(0, 0, bw, bh);
     lg.globalCompositeOperation = "destination-out";
     const hole = (x, y, rad, k = 1) => {
-      const X = x - cx, Y = y - cy; if (X < -rad || X > bw + rad || Y < -rad || Y > bh + rad) return;
-      const gr = lg.createRadialGradient(X, Y, 0, X, Y, rad); gr.addColorStop(0, `rgba(0,0,0,${k})`); gr.addColorStop(0.6, `rgba(0,0,0,${k * 0.6})`); gr.addColorStop(1, "rgba(0,0,0,0)");
-      lg.fillStyle = gr; lg.fillRect(X - rad, Y - rad, rad * 2, rad * 2);
+      const X = x - cx, Y = y - cy; if (X < -rad || X > bw + rad || Y < -rad || Y > bh + rad || k <= 0) return;
+      const s = holeSprite(rad), h = s.width >> 1;
+      lg.globalAlpha = Math.min(1, k); lg.drawImage(s, X - h, Y - h);
     };
     const flick = Math.sin(this.t * 13) > 0.96 ? 0.7 : 1;
     this.map.lights.forEach((L, i) => hole(L.x, L.y, L.r, i === 3 ? flick : 1));
     for (const p of Object.values(V.players)) hole(p.x, p.y - 6, 58, 0.95);
     for (const [x, y] of V.pools) hole(x, y, 22, 0.5);
     for (const r of this.rings) hole(r.x, r.y, r.r * 1.3, Math.min(1, r.life * 3));
-    for (let i = 0; i < V.gems.length; i += 9) hole(V.gems[i], V.gems[i + 1], 8, 0.5);
     for (const [k, x, y] of V.pickups) if (k >= 2) hole(x, y - 4, 26, 0.8);
     for (const [x, y, r] of V.zones) hole(x, y, r, 0.5);
     if (V.obj) hole(V.obj[0], V.obj[1] - 6, 40, 0.9);
     for (const z of V.hz) { if (z[5]) continue; const cx0 = z[4] > 0 ? z[3] + 30 : z[3] - 30; hole(cx0, z[1], 60, 0.9); }
     for (let i = 0; i < V.enemies.length; i++) { const e = V.enemies[i]; if (e.f & (F_TELE | F_ELITE)) hole(e.x, e.y - 6, 22, 0.6); }
+    lg.globalAlpha = 1;
     this.bg.drawImage(this.lc, 0, 0);
     // tinte cálido de los faroles
     const g = this.bg; g.globalCompositeOperation = "lighter";
-    for (const L of this.map.lights) { const X = L.x - cx, Y = L.y - cy; if (X < -L.r || X > bw + L.r || Y < -L.r || Y > bh + L.r) continue; const gr = g.createRadialGradient(X, Y, 0, X, Y, L.r * 0.7); gr.addColorStop(0, L.c + "38"); gr.addColorStop(1, L.c + "00"); g.fillStyle = gr; g.fillRect(X - L.r, Y - L.r, L.r * 2, L.r * 2); }
+    for (const L of this.map.lights) { const X = L.x - cx, Y = L.y - cy; if (X < -L.r || X > bw + L.r || Y < -L.r || Y > bh + L.r) continue; const s = tintSprite(L.c, L.r), h = s.width >> 1; g.drawImage(s, X - h, Y - h); }
     g.globalCompositeOperation = "source-over";
   }
 }

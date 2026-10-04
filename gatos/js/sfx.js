@@ -3,6 +3,8 @@ let ac = null, master = null, sfxBus = null;
 let muted = false;
 try { muted = localStorage.getItem("gdl-mute") === "1"; } catch (e) {}
 const last = {};
+// separación mínima entre sonidos iguales, en ms (el golpe, como mucho uno cada 60 ms)
+const GAP = { hit: 60, die: 55, gem: 40, throw: 120, coin: 60, spit: 150, boom: 60, dash: 100 };
 
 function tone(f, d, type = "sine", v = 0.08, when = 0, to) {
   if (!ac || muted) return;
@@ -15,12 +17,21 @@ function tone(f, d, type = "sine", v = 0.08, when = 0, to) {
     o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + d + 0.05);
   } catch (e) {}
 }
+// el ruido se genera una vez por duración y se reutiliza (antes se armaba un buffer nuevo en cada golpe)
+const noiseBufs = new Map();
+function noiseBuf(len) {
+  let buf = noiseBufs.get(len);
+  if (!buf) {
+    buf = ac.createBuffer(1, len, ac.sampleRate); const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    noiseBufs.set(len, buf);
+  }
+  return buf;
+}
 function noise(d, v = 0.08, when = 0, freq = 1200) {
   if (!ac || muted) return;
   try {
-    const t = ac.currentTime + when, len = Math.ceil(ac.sampleRate * d);
-    const buf = ac.createBuffer(1, len, ac.sampleRate), data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const t = ac.currentTime + when, buf = noiseBuf(Math.ceil(ac.sampleRate * d));
     const src = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
     src.buffer = buf; f.type = "bandpass"; f.frequency.value = freq; g.gain.value = v;
     src.connect(f); f.connect(g); g.connect(sfxBus); src.start(t);
@@ -68,7 +79,7 @@ export const sfx = {
   join() { tone(523, 0.1, "triangle", 0.08); tone(784, 0.18, "triangle", 0.08, 0.09); },
   // sonidos del juego, con límite de frecuencia para que 200 gatos no saturen
   play(name) {
-    const now = performance.now(), gap = { hit: 45, die: 55, gem: 40, throw: 120, coin: 60, spit: 150, boom: 60, dash: 100 }[name] || 0;
+    const now = performance.now(), gap = GAP[name] || 0;
     if (gap && now - (last[name] || 0) < gap) return;
     last[name] = now;
     const f = {

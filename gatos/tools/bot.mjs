@@ -20,7 +20,9 @@ export function brain(sim, p, other) {
   for (const z of sim.hz) { if (Math.abs(p.y - z.y) < z.h + 20) fy += Math.sign(p.y - z.y || 1) * 4; }
   let g = null, bd = 1e9; for (const q of sim.gems) { const d = (q.x - p.x) ** 2 + (q.y - p.y) ** 2; if (d < bd) { bd = d; g = q; } }
   if (g && bd < 120 * 120) { const d = Math.sqrt(bd) || 1; fx += (g.x - p.x) / d * 0.6; fy += (g.y - p.y) / d * 0.6; }
-  for (const k of sim.pickups) { const d = Math.hypot(k.x - p.x, k.y - p.y) || 1; if (d < 200) { fx += (k.x - p.x) / d * 1.2; fy += (k.y - p.y) / d * 1.2; } }
+  // va al objeto más cercano (antes sumaba la atracción de todos: 40 monedas tiradas lo arrastraban hacia los gatos)
+  let pk = null, pd = 200; for (const k of sim.pickups) { const d = Math.hypot(k.x - p.x, k.y - p.y) || 1; if (d < pd) { pd = d; pk = k; } }
+  if (pk) { fx += (pk.x - p.x) / pd * 1.2; fy += (pk.y - p.y) / pd * 1.2; }
   if (sim.obj) { const d = Math.hypot(sim.obj.x - p.x, sim.obj.y - p.y) || 1; fx += (sim.obj.x - p.x) / d * 1.5; fy += (sim.obj.y - p.y) / d * 1.5; }
   if (other) { const d = Math.hypot(other.x - p.x, other.y - p.y) || 1; const w = other.downed ? 3 : d > 60 ? 0.8 : 0; fx += (other.x - p.x) / d * w; fy += (other.y - p.y) / d * w; }
   const b = sim.cfg.b, cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2; const dc = Math.hypot(cx - p.x, cy - p.y) || 1; fx += (cx - p.x) / dc * 0.25 * (dc / 300); fy += (cy - p.y) / dc * 0.25 * (dc / 300);

@@ -1,6 +1,6 @@
 // Gatos de Linda — menús, salas, bucle de juego y sincronización entre los dos celus.
 import { Sim, WEAPONS, PASSIVES, MAPS, EVO_OF } from "./engine.js";
-import { buildSprites, SPR, portrait } from "./sprites.js";
+import { buildSprites, SPR, portrait as portraitPng } from "./sprites.js";
 import { Renderer, THEMES } from "./render.js";
 import { Net, makeCode, cleanCode } from "./net.js";
 import { sfx } from "./sfx.js";
@@ -8,6 +8,9 @@ import { music } from "./music.js";
 import { Input } from "./input.js";
 
 const $ = s => document.querySelector(s);
+// retratos memorizados: portrait() codifica un PNG cada vez (toDataURL) y el HUD lo pide en cada cuadro
+const portraitMemo = new Map();
+const portrait = (name, scale = 6) => { const k = name + "|" + scale; let u = portraitMemo.get(k); if (!u) { u = portraitPng(name, scale); if (u) portraitMemo.set(k, u); } return u; };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = s => { s = Math.max(0, Math.floor(s)); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); };
 const NAME = { thomas: "Thomas", rocio: "Rocío" };
@@ -161,8 +164,13 @@ function onEvents(ev) {
 }
 
 /* ---------------- bucle ---------------- */
-let last = performance.now();
+let last = performance.now(), rafPrev = last, rafBudget = 0;
+const FRAME_MS = 1000 / 60;
 function loop(now) {
+  // tope de 60 cuadros por segundo: en pantallas de 90 o 120 Hz se saltean cuadros (mitad de CPU y batería)
+  rafBudget = Math.min(FRAME_MS * 2, rafBudget + now - rafPrev); rafPrev = now;
+  if (rafBudget < FRAME_MS - 1.5) { requestAnimationFrame(loop); return; }
+  rafBudget = Math.max(-FRAME_MS / 2, rafBudget - FRAME_MS);
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
   let V;
   if (screen === "run" && me.side === "host" && sim) {
@@ -278,33 +286,44 @@ function buildHud() {
 }
 function banner(title, sub) { bannerT = 2.6; const b = $("#banner"); if (!b) return; $("#btitle").textContent = title; $("#bsub").textContent = sub || ""; b.classList.remove("on"); void b.offsetWidth; b.classList.add("on"); }
 let lastOffersKey = "", resultTimer = 0;
+// el HUD escribe en el DOM solo si el valor cambió: cada escritura obliga al navegador a recalcular estilos y layout
+const hudEls = new Map(), hudVals = new Map();
+function hudEl(id) { let e = hudEls.get(id); if (!e || !e.isConnected) { e = document.getElementById(id); hudEls.set(id, e); } return e; }
+function put(key, id, v, fn) { if (hudVals.get(key) === v) return; const e = hudEl(id); if (!e) return; hudVals.set(key, v); fn(e, v); }
+const show = (id, on) => put("show:" + id, id, on, (e, v) => { e.hidden = !v; });
 function updateHud(dt) {
   if (!hudBuilt) buildHud();
-  hud.hidden = false;
+  if (hud.hidden) hud.hidden = false;
   const s = snap;
-  $("#xpfill").style.width = Math.min(100, s.xp / s.xn * 100) + "%";
-  $("#lvl").textContent = "NV " + s.lv;
-  $("#time").textContent = fmt(s.t);
-  $("#kills").textContent = s.kl;
-  const hps = Object.entries(s.P).map(([side, p]) => `<div class="hp ${p.d ? "down" : ""}"><img src="${portrait(p.c, 2)}" alt=""><div><i style="width:${Math.max(0, p.hp / p.mh * 100)}%"></i></div>${p.d ? "<em>¡AYUDA!</em>" : ""}</div>`).join("");
-  const hpEl = $("#hps"); if (hpEl.dataset.v !== hps) { hpEl.innerHTML = hps; hpEl.dataset.v = hps; }
+  put("xp", "xpfill", Math.min(100, Math.round(s.xp / s.xn * 200) / 2), (e, v) => { e.style.width = v + "%"; });
+  put("lvl", "lvl", s.lv, (e, v) => { e.textContent = "NV " + v; });
+  put("time", "time", Math.max(0, Math.floor(s.t)), (e, v) => { e.textContent = fmt(v); });
+  put("kills", "kills", s.kl, (e, v) => { e.textContent = v; });
+  // barras de vida: se arman solo si cambian los jugadores o alguno cae; la vida va por style.width
+  const ps = Object.entries(s.P);
+  put("hps", "hps", ps.map(([side, p]) => side + ":" + p.c + ":" + p.d).join(","), e => {
+    e.innerHTML = ps.map(([side, p]) => `<div class="hp ${p.d ? "down" : ""}"><img src="${portrait(p.c, 2)}" alt=""><div><i id="hpf-${side}"></i></div>${p.d ? "<em>¡AYUDA!</em>" : ""}</div>`).join("");
+    for (const [side] of ps) hudVals.delete("hp:" + side);
+  });
+  for (const [side, p] of ps) put("hp:" + side, "hpf-" + side, Math.max(0, Math.round(p.hp / p.mh * 100)), (e, v) => { e.style.width = v + "%"; });
   const mine = s.P[me.side];
   if (mine) {
-    const u = $("#ultbtn"); u.style.setProperty("--k", Math.round(mine.u * 100) + "%"); u.classList.toggle("ready", mine.u >= 1);
-    $("#ultlabel").textContent = mine.c === "thomas" ? "COMBO" : "TORTAS";
-    const d = $("#dashbtn"); d.style.setProperty("--k", Math.round((1 - Math.min(1, (me.side === "guest" && guestPos ? Math.max(guestPos.dcd, mine.dc) : mine.dc) / 2.4)) * 100) + "%");
+    put("ultk", "ultbtn", Math.round(mine.u * 20) * 5, (e, v) => e.style.setProperty("--k", v + "%"));
+    put("ultready", "ultbtn", mine.u >= 1, (e, v) => e.classList.toggle("ready", v));
+    put("ultlabel", "ultlabel", mine.c === "thomas" ? "COMBO" : "TORTAS", (e, v) => { e.textContent = v; });
+    const dk = 1 - Math.min(1, (me.side === "guest" && guestPos ? Math.max(guestPos.dcd, mine.dc) : mine.dc) / 2.4);
+    put("dashk", "dashbtn", Math.round(dk * 20) * 5, (e, v) => e.style.setProperty("--k", v + "%"));
+    put("build", "build", JSON.stringify([mine.w, mine.pa, mine.e]), e => { e.innerHTML = buildIcons(mine); });
   }
-  if (mine) {
-    const bk = JSON.stringify([mine.w, mine.pa, mine.e]), bEl = $("#build");
-    if (bEl.dataset.v !== bk) { bEl.dataset.v = bk; bEl.innerHTML = buildIcons(mine); }
+  if (hintT > 0) { hintT -= dt; const v = input.vec; if (v.x || v.y) hintT = Math.min(hintT, 0.6); show("movehint", !(hintT <= 0 || s.st !== "run")); } else show("movehint", false);
+  show("objhud", !!s.ob);
+  if (s.ob) put("objtxt", "objtxt", `Pedido de Roro's ${s.ob[2]}% · ${s.ob[3]}s`, (e, v) => { e.textContent = v; });
+  show("bossbar", !!s.boss);
+  if (s.boss) {
+    put("bossname", "bossname", s.boss.n === "luz" ? "LUZ" : "LINDA, LA JEFA", (e, v) => { e.textContent = v; });
+    put("bossfill", "bossfill", Math.round(s.boss.hp * 200) / 2, (e, v) => { e.style.width = v + "%"; });
   }
-  const mh = $("#movehint");
-  if (hintT > 0) { hintT -= dt; const v = input.vec; if (v.x || v.y) hintT = Math.min(hintT, 0.6); mh.hidden = hintT <= 0 || s.st !== "run"; } else mh.hidden = true;
-  const oh = $("#objhud");
-  if (s.ob) { oh.hidden = false; $("#objtxt").textContent = `Pedido de Roro's ${s.ob[2]}% · ${s.ob[3]}s`; } else oh.hidden = true;
-  const bb = $("#bossbar");
-  if (s.boss) { bb.hidden = false; $("#bossname").textContent = s.boss.n === "luz" ? "LUZ" : "LINDA, LA JEFA"; $("#bossfill").style.width = s.boss.hp * 100 + "%"; } else bb.hidden = true;
-  const b = $("#banner"); if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) b.classList.remove("on"); }
+  if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { const b = hudEl("banner"); if (b) b.classList.remove("on"); } }
   // subida de nivel
   const of = s.st === "levelup" ? s.of && s.of[me.side] : null;
   const key = s.st + ":" + s.lv + ":" + (of ? of.pick : "-") + ":" + JSON.stringify(of && of.opts);

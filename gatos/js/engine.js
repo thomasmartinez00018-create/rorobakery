@@ -64,6 +64,11 @@ export const PASSIVES = {
 };
 export const EVO_OF = Object.fromEntries(Object.entries(WEAPONS).map(([w, d]) => [d.evo.p, w]));
 export const SLOTS = 5;
+export const GEM_CAP = 120;       // pasadas estas gemas en el piso, las más viejas se fusionan con la vecina
+export const GEM_OVER = 400;      // como antes: con más de 400 gemas (contando las fusionadas) las más viejas pasan solas a experiencia
+export const PICK_CAP = 30;       // tope de objetos en el piso (las cajas de Roro's nunca se descartan)
+export const PICK_LIFE = 40;      // monedas, imanes y mangueras vencen a los 40 s y parpadean los últimos 5
+const EXPIRES = { moneda: 1, iman: 1, manguera: 1 }; // la caja y el alfajor no vencen: son premio y vida
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -304,7 +309,7 @@ export class Sim {
     // el olor a torta atrae gatos
     if (inside) { o.acc += dt; if (o.acc > 1.1) { o.acc = 0; const a = Math.random() * Math.PI * 2; this.spawnAt(Math.random() < 0.5 ? "saltarin" : "gato", o.x + Math.cos(a) * 120, o.y + Math.sin(a) * 120); } }
     if (o.prog >= 1) {
-      this.pickups.push({ k: "caja", x: o.x, y: o.y + 6 }, { k: "alfajor", x: o.x - 12, y: o.y }, { k: "moneda", x: o.x + 12, y: o.y }, { k: "moneda", x: o.x + 16, y: o.y + 8 });
+      this.drop("caja", o.x, o.y + 6); this.drop("alfajor", o.x - 12, o.y); this.drop("moneda", o.x + 12, o.y); this.drop("moneda", o.x + 16, o.y + 8);
       this.coins += 3; this.ev.push(["obj", 1, Math.round(o.x), Math.round(o.y)]); this.obj = null;
     } else if (o.left <= 0) { this.ev.push(["obj", 0]); this.obj = null; }
   }
@@ -467,18 +472,30 @@ export class Sim {
     this.kills++;
     if (p) { p.kills++; p.ult = Math.min(1, p.ult + (B.boss ? 0.5 : e.elite ? 0.25 : 1 / 55)); }
     if (e.type === "linda") { this.state = "win"; this.ev.push(["win"]); return; }
-    if (e.type === "luz") { for (let i = 0; i < 16; i++) this.gems.push({ x: e.x + rnd(-24, 24), y: e.y + rnd(-24, 24), v: 5, pull: 0 }); this.pickups.push({ k: "alfajor", x: e.x - 8, y: e.y }, { k: "caja", x: e.x + 8, y: e.y }); this.bossRef = null; this.calm = 8; this.ev.push(["bossdown"]); return; }
+    if (e.type === "luz") { for (let i = 0; i < 16; i++) this.gems.push({ x: e.x + rnd(-24, 24), y: e.y + rnd(-24, 24), v: 5, pull: 0 }); this.drop("alfajor", e.x - 8, e.y); this.drop("caja", e.x + 8, e.y); this.bossRef = null; this.calm = 8; this.ev.push(["bossdown"]); return; }
     if (e.type === "madre") for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2; const k = this.spawnAt("gatito", e.x + Math.cos(a) * 8, e.y + Math.sin(a) * 8); k.kx = Math.cos(a) * 90; k.ky = Math.sin(a) * 90; }
-    if (e.elite) { this.pickups.push({ k: "caja", x: e.x, y: e.y }); for (let i = 0; i < 4; i++) this.gems.push({ x: e.x + rnd(-14, 14), y: e.y + rnd(-14, 14), v: 5, pull: 0 }); return; }
+    if (e.elite) { this.drop("caja", e.x, e.y); for (let i = 0; i < 4; i++) this.gems.push({ x: e.x + rnd(-14, 14), y: e.y + rnd(-14, 14), v: 5, pull: 0 }); return; }
     this.gems.push({ x: e.x, y: e.y, v: B.xp, pull: 0 });
-    if (Math.random() < 0.01) this.pickups.push({ k: "alfajor", x: e.x + 4, y: e.y });
-    if (Math.random() < 0.04) this.pickups.push({ k: "moneda", x: e.x - 4, y: e.y });
+    if (Math.random() < 0.01) this.drop("alfajor", e.x + 4, e.y);
+    if (Math.random() < 0.04) this.drop("moneda", e.x - 4, e.y);
   }
   dropCrate(e) {
     const r = Math.random();
     const k = r < 0.34 ? "moneda" : r < 0.56 ? "alfajor" : r < 0.76 ? "iman" : "manguera";
-    this.pickups.push({ k, x: e.x, y: e.y });
-    if (k === "moneda") this.pickups.push({ k, x: e.x + 7, y: e.y + 3 });
+    this.drop(k, e.x, e.y);
+    if (k === "moneda") this.drop(k, e.x + 7, e.y + 3);
+  }
+  // objeto en el piso: las monedas cercanas se apilan; con más de PICK_CAP se va el más viejo que vence (nunca una caja)
+  drop(k, x, y) {
+    if (k === "moneda") for (const o of this.pickups) if (o.k === "moneda" && !o.got && (o.x - x) ** 2 + (o.y - y) ** 2 < 256) { o.n = (o.n || 1) + 1; o.t0 = this.t; return o; }
+    const o = { k, x, y, t0: this.t };
+    this.pickups.push(o);
+    if (this.pickups.length > PICK_CAP) {
+      let i = this.pickups.findIndex(q => EXPIRES[q.k] && !q.got);
+      if (i < 0) i = this.pickups.findIndex(q => q.k !== "caja" && !q.got);
+      if (i >= 0) this.pickups.splice(i, 1);
+    }
+    return o;
   }
 
   /* ---------- armas ---------- */
@@ -640,7 +657,7 @@ export class Sim {
       for (const p of alive) if (d2(p, k) < 144) {
         k.got = true;
         if (k.k === "alfajor") { p.hp = Math.min(p.maxHp, p.hp + 35); this.ev.push(["heal", p.x, p.y, p.side]); }
-        else if (k.k === "moneda") { this.coins += 1; this.ev.push(["coin", p.x, p.y, p.side]); }
+        else if (k.k === "moneda") { this.coins += k.n || 1; this.ev.push(["coin", p.x, p.y, p.side]); }
         else if (k.k === "caja") this.openChest(p);
         else if (k.k === "iman") { for (const g of this.gems) { g.pull = 1; g.vac = true; } this.ev.push(["vacuum", Math.round(p.x), Math.round(p.y), p.side]); }
         else if (k.k === "manguera") {
@@ -732,8 +749,29 @@ export class Sim {
     this.zones = this.zones.filter(z => !z.done);
     this.hz = this.hz.filter(z => !z.done);
     this.gems = this.gems.filter(g => !g.got);
+    for (const k of this.pickups) if (EXPIRES[k.k] && this.t - k.t0 > PICK_LIFE) k.got = true;
     this.pickups = this.pickups.filter(k => !k.got);
-    if (this.gems.length > 400) { const extra = this.gems.splice(0, this.gems.length - 400); this.gainXp(extra.reduce((a, g) => a + g.v, 0)); }
+    if (this.gems.length > GEM_CAP) this.mergeGems();
+  }
+  // las gemas más viejas se suman a la vecina más cercana: la experiencia es la misma y la foto pesa menos.
+  // Cada gema recuerda cuántas representa (c), así se mantiene la regla de siempre: pasadas las 400, las más viejas
+  // se cobran solas como experiencia.
+  mergeGems() {
+    while (this.gems.length > GEM_CAP) {
+      const g = this.gems.shift();
+      let best = this.gems[0], bd = Infinity;
+      for (const o of this.gems) { const d = d2(g, o); if (d < bd) { bd = d; best = o; } }
+      best.v += g.v; best.c = (best.c || 1) + (g.c || 1); best.pull = Math.max(best.pull, g.pull); if (g.vac) best.vac = true;
+    }
+    let n = 0; for (const g of this.gems) n += g.c || 1;
+    let xp = 0;
+    while (n > GEM_OVER && this.gems.length) {
+      const g = this.gems[0], c = g.c || 1, take = Math.min(c, n - GEM_OVER);
+      if (take === c) { this.gems.shift(); xp += g.v; }
+      else { const v = g.v * take / c; g.v -= v; g.c = c - take; xp += v; }
+      n -= take;
+    }
+    if (xp) this.gainXp(xp);
   }
 
   /* ---------- foto del estado para dibujar (local o por red) ---------- */
@@ -746,8 +784,8 @@ export class Sim {
     }
     const B = []; for (const b of this.proj) B.push(b.k, Math.round(b.x), Math.round(b.y), Math.round(Math.atan2(b.vy, b.vx) * 10));
     const H = []; for (const h of this.eproj) H.push(Math.round(h.x), Math.round(h.y), h.k);
-    const G = []; for (const g of this.gems) G.push(Math.round(g.x), Math.round(g.y), g.v);
-    const K = this.pickups.map(k => [PICKS.indexOf(k.k), Math.round(k.x), Math.round(k.y)]);
+    const G = []; for (const g of this.gems) G.push(Math.round(g.x), Math.round(g.y), Math.max(1, Math.round(g.v)));
+    const K = this.pickups.map(k => EXPIRES[k.k] && this.t - k.t0 > PICK_LIFE - 5 ? [PICKS.indexOf(k.k), Math.round(k.x), Math.round(k.y), 1] : [PICKS.indexOf(k.k), Math.round(k.x), Math.round(k.y)]);
     const U = this.pools.map(p => [Math.round(p.x), Math.round(p.y), p.r, Math.round(p.life * 10), p.slow ? 1 : 0]);
     const M = this.bombs.map(b => [Math.round(b.x0), Math.round(b.y0), Math.round(b.x), Math.round(b.y), Math.round(Math.min(1, Math.max(0, b.t / b.dur)) * 100), b.done ? 1 : 0, b.r]);
     const Bu = this.buses.map(b => [Math.round(b.x), Math.round(b.y), b.dir]);
@@ -761,6 +799,6 @@ export class Sim {
     };
     const boss = this.bossRef && this.bossRef.hp > 0 ? { n: this.bossRef.type, hp: this.bossRef.hp / this.bossRef.maxHp } : null;
     const ev = this.ev; this.ev = [];
-    return { t: Math.round(this.t * 100) / 100, st: this.state, lv: this.level, xp: this.xp, xn: this.xpNext, kl: this.kills, co: this.coins, E, B, H, G, K, U, M, Bu, Z, Hz, ob, tg: this.bond ? 1 : 0, P, boss, of: this.offers, ev, map: this.map };
+    return { t: Math.round(this.t * 100) / 100, st: this.state, lv: this.level, xp: Math.round(this.xp * 100) / 100, xn: this.xpNext, kl: this.kills, co: this.coins, E, B, H, G, K, U, M, Bu, Z, Hz, ob, tg: this.bond ? 1 : 0, P, boss, of: this.offers, ev, map: this.map };
   }
 }
