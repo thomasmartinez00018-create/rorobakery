@@ -232,3 +232,21 @@ Mediana 149: todas dentro de ±35% (antes, cuatro afuera). Por densidad separada
 - `test_dinamica.mjs`: 11 en verde. `test_guion.mjs` compara contra 038a90f: 84 partidas idénticas byte a byte.
 - `prueba_dinamica.mjs` en Chromium (390 x 844): partida de 2 minutos de reloj sin errores en consola y 21 capturas en `gatos-dev/capturas/dinamica-*.png`.
 - `test_historia.mjs` falla desde 8bba9e4 (story.js ya no exporta EXAMPLE): no es de esta rama.
+
+## 9. Integración historia + dinámica + gráficos (gdl/v2)
+
+Arcade con `run_batch.mjs`, de a dos, 20 partidas por configuración (semillas 1 a 20), de a un proceso:
+
+| Configuración | 038a90f con su geometría | 038a90f con GEO nuevo | Integración |
+| --- | --- | --- | --- |
+| Casual, Plaza | 9/20 (45%) | 7/20 | 7/20 (35%) |
+| Casual, Terrazas | 3/20 (15%) | 1/20 | 1/20 (5%) |
+| Perfecto, Plaza | | | 19/20 (95%) |
+| Perfecto, Terrazas | | | 15/20 (75%) |
+
+Con 40 partidas: casual Plaza 48% → 48% y casual Terrazas 13% → 5% (038a90f con su geometría → integración; `resumen.mjs`: dentro del margen, pero Terrazas queda debajo del objetivo de 15 a 35%). La diferencia es solo la geometría (GEO de la historia): el motor integrado da el mismo resultado que 038a90f con las zonas caminables nuevas.
+
+Historia con `bot_historia.mjs 4`: todos los capítulos ganados solo y de a dos (solo, 3/4 en los capítulos 1, 3 y 7); con jugadores quietos (afk) se pierden los capítulos 0 a 7.
+
+Pruebas: `test.mjs` en verde (perfil, guion, historia, dinámica, navegador y navegador de la historia); `prueba_final.mjs` y `prueba_dinamica.mjs` en verde sin errores en consola.
+
