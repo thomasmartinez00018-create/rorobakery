@@ -6,6 +6,7 @@ import { Net, makeCode, cleanCode, PROTO } from "./net.js";
 import { sfx } from "./sfx.js";
 import { music } from "./music.js";
 import { Input } from "./input.js";
+import { loadProfile, saveProfile, requestPersist, exportCode, importCode, BACKUP_KEYS } from "./profile.js";
 
 const $ = s => document.querySelector(s);
 // retratos memorizados: portrait() codifica un PNG cada vez (toDataURL) y el HUD lo pide en cada cuadro
@@ -22,14 +23,11 @@ const MAP_COST = { plaza: 0, estacion: 60, feria: 120, bielli: 150, cancha: 180,
 let coinIc = "";
 const COIN = () => coinIc || (coinIc = `<img class="coin-ic" src="${portrait("moneda", 3)}" alt="monedas">`);
 
-/* ---------------- perfil guardado ---------------- */
-const LS = "gdl-profile";
-function loadProfile() {
-  try { const p = JSON.parse(localStorage.getItem(LS)); if (p && p.v === 1) return p; } catch (e) {}
-  return { v: 1, who: null, coins: 0, up: { hp: 0, dmg: 0, spd: 0, mag: 0 }, maps: { plaza: true }, best: { t: 0, k: 0, lv: 0 }, wins: 0, runs: 0 };
-}
+/* ---------------- perfil guardado (js/profile.js: v2 con migración desde v1) ---------------- */
 let prof = loadProfile();
-const save = () => { try { localStorage.setItem(LS, JSON.stringify(prof)); } catch (e) {} };
+// cuando ya hay progreso que cuidar, se pide al navegador que no borre el guardado
+const save = () => { saveProfile(prof); if (prof.runs > 0) requestPersist(); };
+let backupIn = "", backupMsg = null, backupPending = null;
 
 /* ---------------- estado general ---------------- */
 buildSprites();
@@ -453,6 +451,23 @@ function draw(result) {
       <div class="brand"><h2>Taller</h2><span class="coins">${COIN()}${prof.coins}</span></div>
       <p class="hint">Mejoras permanentes para tu personaje. Las monedas salen de cada partida.</p>
       ${Object.entries(UPG).map(([k, [n, d]]) => { const lv = prof.up[k], cost = UPG_COST[lv]; return `<div class="upg"><div><b>${n}</b><span>${d} · nivel ${lv}/5</span><span class="stars">${"■".repeat(lv)}${"□".repeat(5 - lv)}</span></div><button class="mid" data-act="buy" data-v="${k}" ${lv >= 5 || prof.coins < cost ? "disabled" : ""}>${lv >= 5 ? "Máximo" : `${cost}${COIN()}`}</button></div>`; }).join("")}
+      <button class="mid ghost" data-act="backup">Código de respaldo</button>
+      <button class="link" data-act="back">Volver</button>
+    </section>`;
+    return;
+  }
+  if (screen === "backup") {
+    const p = backupPending;
+    ui.innerHTML = `<section class="panel shop backup">
+      <div class="brand"><h2>Respaldo</h2><span class="coins">${COIN()}${prof.coins}</span></div>
+      <p class="hint">Este código guarda tus monedas, el Taller, los mapas, los récords y la historia. Mandátelo por WhatsApp o guardalo en notas: si cambiás de celu o se borra el navegador, lo pegás acá y recuperás todo.</p>
+      <textarea id="bkout" readonly rows="4">${esc(exportCode(prof))}</textarea>
+      <button class="mid" data-act="bkcopy">Copiar código</button>
+      <p class="label">Cargar un código</p>
+      <textarea id="bkin" rows="3" placeholder="Pegá acá tu código" autocomplete="off" autocapitalize="off" spellcheck="false">${esc(backupIn)}</textarea>
+      ${backupMsg ? `<p class="${backupMsg.ok ? "hint" : "err"}">${esc(backupMsg.text)}</p>` : ""}
+      ${p ? `<p class="hint">El código tiene ${p.coins} monedas, ${p.wins} victorias y ${Object.keys(p.maps).length} mapas. Reemplaza lo que tenés ahora (${prof.coins} monedas).</p>
+        <button class="mid" data-act="bkyes">Sí, reemplazar</button>` : `<button class="mid" data-act="bkload">Cargar</button>`}
       <button class="link" data-act="back">Volver</button>
     </section>`;
   }
@@ -512,7 +527,11 @@ document.addEventListener("click", e => {
     case "go": hostStart(); break;
     case "again": hostStart(); break;
     case "menu": if (me.side === "host" && me.net && me.net.connected) me.net.send({ t: "menu" }); endRun(); toMenu(); break;
-    case "back": if (screen === "shop") screen = shopBack || "menu"; else { leave(); screen = "menu"; me.code = null; } errMsg = null; draw(); break;
+    case "backup": backupIn = ""; backupMsg = null; backupPending = null; screen = "backup"; draw(); break;
+    case "bkcopy": { const el = $("#bkout"), code = el ? el.value : exportCode(prof); if (navigator.clipboard) navigator.clipboard.writeText(code).then(() => { backupMsg = { ok: true, text: "Código copiado." }; draw(); }).catch(() => { if (el) el.select(); }); else if (el) el.select(); break; }
+    case "bkload": { const el = $("#bkin"); backupIn = el ? el.value : backupIn; try { backupPending = importCode(backupIn); backupMsg = null; } catch (err) { backupPending = null; backupMsg = { ok: false, text: err.message }; } draw(); break; }
+    case "bkyes": if (backupPending) { try { localStorage.setItem(BACKUP_KEYS.prev, JSON.stringify(prof)); } catch (err) {} prof = backupPending; backupPending = null; backupIn = ""; save(); newDemo(); backupMsg = { ok: true, text: "Listo: progreso recuperado." }; } draw(); break;
+    case "back": if (screen === "backup") screen = "shop"; else if (screen === "shop") screen = shopBack || "menu"; else { leave(); screen = "menu"; me.code = null; } errMsg = null; draw(); break;
     case "share": { const url = location.origin + location.pathname + "?sala=" + me.code; if (navigator.share) navigator.share({ title: "Gatos de Linda", text: "Entrá a mi sala", url }).catch(() => {}); else navigator.clipboard && navigator.clipboard.writeText(url).then(() => banner("Link copiado", "")).catch(() => {}); break; }
     case "pick": { if (performance.now() - lvShownAt < 350) break; const i = +b.dataset.i; if (me.side === "host") sim && sim.pick("host", i); else me.net && me.net.send({ t: "pick", i }); sfx.play("coin"); break; }
 
@@ -537,7 +556,7 @@ document.addEventListener("pointerdown", e => {
   else { if (me.side === "host") hostDash = true; else guestDash = true; }
 });
 addEventListener("keydown", e => { if (screen === "run" && (e.key === "Escape" || e.key === "p" || e.key === "P")) { const pm = $("#pausemenu"); setPaused(!!(pm && pm.hidden)); } });
-document.addEventListener("input", e => { if (e.target.id === "code") { joinDraft = cleanCode(e.target.value); e.target.value = joinDraft; } });
+document.addEventListener("input", e => { if (e.target.id === "code") { joinDraft = cleanCode(e.target.value); e.target.value = joinDraft; } if (e.target.id === "bkin") { backupIn = e.target.value; backupPending = null; } });
 
 if (new URLSearchParams(location.search).has("debug")) window.__g = () => ({ sim, snap, me, R, prof, input });
 draw();
