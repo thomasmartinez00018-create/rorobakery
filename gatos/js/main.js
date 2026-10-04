@@ -55,6 +55,7 @@ let guestPos = null, guestInput = { pos: null, face: 1, moving: 0, ult: false, d
 const smooth = new Map();
 let luzMsgAt = 0; // dinámica 2: para no repetir el cartel de Luz en cada carga
 let stealAt = 0; // dinámica 3
+let arcadeRuns = 0; // dinámica 4: partidas de arcade en esta sesión (el anfitrión decide el arranque rápido)
 let bannerT = 0, errMsg = null, busyMsg = null, joinDraft = cleanCode(new URLSearchParams(location.search).get("sala") || "");
 
 /* ---------------- modo historia (js/story.js, si existe; si no, nada cambia) ---------------- */
@@ -156,7 +157,9 @@ function startRun(m, chars, cap) {
   curCap = chapter(cap); if (cap && !curCap) curCap = { id: cap, n: 0, title: "Capítulo", sub: "" };
   runId++; runOn = true; paused = false; lastGuestMsg = lastSeen = performance.now(); guestAway = false; endShown = false; earned = 0; smooth.clear(); pendingEv = [];
   if (me.side === "host") {
-    sim = new Sim(map, chapter(cap) ? chapterGuion(curCap) : undefined);
+    // dinámica 4: desde la segunda partida de arcade de la sesión, arranque rápido (reloj en 0:30 y una mejora)
+    const fast = !chapter(cap) && arcadeRuns > 0; if (!chapter(cap)) arcadeRuns++;
+    sim = new Sim(map, chapter(cap) ? chapterGuion(curCap) : undefined, { fast });
     sim.addPlayer("host", chars.host || "thomas", prof.up);
     if (chars.guest) sim.addPlayer("guest", chars.guest, me.partnerMeta || {});
     snap = sim.snapshot();
@@ -196,6 +199,7 @@ function onEvents(ev) {
     if (e[0] === "stun") { luzMsgAt = performance.now(); banner("¡Luz se frenó!", "Está aturdida: le pegan el doble"); }
     // dinámica 3: evento de mitad de partida y gato ladrón
     if (e[0] === "mid") { const b = MID_BANNER[e[1]]; if (b) { const [t, sub] = e[2] ? b[0] : e[3] && b[2] ? b[2] : b[1]; banner(t, sub); } }
+    if (e[0] === "fast") banner("Arranque rápido", "Revancha: arrancan en 0:30 con una mejora");
     if (e[0] === "ladron") banner("¡Gato ladrón!", "Se roba la experiencia del piso: agárrenlo antes de que escape");
     if (e[0] === "steal" && performance.now() - stealAt > 8000) { stealAt = performance.now(); banner("¡Se escapó un ladrón!", `Se llevó ${e[3]} de experiencia`); }
     if (e[0] === "obj") banner(["Se enfrió el pedido", "¡Pedido entregado!", "¡Pedido de Roro's!"][e[1]], ["Otra vez será", "Caja, alfajor y monedas", "Párense encima: juntos carga el doble"][e[1]]);

@@ -59,8 +59,9 @@ export function choose(policy, p, opts) {
 
 // exact: usa Math.random como azar del motor (para comparar bit a bit con un motor sin RNG propio)
 // guion: un guion del motor (por ejemplo chapterGuion(capítulo)); en los diálogos el bot toca enseguida
-export function runGame({ map = "plaza", duo = true, policy = "builder", meta = {}, dt = 1 / 30, react = 0, maxT = 600, chars, seed, exact = false, guion } = {}) {
-  const sim = new Sim(map, guion, seed !== undefined ? { seed } : undefined);
+// fast: arranque rápido de revancha (dinámica 4)
+export function runGame({ map = "plaza", duo = true, policy = "builder", meta = {}, dt = 1 / 30, react = 0, maxT = 600, chars, seed, exact = false, guion, fast = false } = {}) {
+  const sim = new Sim(map, guion, seed !== undefined ? { seed, fast } : fast ? { fast } : undefined);
   if (exact && "rnd" in sim) sim.rnd = Math.random;
   const cs = chars || (duo ? ["thomas", "rocio"] : ["thomas"]);
   sim.addPlayer("host", cs[0], meta); if (duo) sim.addPlayer("guest", cs[1], meta);

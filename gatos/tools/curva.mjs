@@ -1,5 +1,5 @@
 // Curva de dificultad: victorias y duración mediana por mapa, bot perfecto y casual, solo y dúo.
-//   node curva.mjs results/A [results/B]      con dos carpetas muestra A → B
+//   node curva.mjs results/A [results/B]      con dos carpetas muestra A → B (TAG=_fast para las de arranque rápido)
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";

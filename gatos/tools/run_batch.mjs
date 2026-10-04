@@ -3,7 +3,7 @@
 //   node run_batch.mjs <mapa> <duo|solo> <N> [policy] [react] [meta0|meta2|meta5] [etiqueta]
 // Variables: OUT=carpeta de resultados (tools/results/<OUT>, por defecto "actual"), ENGINE=otro engine.js,
 //            DT=pasos por segundo (30), SEED=semilla base (1), EXACT=1 (el motor usa Math.random: comparación bit a bit),
-//            MODES=duo,solo (para la batería).
+//            MODES=duo,solo (para la batería), FAST=1 (arranque rápido de revancha: el archivo lleva _fast al final).
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -40,10 +40,10 @@ for (let i = 0; i < +N; i++) {
   const chars = duo ? ["thomas", "rocio"] : [i % 2 ? "rocio" : "thomas"];
   const seed = (base * 7919 + i * 104729 + MAPS7.indexOf(map) * 31) >>> 0;
   const restore = seedMath(seed);
-  try { out.push(runGame({ map, duo, policy, react: +react, meta, chars, dt: process.env.DT ? 1 / +process.env.DT : 1 / 30, seed: seed ^ 0x9e3779b9, exact })); }
+  try { out.push(runGame({ map, duo, policy, react: +react, meta, chars, dt: process.env.DT ? 1 / +process.env.DT : 1 / 30, seed: seed ^ 0x9e3779b9, exact, fast: process.env.FAST === "1" })); }
   finally { restore(); }
 }
-const name = `${map}_${mode}_${policy}_r${react}_${metaS}${tag}`;
+const name = `${map}_${mode}_${policy}_r${react}_${metaS}${tag}${process.env.FAST === "1" ? "_fast" : ""}`;
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, name + ".json"), JSON.stringify(out));
 console.log(name, "ok", out.filter(r => r.state === "win").length + "/" + N);

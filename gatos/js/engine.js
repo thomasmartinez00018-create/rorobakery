@@ -143,6 +143,9 @@ export const ARCADE = {
     ["negro", 4, 110, 300], ["negro", 7, 300], ["madre", 2, 140, null, 7], ["gordo", 2, 180, 300], ["gordo", 3, 300],
     ["ladron", 2, 300, null, 3]],                               // dinámica 3: gato ladrón desde las 5:00, hasta 3 a la vez
   mid: { t: 280, dur: 30, last: 300, end: 325 },               // dinámica 3: evento de mitad de partida (MID_OF)
+  // dinámica 4: arranque rápido de revancha (new Sim(mapa, guion, { fast: true })): el reloj arranca en t, con
+  // `levels` mejoras para elegir apenas empieza, y el saltarín y las palomas habilitados desde `early` segundos
+  fast: { t: 30, levels: 1, early: 15 },
   win: { kill: "linda" },
   lose: { allDown: true },
   goal: null,
@@ -165,7 +168,7 @@ export function chapterGuion(ch) {
     id: ch.id, chapter: ch.id,
     bosses: pick("bosses", []), hordes: pick("hordes", []), orders: pick("orders", []), elites: pick("elites", null),
     crates: pick("crates", ARCADE.crates), pigeons: pick("pigeons", ARCADE.pigeons), hazards: pick("hazards", true),
-    rate: pick("rate", ARCADE.rate), mix: pick("mix", ARCADE.mix), events: pick("events", []), mid: pick("mid", null),
+    rate: pick("rate", ARCADE.rate), mix: pick("mix", ARCADE.mix), events: pick("events", []), mid: pick("mid", null), fast: pick("fast", null),
     goal: ch.goal || { kind: "none" }, dur: ch.dur, allies: ch.allies || [], intro: ch.intro || [], outro: ch.outro || [],
     win: pick("win", {}), lose: pick("lose", { allDown: true })
   });
@@ -176,8 +179,15 @@ export class Sim {
     this.map = MAPS[map] ? map : "plaza"; this.cfg = MAPS[this.map];
     this.seed = opts.seed !== undefined ? opts.seed >>> 0 : (Math.random() * 4294967296) >>> 0;
     this.rnd = mulberry32(this.seed);
-    const G = this.G = makeGuion(guion);
-    this.t = 0; this.state = "run";
+    let G = makeGuion(guion);
+    // dinámica 4: arranque rápido (solo si el guion lo tiene: el arcade sí, la historia no)
+    this.fast = !!(opts.fast && G.fast);
+    if (this.fast) {
+      const F = G.fast;
+      G = { ...G, pigeons: G.pigeons && { ...G.pigeons, from: Math.min(G.pigeons.from, F.early) }, mix: G.mix.map(m => m[0] === "saltarin" && m[2] > F.early && m[2] <= F.t + 30 ? [m[0], m[1], F.early, ...m.slice(3)] : m) };
+    }
+    this.G = G;
+    this.t = this.fast ? G.fast.t : 0; this.state = "run";
     this.players = {}; this.enemies = []; this.proj = []; this.eproj = []; this.gems = []; this.pools = []; this.bombs = []; this.buses = []; this.pickups = []; this.zones = []; this.hz = [];
     this.nextId = 1; this.level = 1; this.xp = 0; this.xpNext = 5; this.kills = 0; this.coins = 0;
     this.offers = {}; this.pendingLevels = 0;
@@ -1056,6 +1066,7 @@ export class Sim {
   begin() {
     this.begun = true;
     const G = this.G;
+    if (this.fast) { this.ev.push(["fast"]); for (let i = 0; i < (G.fast.levels || 0); i++) this.gainXp(this.xpNext - this.xp); } // dinámica 4: sube de nivel y elige
     for (const a of G.allies || []) this.addAlly(typeof a === "string" ? a : a.id || a.type, typeof a === "string" ? {} : a);
     if (G.goal && G.goal.kind && G.goal.kind !== "none") this.initGoal(G.goal);
     for (const e of this.atEvents) if (e.at === "start") { e.fired = true; this.doEvent(e); }
