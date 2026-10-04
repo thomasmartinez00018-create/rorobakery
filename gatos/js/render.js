@@ -54,6 +54,27 @@ function tintSprite(col, r) {
   return c;
 }
 
+/* ---------- partículas en pool fijo (arrays tipados, sin crear objetos por cuadro) ---------- */
+// paleta: cada color se guarda una vez y las partículas llevan su índice
+const PAL = [], PALI = new Map();
+function ci(col) { let i = PALI.get(col); if (i === undefined) { if (PAL.length >= 255) return 0; i = PAL.length; PAL.push(col); PALI.set(col, i); } return i; }
+class Pool {
+  constructor(n) {
+    this.n = n; this.i = 0;
+    for (const k of ["x", "y", "vx", "vy", "life", "max", "gr", "a", "ph", "sw"]) this[k] = new Float32Array(n);
+    for (const k of ["c", "s", "k", "b"]) this[k] = new Uint8Array(n);
+  }
+  // si está lleno se pisa la más vieja
+  take() { const i = this.i; this.i = i + 1 === this.n ? 0 : i + 1; return i; }
+  clear() { this.life.fill(0); }
+  count() { let n = 0; for (let i = 0; i < this.n; i++) if (this.life[i] > 0) n++; return n; }
+}
+const FX_N = 600;
+// golpes de la misma tanda al mismo gato: un solo número (mapa reutilizado entre llamadas)
+const SAME = new Map();
+
+// color del número: crítico ámbar (más grande), crítico muy fuerte naranja; golpes chicos un poco apagados
+const numCol = (n, crit) => crit ? (n >= 100 ? "#ff8a3a" : "#ffd24a") : n < 5 ? "#c8cad8" : "#ffffff";
 const FUR = { 0: "#8d8f98", 1: "#2b2833", 2: "#8f96a3", 3: "#e08a3a", 4: "#8d8170", 5: "#8a7a66", 6: "#e0822e", 7: "#efe0c4", 8: "#f4f1ea", 9: "#b7b9c2", 10: "#b07a42" };
 const PICK_SPR = { alfajor: "alfajor", moneda: "moneda", caja: "regalo", iman: "iman", manguera: "manguera" };
 // aliados sin sprite propio todavía: se dibujan con uno parecido (y una marca verde arriba)
@@ -64,7 +85,14 @@ export class Renderer {
     this.cv = canvas; this.ctx = canvas.getContext("2d");
     this.buf = document.createElement("canvas"); this.bg = this.buf.getContext("2d");
     this.lc = document.createElement("canvas"); this.lg = this.lc.getContext("2d");
-    this.parts = []; this.nums = []; this.slashes = []; this.rings = [];
+    this.fx = new Pool(FX_N); this.nums = []; this.numFree = []; this.slashes = []; this.rings = [];
+    // muertes con "pop": pocas a la vez, objetos reutilizados
+    this.pops = Array.from({ length: 24 }, () => ({ life: 0, x: 0, y: 0, s: null, big: 0 })); this.popI = 0;
+    // animación de cada jugador (acción en curso, esquive, estela) y de cada aliado
+    this.pst = {}; this.ast = new Map();
+    this.lastP = null; this.lastA = null; this.bossXY = [];
+    // hit-stop: cuadros de render que se congelan (la simulación sigue)
+    this.stopF = 0; this.stopAt = -9;
     this.cam = { x: MAP / 2, y: MAP / 2 }; this.shake = 0; this.t = 0;
     this.resize();
     addEventListener("resize", () => this.resize());
@@ -83,19 +111,28 @@ export class Renderer {
   /* efectos a partir de los eventos de la simulación */
   events(ev, localSide) {
     const snd = [];
-    let same = null; // golpes al mismo gato en el mismo lote: un solo número con la suma
+    SAME.clear(); // golpes al mismo gato en el mismo lote: un solo número con la suma
     for (const e of ev) {
       const k = e[0];
       if (k === "hit") {
-        const key = e[1] * 4096 + e[2], prev = same && same.get(key);
-        if (prev) { prev.n += e[3]; if (e[4]) { prev.c = "#ffd24a"; prev.big = 1; } }
-        else { const n = { x: e[1], y: e[2], n: e[3], c: e[4] ? "#ffd24a" : "#ffffff", life: 0.6, big: e[4] }; this.nums.push(n); (same || (same = new Map())).set(key, n); }
+        const key = e[1] * 4096 + e[2], prev = SAME.get(key);
+        if (prev) { prev.n += e[3]; if (e[4]) prev.big = 1; prev.c = numCol(prev.n, prev.big); }
+        else SAME.set(key, this.num(e[1], e[2], e[3], e[4]));
         for (let i = 0; i < 3; i++) this.part(e[1], e[2] + 6, "#ffffff", 40, 0.2); snd.push("hit");
+        // hit-stop corto en críticos (más largo si el golpe es a una jefa), con un respiro entre uno y otro
+        if (e[4]) { const boss = this.nearBoss(e[1], e[2] + 8); if (this.t - this.stopAt > (boss ? 0.6 : 1.1)) this.hitStop(boss ? 3 : 2); }
       }
-      if (k === "die") { const col = FUR[e[3]] || "#888"; for (let i = 0; i < 10; i++) this.part(e[1], e[2], col, 70, 0.45); this.part(e[1], e[2], "#ffffff", 20, 0.3); snd.push("die"); }
-      if (k === "slash") this.slashes.push({ x: e[1], y: e[2], f: e[3], r: e[4], both: e[5], life: 0.16 });
+      if (k === "die") {
+        const col = FUR[e[3]] || "#888", name = ENEMY_NAME[e[3]], big = e[3] === 4 || e[3] === 5;
+        // "pop": la silueta se infla y se apaga, y vuela pelo del color del gato
+        if (name !== "caja") this.pop(e[1], e[2], SPR[name], big);
+        for (let i = 0; i < (big ? 30 : 12); i++) this.part(e[1], e[2] - 4, col, big ? 110 : 75, 0.5, i % 3 ? 1 : 2, 160);
+        this.part(e[1], e[2] - 4, "#ffffff", 20, 0.3); snd.push("die");
+      }
+      if (k === "slash") { this.slashes.push({ x: e[1], y: e[2], f: e[3], r: e[4], both: e[5], life: 0.16 }); this.actAt(e[1], e[2], "slash", e[3]); }
+      if (k === "throw") this.actAt(e[1], e[2], "throw", 0);
       if (k === "boom") { this.rings.push({ x: e[1], y: e[2], r: e[3], life: 0.3, c: "#ffb04a" }); for (let i = 0; i < 16; i++) this.part(e[1], e[2], i % 2 ? "#ffcf5a" : "#ff6a3a", 110, 0.5); this.shake = Math.max(this.shake, 2); snd.push("boom"); }
-      if (k === "ultT" || k === "ultR") { this.rings.push({ x: e[1], y: e[2], r: 80, life: 0.45, c: k === "ultT" ? "#ffffff" : "#ff8ad8" }); this.shake = 5; snd.push("ult"); }
+      if (k === "ultT" || k === "ultR") { this.rings.push({ x: e[1], y: e[2], r: 80, life: 0.45, c: k === "ultT" ? "#ffffff" : "#ff8ad8" }); this.shake = 5; this.hitStop(2); this.actAt(e[1], e[2], "ult", 0); snd.push("ult"); }
       if (k === "hurt") { if (e[3] === localSide) { this.shake = Math.max(this.shake, 3); this.hurtFlash = 0.25; } snd.push(e[3] === localSide ? "hurt" : ""); }
       if (k === "down") { for (let i = 0; i < 20; i++) this.part(e[1], e[2], "#ff4a5a", 60, 0.8); snd.push("down"); }
       if (k === "revive") { for (let i = 0; i < 18; i++) this.part(e[1], e[2], "#ff8ad8", 50, 0.9); snd.push("revive"); }
@@ -104,28 +141,58 @@ export class Renderer {
       if (k === "gem") snd.push(e[1] === localSide ? "gem" : "");
       if (k === "bite") this.part(e[1], e[2], "#ffffff", 30, 0.2);
       if (k === "charge") this.rings.push({ x: e[1], y: e[2], r: 30, life: 0.3, c: "#ff5a3a" });
-      if (k === "dash") { for (let i = 0; i < 8; i++) this.part(e[1], e[2], "#d8d2c4", 40, 0.35); snd.push(e[3] === localSide ? "dash" : ""); }
+      if (k === "dash") { for (let i = 0; i < 8; i++) this.part(e[1], e[2], "#d8d2c4", 40, 0.35); const st = this.ps(e[3]); st.dash = 0.3; st.land = 0; st.tn = 0; snd.push(e[3] === localSide ? "dash" : ""); }
       if (k === "elite") { this.rings.push({ x: e[1], y: e[2], r: 50, life: 0.45, c: "#ffd24a" }); snd.push("elite"); }
       if (k === "spit") snd.push("spit");
       if (k === "zones") snd.push("zones");
       if (k === "zone") { this.rings.push({ x: e[1], y: e[2], r: e[3] * 1.4, life: 0.35, c: "#ff4a5a" }); for (let i = 0; i < 12; i++) this.part(e[1], e[2], i % 2 ? "#ff4a5a" : "#8a7a66", 90, 0.5); this.shake = Math.max(this.shake, 2); snd.push("boom"); }
-      if (k === "phase") { this.rings.push({ x: e[2], y: e[3], r: 120, life: 0.45, c: "#b36aff" }); this.shake = 6; snd.push("phase"); }
+      if (k === "phase") { this.rings.push({ x: e[2], y: e[3], r: 120, life: 0.45, c: "#b36aff" }); this.shake = 6; this.hitStop(3); snd.push("phase"); }
       if (k === "chest") { for (let i = 0; i < 26; i++) this.part(e[4], e[5], ["#ffd24a", "#ff8ac2", "#ffffff"][i % 3], 90, 0.9); this.rings.push({ x: e[4], y: e[5], r: 50, life: 0.45, c: e[2] === "evo" ? "#ff5fd2" : "#ffd24a" }); snd.push(e[2] === "evo" ? "evo" : "chest"); }
       if (k === "vacuum") { this.rings.push({ x: e[1], y: e[2], r: 120, life: 0.45, c: "#7ff0ff" }); snd.push("vacuum"); }
       if (k === "splash") { this.rings.push({ x: e[1], y: e[2], r: 150, life: 0.45, c: "#7fd0ff" }); for (let i = 0; i < 40; i++) this.part(e[1] + Math.cos(i) * 60, e[2] + Math.sin(i) * 40, i % 2 ? "#7fd0ff" : "#ffffff", 60, 0.7); snd.push("splash"); }
-      if (k === "sync") { this.rings.push({ x: e[1], y: e[2], r: 130, life: 0.45, c: "#ff5fb0" }, { x: e[1], y: e[2], r: 80, life: 0.45, c: "#ffffff" }); for (let i = 0; i < 20; i++) this.part(e[1], e[2], "#ff5fb0", 80, 1); this.shake = 6; snd.push("sync"); }
+      if (k === "sync") { this.rings.push({ x: e[1], y: e[2], r: 130, life: 0.45, c: "#ff5fb0" }, { x: e[1], y: e[2], r: 80, life: 0.45, c: "#ffffff" }); for (let i = 0; i < 20; i++) this.part(e[1], e[2], "#ff5fb0", 80, 1); this.shake = 6; this.hitStop(3); snd.push("sync"); }
       if (k === "warn") snd.push(e[1] === "tren" ? "horn" : "warn");
       if (k === "pass") { this.shake = Math.max(this.shake, e[1] === "tren" ? 4 : 1); snd.push(e[1] === "tren" ? "train" : "whoosh"); }
       if (k === "obj") snd.push(["objfail", "objok", "obj"][e[1]]);
       if (k === "summon") this.rings.push({ x: e[1], y: e[2], r: 40, life: 0.5, c: "#b36aff" });
+      if (k === "boss" || k === "bossdown") this.hitStop(3);
       if (["bus", "boss", "horde", "levelup", "throw", "hairball", "bossdown", "win", "over"].includes(k)) snd.push(k === "boss" ? "boss:" + e[1] : k);
     }
     return snd;
   }
-  part(x, y, c, sp, life) { const a = Math.random() * Math.PI * 2, v = sp * (0.3 + Math.random() * 0.7); this.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 20, c, life, max: life }); }
+  part(x, y, c, sp, life, size = 1, grav = 120) {
+    const P = this.fx, i = P.take(), a = Math.random() * 6.2832, v = sp * (0.3 + Math.random() * 0.7);
+    P.x[i] = x; P.y[i] = y; P.vx[i] = Math.cos(a) * v; P.vy[i] = Math.sin(a) * v - 20; P.life[i] = P.max[i] = life; P.c[i] = ci(c); P.s[i] = size; P.gr[i] = grav;
+  }
+  clearFx() { this.fx.clear(); this.nums.length = 0; this.rings.length = 0; this.slashes.length = 0; for (const p of this.pops) p.life = 0; }
+  fxCount() { return this.fx.count(); }
+  // número de daño: objetos reutilizados; el crítico es más grande y de color
+  num(x, y, n, crit) {
+    if (this.nums.length >= 30) this.numFree.push(this.nums.shift());
+    const o = this.numFree.pop() || {};
+    o.x = x + ((Math.random() * 7) | 0) - 3; o.y = y; o.n = n; o.big = crit ? 1 : 0; o.c = numCol(n, o.big); o.max = o.life = crit ? 0.8 : 0.6;
+    this.nums.push(o); return o;
+  }
+  pop(x, y, s, big) { if (!s) return; const p = this.pops[this.popI]; this.popI = (this.popI + 1) % this.pops.length; p.x = x; p.y = y; p.s = s; p.big = big ? 1 : 0; p.life = 0.16; if (big) this.shake = Math.max(this.shake, 4); }
+  hitStop(n) { if (n > this.stopF) this.stopF = n; this.stopAt = this.t; }
+  nearBoss(x, y) { const b = this.bossXY; for (let i = 0; i < b.length; i += 2) if (Math.abs(b[i] - x) < 26 && Math.abs(b[i + 1] - y) < 30) return true; return false; }
+  // estado de animación de un jugador
+  ps(side) { return this.pst[side] || (this.pst[side] = { act: 0, kind: "", alt: 0, f: 1, dash: 0, land: 0, tx: new Float32Array(4), ty: new Float32Array(4), tn: 0 }); }
+  // "slash" y "throw" no dicen quién pegó: se le asigna al jugador (o aliado) que está en ese punto
+  actAt(x, y, kind, face) {
+    let best = null, bd = 18 * 18, ally = false;
+    if (this.lastP) for (const side in this.lastP) { const p = this.lastP[side], d = (p.x - x) ** 2 + (p.y - y) ** 2; if (d < bd) { bd = d; best = side; } }
+    if (this.lastA) for (const a of this.lastA) { const d = (a.x - x) ** 2 + (a.y - y) ** 2; if (d < bd) { bd = d; best = a.id; ally = true; } }
+    if (best === null) return;
+    if (ally) { this.ast.set(best, this.t); return; }
+    const st = this.ps(best); st.kind = kind; st.alt ^= 1; st.act = kind === "throw" ? 0.2 : kind === "ult" ? 0.3 : 0.16; if (face) st.f = face;
+  }
 
   frame(V, dt) {
+    // hit-stop: se repite el cuadro anterior (el canvas ya lo tiene) y la simulación sigue su curso
+    if (this.stopF > 0) { this.stopF--; return; }
     this.t += dt;
+    this.lastP = V.players; this.lastA = V.allies || null; this.bossXY.length = 0;
     const g = this.bg, bw = this.bw, bh = this.bh;
     const me = V.players[V.local] || Object.values(V.players)[0];
     // V.cam (opcional, lo manda el anfitrión): la cámara va a ese punto más despacio; si no viene, sigue al jugador
@@ -181,7 +248,7 @@ export class Renderer {
     const list = [];
     for (const p of this.map.props) if (vis(p.x, p.y, 50)) list.push([p.y, 0, p]);
     for (const z of V.hz) if (!z[5]) list.push([z[1] + z[2], 6, z]);
-    for (const e of V.enemies) if (vis(e.x, e.y)) list.push([e.y, 1, e]);
+    for (const e of V.enemies) { if (e.type === 4 || e.type === 5) this.bossXY.push(e.x, e.y); if (vis(e.x, e.y)) list.push([e.y, 1, e]); }
     if (V.allies) for (const a of V.allies) if (vis(a.x, a.y)) list.push([a.y, 7, a]);
     for (const [side, p] of Object.entries(V.players)) { list.push([p.y, 2, p, side]); if (p.dg) list.push([p.dg[1], 3, p.dg]); if (p.o) for (const o of p.o) list.push([o[1], 4, o]); }
     for (const b of V.buses) list.push([b[1], 5, b]);
@@ -191,7 +258,7 @@ export class Renderer {
       if (kind === 1) { this.drawEnemy(g, o, X, Y); continue; }
       if (kind === 6) { this.drawHazard(g, o, X, Y); continue; }
       if (kind === 7) { this.drawAlly(g, o, X, Y); continue; }
-      if (kind === 2) this.drawPlayer(g, o, side === V.local, X, Y);
+      if (kind === 2) this.drawPlayer(g, o, side, side === V.local, X, Y, dt);
       if (kind === 3) { const s = SPR.romero, fr = Math.floor(this.t * 10) % 2; g.drawImage(o[2] < 0 ? s.fl[fr] : s.f[fr], X(o[0]) - (s.w >> 1), Y(o[1]) - s.ay); }
       if (kind === 4) { const s = SPR.juli, fr = Math.floor(this.t * 8) % 2; g.drawImage(s.f[fr], X(o[0]) - (s.w >> 1), Y(o[1]) - s.ay); }
       if (kind === 5) { const s = SPR.bus; g.drawImage(o[2] < 0 ? s.fl[0] : s.f[0], X(o[0]) - (s.w >> 1), Y(o[1]) - s.ay); }
@@ -218,18 +285,16 @@ export class Renderer {
     this.slashes = this.slashes.filter(s => s.life > 0);
     for (const r of this.rings) { r.life -= dt; const k = 1 - r.life / 0.45; g.strokeStyle = r.c; g.globalAlpha = Math.max(0, r.life * 3); g.lineWidth = 2; g.beginPath(); g.ellipse(X(r.x), Y(r.y) - 4, r.r * (0.3 + k), r.r * (0.3 + k) * 0.7, 0, 0, Math.PI * 2); g.stroke(); g.globalAlpha = 1; }
     this.rings = this.rings.filter(r => r.life > 0);
-    for (const p of this.parts) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 120 * dt; p.vx *= 0.95; g.fillStyle = p.c; g.globalAlpha = Math.max(0, p.life / p.max); g.fillRect(X(p.x), Y(p.y), 1, 1); }
-    g.globalAlpha = 1;
-    this.parts = this.parts.filter(p => p.life > 0);
-    if (this.parts.length > 600) this.parts.splice(0, this.parts.length - 600);
+    this.drawPops(g, dt, X, Y);
+    this.drawFx(g, dt, cx, cy);
 
     // noche: oscuridad con huecos de luz
     this.lighting(V, cx, cy);
 
     // números de daño arriba de todo
-    for (const n of this.nums) { n.life -= dt; n.y -= 22 * dt; if (vis(n.x, n.y)) drawNum(g, n.n, X(n.x), Y(n.y), n.c); }
-    this.nums = this.nums.filter(n => n.life > 0);
-    if (this.nums.length > 30) this.nums.splice(0, this.nums.length - 30);
+    { let j = 0; const ns = this.nums;
+      for (let i = 0; i < ns.length; i++) { const n = ns[i]; n.life -= dt; if (n.life <= 0) { this.numFree.push(n); continue; } n.y -= 22 * dt; if (vis(n.x, n.y)) drawNum(g, n.n, X(n.x), Y(n.y), n.c); ns[j++] = n; }
+      ns.length = j; }
     // juntos: hilo de corazón entre los dos
     if (V.bond) {
       const ps = Object.values(V.players); if (ps.length === 2) {
@@ -257,13 +322,41 @@ export class Renderer {
     c.drawImage(this.buf, 0, 0, this.bw, this.bh, 0, 0, this.bw * this.s * (this.cv.width / innerWidth / 1), this.bh * this.s * (this.cv.height / innerHeight / 1));
   }
 
+  // partículas de efectos (pool fijo): se mueven y se dibujan en la misma pasada
+  drawFx(g, dt, cx, cy) {
+    const P = this.fx, bw = this.bw, bh = this.bh, fr = Math.pow(0.95, dt * 60);
+    let lastC = -1;
+    for (let i = 0; i < P.n; i++) {
+      let l = P.life[i]; if (l <= 0) continue;
+      l -= dt; P.life[i] = l; if (l <= 0) continue;
+      P.x[i] += P.vx[i] * dt; P.y[i] += P.vy[i] * dt; P.vy[i] += P.gr[i] * dt; P.vx[i] *= fr;
+      const px = Math.round(P.x[i] - cx), py = Math.round(P.y[i] - cy);
+      if (px < -2 || py < -2 || px > bw + 2 || py > bh + 2) continue;
+      if (P.c[i] !== lastC) { lastC = P.c[i]; g.fillStyle = PAL[lastC]; }
+      g.globalAlpha = l / P.max[i]; const sz = P.s[i]; g.fillRect(px, py, sz, sz);
+    }
+    g.globalAlpha = 1;
+  }
+  // muerte de un gato: la silueta blanca se infla y se desvanece, con un aro que se abre
+  drawPops(g, dt, X, Y) {
+    for (const p of this.pops) {
+      if (p.life <= 0) continue;
+      p.life -= dt; if (p.life <= 0) continue;
+      const k = 1 - p.life / 0.16, s = p.s, sc = 1 + k * (p.big ? 0.6 : 0.45), w = Math.round(s.w * sc), h = Math.round(s.h * sc);
+      const x = X(p.x), y = Y(p.y);
+      g.globalAlpha = 1 - k; g.drawImage(s.wh[0], x - (w >> 1), y - Math.round(s.ay * sc), w, h);
+      g.strokeStyle = "#ffffff"; g.lineWidth = 1; g.beginPath(); const r = 3 + k * (p.big ? 22 : 10); g.ellipse(x + 0.5, y - (s.h >> 1) + 0.5, r, r * 0.7, 0, 0, 6.2832); g.stroke();
+    }
+    g.globalAlpha = 1;
+  }
   drawEnemy(g, o, X, Y) {
     const name = ENEMY_NAME[o.type], f = o.f, elite = f & F_ELITE;
     const s = (elite && SPR[name + "E"]) || SPR[name]; if (!s) return;
     const x = X(o.x), y = Y(o.y);
     if (name === "caja") { g.fillStyle = "rgba(0,0,0,.3)"; g.fillRect(x - 6, y, 12, 2); g.drawImage(f & F_FLASH ? s.wh[0] : s.f[0], x - (s.w >> 1), y - s.ay); return; }
     const tele = f & F_TELE, rush = f & F_RUSH;
-    const fr = tele ? 0 : Math.floor(this.t * (o.type === 2 || rush ? 12 : 7) + o.id) % 2;
+    const cyc = s.anim && s.anim.caminar, n = cyc ? cyc.length : 2, step = Math.floor(this.t * (o.type === 2 || rush ? 12 : 7) * (n > 2 ? 1.6 : 1) + o.id) % n;
+    const fr = tele ? 0 : cyc ? cyc[step] : step;
     const img = (f & F_FLASH) || (tele && Math.floor(this.t * 16) % 2) ? s.wh[fr] : o.fx < 0 ? s.fl[fr] : s.f[fr];
     if (elite) { const k = 1 + Math.sin(this.t * 6 + o.id) * 0.15; g.fillStyle = "rgba(255,210,74,.35)"; g.beginPath(); g.ellipse(x, y, s.w * 0.4 * k, 5 * k, 0, 0, Math.PI * 2); g.fill(); }
     g.fillStyle = "rgba(0,0,0,.28)"; g.fillRect(x - (s.w >> 2), y, s.w >> 1, 2);
@@ -287,7 +380,8 @@ export class Renderer {
       return;
     }
     const tele = f & F_TELE, rush = f & F_RUSH;
-    const fr = tele ? 0 : Math.floor(this.t * (rush ? 14 : 8) + o.id) % n;
+    const A = s.anim, cyc = A && A.caminar, at = this.ast.get(o.id);
+    const fr = tele ? 0 : at !== undefined && this.t - at < 0.18 && A && A.ataque ? A.ataque[0] : cyc ? cyc[Math.floor(this.t * (rush ? 14 : 8) + o.id) % cyc.length] : Math.floor(this.t * (rush ? 14 : 8) + o.id) % n;
     const img = (f & F_FLASH) || (tele && Math.floor(this.t * 16) % 2) ? s.wh[fr] : f & F_LEFT ? s.fl[fr] : s.f[fr];
     if (rush) { const a = o.a / 10; g.fillStyle = "rgba(127,255,170,.6)"; for (let i = 1; i < 4; i++) g.fillRect(Math.round(x - Math.cos(a) * i * 5), Math.round(y - 5 - Math.sin(a) * i * 5), 2, 1); }
     g.drawImage(img, x - (s.w >> 1), y - s.ay);
@@ -349,26 +443,53 @@ export class Renderer {
     g.restore();
   }
 
-  drawPlayer(g, p, isMe, X, Y) {
-    const s = SPR[p.c];
-    const fr = p.m && !p.d ? [1, 2, 3, 0][Math.floor(this.t * 9) % 4] : 0;
-    g.fillStyle = "rgba(0,0,0,.35)"; g.fillRect(X(p.x) - 5, Y(p.y), 10, 2);
+  drawPlayer(g, p, side, isMe, X, Y, dt) {
+    const s = SPR[p.c]; if (!s) return;
+    const A = s.anim, st = this.ps(side), x = X(p.x), y = Y(p.y);
+    st.act = Math.max(0, st.act - dt);
+    const wasDash = st.dash > 0; st.dash = Math.max(0, st.dash - dt); if (wasDash && st.dash <= 0) st.land = 0.09; st.land = Math.max(0, st.land - dt);
+    g.fillStyle = "rgba(0,0,0,.35)"; g.fillRect(x - 5, y, 10, 2);
     if (p.d) {
-      // caído: acostado, con anillo de revivir
-      g.save(); g.translate(X(p.x), Y(p.y) - 4); g.rotate(-Math.PI / 2); g.drawImage(s.f[0], -(s.w >> 1), -(s.h >> 1)); g.restore();
-      g.strokeStyle = "#16121c"; g.lineWidth = 3; g.beginPath(); g.arc(X(p.x), Y(p.y) - 16, 6, 0, Math.PI * 2); g.stroke();
-      g.strokeStyle = "#ff8ad8"; g.lineWidth = 2; g.beginPath(); g.arc(X(p.x), Y(p.y) - 16, 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, p.rv / 2.2)); g.stroke();
-      if (Math.floor(this.t * 4) % 2) { g.fillStyle = "#ff4a5a"; g.fillRect(X(p.x), Y(p.y) - 19, 1, 4); g.fillRect(X(p.x), Y(p.y) - 14, 1, 1); }
+      // caído: el sprite propio de caído (boca arriba) si existe; si no, el de parado acostado
+      const cs = A && A.caido && SPR[A.caido];
+      if (cs) g.drawImage(p.f < 0 ? cs.fl[0] : cs.f[0], x - (cs.w >> 1), y - cs.h + 2);
+      else { g.save(); g.translate(x, y - 4); g.rotate(-Math.PI / 2); g.drawImage(s.f[0], -(s.w >> 1), -(s.h >> 1)); g.restore(); }
+      g.strokeStyle = "#16121c"; g.lineWidth = 3; g.beginPath(); g.arc(x, y - 16, 6, 0, Math.PI * 2); g.stroke();
+      g.strokeStyle = "#ff8ad8"; g.lineWidth = 2; g.beginPath(); g.arc(x, y - 16, 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, p.rv / 2.2)); g.stroke();
+      if (Math.floor(this.t * 4) % 2) { g.fillStyle = "#ff4a5a"; g.fillRect(x, y - 19, 1, 4); g.fillRect(x, y - 14, 1, 1); }
       return;
     }
-    if (p.i && Math.floor(this.t * 20) % 2) return;
-    const img = p.f < 0 ? s.fl[fr] : s.f[fr];
-    g.drawImage(img, X(p.x) - (s.w >> 1), Y(p.y) - s.ay);
-    if (!isMe) { g.fillStyle = p.c === "thomas" ? "#ffb938" : "#c9a0ff"; g.fillRect(X(p.x) - 1, Y(p.y) - s.h - 3, 3, 2); }
+    // cuadro: esquive > golpe/lanzamiento > caminar > quieto
+    let fr = 0, sq = 0, bob = 0, face = p.f;
+    if (st.dash > 0 && A && A.esquive) fr = A.esquive[0];
+    else if (st.act > 0 && A && A.ataque) {
+      const at = A.ataque;
+      fr = st.kind === "throw" ? at[st.act > 0.13 ? 0 : 1] : st.kind === "ult" ? at[st.act > 0.15 ? 0 : 1] : at[st.alt % at.length];
+      if (st.kind === "slash") face = st.f;
+    } else if (p.m) {
+      const cyc = A ? A.caminar : [1, 2, 3, 0], i = Math.floor(this.t * 9) % cyc.length;
+      fr = cyc[i];
+      // squash al apoyar el pie (pasos) y un píxel arriba al cruzar las piernas
+      if (i === 0 || i === 2) sq = 1; else if (i === 1) bob = 1;
+    } else if (A) fr = A.quieto[0];
+    if (st.land > 0) sq = 2;
+    if (fr >= s.f.length) fr = 0;
+    // estela del esquive: tres siluetas que se apagan
+    if (st.dash > 0) {
+      const n = st.tn & 3; st.tx[n] = p.x; st.ty[n] = p.y; st.tn++;
+      for (let k = 1; k < Math.min(4, st.tn); k++) { const j = (st.tn - 1 - k) & 3; g.globalAlpha = 0.45 - k * 0.12; g.drawImage(s.wh[fr], X(st.tx[j]) - (s.w >> 1), Y(st.ty[j]) - s.ay); }
+      g.globalAlpha = 1;
+    }
+    const img = face < 0 ? s.fl[fr] : s.f[fr], dw = s.w + sq, dh = s.h - sq;
+    const dx = x - (dw >> 1), dy = y - s.ay + sq - bob;
+    g.drawImage(img, dx, dy, dw, dh);
+    // invulnerable: el sprite no desaparece; titila un velo blanco suave
+    if (p.i && st.dash <= 0 && Math.floor(this.t * 12) % 2) { g.globalAlpha = 0.55; g.drawImage(s.wh[fr], dx, dy, dw, dh); g.globalAlpha = 1; }
+    if (!isMe) { g.fillStyle = p.c.startsWith("thomas") ? "#ffb938" : "#c9a0ff"; g.fillRect(x - 1, y - s.h - 3, 3, 2); }
     // barra de vida chiquita
     const w = 12, k = Math.max(0, p.hp / p.mh);
-    g.fillStyle = "#16121c"; g.fillRect(X(p.x) - w / 2 - 1, Y(p.y) + 3, w + 2, 3);
-    g.fillStyle = k > 0.5 ? "#57e3a0" : k > 0.25 ? "#ffcf3a" : "#ff4a5a"; g.fillRect(X(p.x) - w / 2, Y(p.y) + 4, Math.round(w * k), 1);
+    g.fillStyle = "#16121c"; g.fillRect(x - w / 2 - 1, y + 3, w + 2, 3);
+    g.fillStyle = k > 0.5 ? "#57e3a0" : k > 0.25 ? "#ffcf3a" : "#ff4a5a"; g.fillRect(x - w / 2, y + 4, Math.round(w * k), 1);
   }
 
   lighting(V, cx, cy) {

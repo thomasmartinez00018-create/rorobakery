@@ -32,8 +32,11 @@ buildSprites();
 const cv = document.getElementById("game");
 const R = new Renderer(cv);
 const orig = { lighting: R.lighting.bind(R) };
-window.bench = async ({ map = "plaza", warmT = 300, frames = 300, abl = "full", stress = false }) => {
-  R.setMap(map); R.parts = []; R.nums = []; R.rings = []; R.slashes = [];
+window.bench = async ({ map = "plaza", warmT = 300, frames = 300, abl = "full", stress = false, q = "alta" }) => {
+  R.setMap(map); if (R.clearFx) R.clearFx(); else { R.parts = []; R.nums = []; R.rings = []; R.slashes = []; }
+  // partículas: en render.js nuevo van en un pool fijo (R.fx); en el viejo, en el array R.parts
+  const clearParts = () => { if (R.fx) R.fx.clear(); else R.parts.length = 0; }, nParts = () => R.fxCount ? R.fxCount() : R.parts.length;
+  if (R.setQuality) R.setQuality(q);
   R.lighting = abl === "nolight" ? () => {} : orig.lighting;
   const sim = new Sim(map); sim.addPlayer("host", "thomas"); sim.addPlayer("guest", "rocio");
   for (const s of Object.keys(sim.players)) sim.setView(s, R.bw, R.bh);
@@ -50,18 +53,19 @@ window.bench = async ({ map = "plaza", warmT = 300, frames = 300, abl = "full", 
     const s0 = performance.now(); ff(1 / 60); const snap = sim.snapshot(); const s1 = performance.now();
     R.events(snap.ev, "host");
     if (abl === "nonums") R.nums.length = 0;
-    if (abl === "noparts") R.parts.length = 0;
-    if (abl === "nonums_noparts") { R.nums.length = 0; R.parts.length = 0; }
+    if (abl === "noparts") clearParts();
+    if (abl === "nonums_noparts") { R.nums.length = 0; clearParts(); }
     const V = view(snap, "host");
+    R.stopF = 0; // el hit-stop saltea cuadros: para medir, todos los cuadros se dibujan
     const t0 = performance.now(); R.frame(V, 1 / 60); const t1 = performance.now();
     ctx.getImageData(0, 0, 1, 1); const t2 = performance.now();
     ft.push(t1 - t0); fl.push(t2 - t1); st.push(s1 - s0);
-    enSum += sim.enemies.length; partsSum += R.parts.length; numsSum += R.nums.length; gemsSum += snap.G.length / 3;
+    enSum += sim.enemies.length; partsSum += nParts(); numsSum += R.nums.length; gemsSum += snap.G.length / 3;
     if (i % 30 === 29) await new Promise(r => setTimeout(r, 0));
   }
   const q = (a, p) => { const s = [...a].sort((x, y) => x - y); return +s[Math.floor(p * (s.length - 1))].toFixed(2); };
   const mean = a => +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(2);
-  return { map, warmT: stress ? "estres" : warmT, abl, bw: R.bw, bh: R.bh, scale: R.s, cv: [cv.width, cv.height], enemies: Math.round(enSum / frames), parts: Math.round(partsSum / frames), nums: Math.round(numsSum / frames), gems: Math.round(gemsSum / frames), frameMs: { mean: mean(ft), p50: q(ft, 0.5), p95: q(ft, 0.95), max: q(ft, 1) }, flushMs: { mean: mean(fl), p95: q(fl, 0.95) }, simMs: { mean: mean(st) } };
+  return { map, warmT: stress ? "estres" : warmT, abl, q: R.q || "-", bw: R.bw, bh: R.bh, scale: R.s, cv: [cv.width, cv.height], enemies: Math.round(enSum / frames), parts: Math.round(partsSum / frames), nums: Math.round(numsSum / frames), gems: Math.round(gemsSum / frames), frameMs: { mean: mean(ft), p50: q(ft, 0.5), p95: q(ft, 0.95), max: q(ft, 1) }, flushMs: { mean: mean(fl), p95: q(fl, 0.95) }, simMs: { mean: mean(st) } };
 };
 window.ready = true;
 </script></body></html>
