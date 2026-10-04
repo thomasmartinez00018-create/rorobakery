@@ -46,7 +46,7 @@ async function startSolo(page, m = "plaza") {
 }
 async function toMenu(page) { await page.keyboard.press("Escape"); await sleep(150); await page.click('[data-act="quit"]'); await sleep(200); }
 // pareja quieta al lado (simulada en el mismo motor) para lo que necesita dúo
-const addMate = page => g(page, () => { const { sim } = window.__g(); if (!sim.players.guest) { const h = sim.players.host; const q = sim.addPlayer("guest", "rocio"); q.x = h.x + 18; q.y = h.y; sim.setView("guest", 195, 422); } });
+const addMate = (page, dx = 18) => g(page, dx => { const { sim } = window.__g(); if (!sim.players.guest) { const h = sim.players.host; const q = sim.addPlayer("guest", "rocio"); q.x = h.x + dx; q.y = h.y; sim.setView("guest", 195, 422); } }, dx);
 const keepAlive = page => g(page, () => { clearInterval(window.__keep); window.__keep = setInterval(() => { const s = window.__g().sim; if (s) for (const p of Object.values(s.players)) { p.hp = p.maxHp; } }, 100); });
 
 /* ---------- 1. partida de 2 minutos ---------- */
@@ -57,15 +57,17 @@ const keepAlive = page => g(page, () => { clearInterval(window.__keep); window._
   await page.click('[data-act="solo"]');
   await shot(page, "sala", 200);
   await page.click('[data-act="go"]');
+  await keepAlive(page); // vida llena: se prueba que 2 minutos de partida corren sin errores, no el balance
   const keys = ["d", "s", "a", "w", "d", "w", "a", "s"]; let k = 0; const real = Date.now();
-  while (Date.now() - real < LONG * 1000 && (await page.getAttribute("body", "data-screen")) === "run") {
+  while (Date.now() - real < LONG * 2000 && (await page.getAttribute("body", "data-screen")) === "run" && (await g(page, () => window.__g().sim.t)) < LONG) {
     await page.keyboard.down(keys[k % keys.length]); await sleep(600); await page.keyboard.up(keys[k % keys.length]); k++;
     await autoPick(page);
   }
   const a = await g(page, () => { const { sim } = window.__g(); return sim ? { t: sim.t, st: sim.state, kills: sim.kills, lv: sim.level } : null; });
-  console.log(`partida larga: ${LONG} s reales, reloj ${a ? a.t.toFixed(0) : "-"} s, ${a ? a.kills : "-"} gatos, nivel ${a ? a.lv : "-"}, estado ${a ? a.st : await page.getAttribute("body", "data-screen")}`);
+  console.log(`partida larga: ${Math.round((Date.now() - real) / 1000)} s reales, reloj ${a ? a.t.toFixed(0) : "-"} s, ${a ? a.kills : "-"} gatos, nivel ${a ? a.lv : "-"}, estado ${a ? a.st : await page.getAttribute("body", "data-screen")}`);
   assert.equal(errors.length, 0, "errores en consola:\n" + errors.join("\n"));
-  console.log("ok - partida de " + LONG + " s sin errores en la consola");
+  assert.ok(a && a.t >= LONG, "llegó a " + LONG + " s de reloj");
+  console.log("ok - partida de " + LONG + " s de reloj sin errores en la consola");
   await page.context().close();
 }
 
@@ -86,7 +88,7 @@ const keepAlive = page => g(page, () => { clearInterval(window.__keep); window._
   await shot(page, "flecha-fuera-de-camara", 600);
   await g(page, () => { window.__sal.hp = 0; });
   // Luz que marca a uno y se frena con la pareja pegada
-  await addMate(page);
+  await addMate(page, 110); // lejos: primero se ve la marca; después se juntan y la frenan
   await g(page, () => { const { sim } = window.__g(); sim.t = 209.6; for (const e of sim.enemies) if (!e.type.includes("caja")) e.hp = 0; });
   console.log("Luz marca:", await waitBanner(page, /Luz (te )?marcó/, 12000));
   await shot(page, "luz-marca", 250);
@@ -111,7 +113,10 @@ const keepAlive = page => g(page, () => { clearInterval(window.__keep); window._
   await shot(page, "maitena", 350);
   // gato ladrón desde las 5:00
   await g(page, () => { const { sim } = window.__g(); sim.t = 300.5; sim.midNext = 9e9; sim.bossIdx = 1; for (let i = 0; i < 25; i++) sim.gems.push({ x: sim.players.host.x + 60 + Math.random() * 60, y: sim.players.host.y - 40 + Math.random() * 80, v: 2, pull: 0 }); const q = sim.edgePos(150); sim.spawnAt("ladron", q.x, q.y); });
-  console.log("ladrón:", await waitBanner(page, /ladrón/, 10000));
+  // el cartel del primer ladrón puede quedar tapado por otro; si no se ve, alcanza con que el motor lo haya anunciado
+  const lb = await waitBanner(page, /ladrón/, 6000).catch(() => null);
+  console.log("ladrón:", lb || "cartel tapado; motor: primer ladrón anunciado = " + await g(page, () => window.__g().sim.stats.lad));
+  assert.ok(lb || await g(page, () => window.__g().sim.stats.lad === 1));
   await shot(page, "ladron", 600);
   // segunda chance con Linda
   await g(page, () => { const { sim } = window.__g(); clearInterval(window.__keep); sim.t = 419.8; sim.bossIdx = 1; });

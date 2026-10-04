@@ -11,7 +11,8 @@ const BOT = { perfecto: ["builder", "0"], casual: ["casual", "0.3"] };
 const OUT = "cal_" + name, dir = path.join(HERE, "results", OUT); fs.mkdirSync(dir, { recursive: true });
 const engine = path.join(dir, "engine.js"); if (!fs.existsSync(engine)) fs.copyFileSync(path.resolve(HERE, "../js/engine.js"), engine);
 const N = process.env.N || "40";
-await Promise.all(cfgS.split(",").map(c => { const [m, mode, b] = c.split(":"); return new Promise(res => spawn(process.execPath, [path.join(HERE, "run_batch.mjs"), m, mode, N, ...BOT[b]], { stdio: "ignore", env: { ...process.env, OUT, ENGINE: engine, DIFF: diff } }).on("exit", res)); }));
+// de a una configuración por vez (la Mac la comparten otros sistemas)
+for (const c of cfgS.split(",")) { const [m, mode, b] = c.split(":"); await new Promise(res => spawn(process.execPath, [path.join(HERE, "run_batch.mjs"), m, mode, N, ...BOT[b]], { stdio: "ignore", env: { ...process.env, OUT, ENGINE: engine, DIFF: diff } }).on("exit", res)); }
 const q = (a, p) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(p * s.length)]; };
 const out = [];
 for (const f of fs.readdirSync(dir).filter(f => f.endsWith(".json")).sort()) { const R = JSON.parse(fs.readFileSync(path.join(dir, f))); out.push(`${f.replace("_meta0.json", "")}: ${Math.round(R.filter(r => r.state === "win").length / R.length * 100)}% (${Math.floor(q(R.map(r => r.t), .5) / 60)}:${String(q(R.map(r => r.t), .5) % 60).padStart(2, "0")})`); }

@@ -1,7 +1,9 @@
 // Prueba del motor con guion.
 // 1) El guion por defecto (ARCADE) da EXACTAMENTE las mismas partidas que el motor de antes del guion: se corren los
 //    mismos bots con el mismo azar en los dos motores y se comparan los resultados byte a byte.
-//    El motor de referencia sale de git (REF, por defecto 053fb2b, el último commit sin guion).
+//    El motor de referencia sale de git (REF). Por defecto 038a90f: la dinámica del arcade (gdl/dinamica) cambió las
+//    reglas a propósito y ese es su último commit que las toca; antes era 053fb2b, el último sin guion. Si se cambia
+//    el arcade a propósito otra vez, actualizar REF.
 // 2) La semilla repite la partida; guiones chicos (mezcla, eventos, victoria por tiempo) hacen lo que dicen.
 // Uso: node test_guion.mjs   (N=partidas por configuración en la parte 1, por defecto 6)
 import assert from "assert/strict";
@@ -12,7 +14,7 @@ import { fileURLToPath } from "url";
 import { Sim, ARCADE, makeGuion } from "../js/engine.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REF = process.env.REF || "053fb2b", N = process.env.N || "6";
+const REF = process.env.REF || "038a90f", N = process.env.N || "6";
 let ok = 0;
 const t = (name, fn) => { fn(); ok++; console.log("ok -", name); };
 
@@ -24,9 +26,10 @@ const maps = ["plaza", "estacion", "feria", "bielli", "cancha", "tortugas", "ter
 const run = (out, engine) => {
   fs.rmSync(path.join(HERE, "results", out), { recursive: true, force: true });
   const env = { ...process.env, EXACT: "1", OUT: out, SEED: "11" }; if (engine) env.ENGINE = engine; else delete env.ENGINE;
-  return maps.flatMap(m => ["duo", "solo"].map(mode => new Promise((res, rej) => spawn(process.execPath, [path.join(HERE, "run_batch.mjs"), m, mode, N], { env, stdio: "ignore" }).on("exit", c => c ? rej(new Error("run_batch falló")) : res()))));
+  // de a un proceso por vez (la Mac la comparten otros sistemas)
+  return maps.flatMap(m => ["duo", "solo"].map(mode => () => new Promise((res, rej) => spawn(process.execPath, [path.join(HERE, "run_batch.mjs"), m, mode, N], { env, stdio: "ignore" }).on("exit", c => c ? rej(new Error("run_batch falló")) : res()))));
 };
-await Promise.all([...run("test_ref", refFile), ...run("test_guion", null)]);
+for (const job of [...run("test_ref", refFile), ...run("test_guion", null)]) await job();
 let games = 0;
 for (const f of fs.readdirSync(path.join(HERE, "results", "test_ref"))) {
   const a = fs.readFileSync(path.join(HERE, "results", "test_ref", f), "utf8"), b = fs.readFileSync(path.join(HERE, "results", "test_guion", f), "utf8");

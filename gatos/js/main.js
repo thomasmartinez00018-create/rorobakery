@@ -62,6 +62,8 @@ document.head.insertAdjacentHTML("beforeend", `<style id="a11y-dinamica">
 .pairult{position:absolute;right:calc(14px + env(safe-area-inset-right,0px));bottom:calc(158px + env(safe-area-inset-bottom,0px));max-width:52vw;background:rgba(58,31,0,.88);border:3px solid var(--amber);clip-path:var(--notch);padding:3px 8px;font-size:18px;color:var(--amber);text-align:center;animation:pulse .6s steps(2) infinite}
 #hud.zurdo .pairult{right:auto;left:calc(14px + env(safe-area-inset-left,0px))}#hud.grandes .pairult{bottom:calc(184px + env(safe-area-inset-bottom,0px))}
 .pairult[hidden]{display:none}.ultbtn.pair{box-shadow:0 0 0 4px var(--pink),0 4px 0 #000}
+#hud.zurdo .build{left:auto;right:calc(10px + env(safe-area-inset-right,0px))}#hud.zurdo .build>div{justify-content:flex-end}
+#hud.grandes .build{max-width:calc(100% - 270px)}#hud.mait .build{max-width:calc(100% - 270px)}#hud.mait.grandes .build{max-width:calc(100% - 320px)}
 </style>`);
 /* dinámica 11: especial "Llamá a Maitena". Se desbloquea en la historia: story.js pone "special:maitena" en el
    unlock del capítulo de Bielli y main.js lo guarda en prof.unlock. Si el modo historia cambia la clave, alcanza con
@@ -418,12 +420,12 @@ function updateHud(dt) {
     put("ultready", "ultbtn", mine.u >= 1, (e, v) => e.classList.toggle("ready", v));
     // dinámica 10: aviso de que tu pareja tiene el especial listo (para buscar el combo de pareja)
     const mate = Object.entries(s.P).find(([side]) => side !== me.side), mp = mate && mate[1];
-    const pairTxt = mp && !mp.d && mp.u >= 1 ? `${NAME[mp.c] || "Tu pareja"} tiene ${mp.c === "thomas" ? "el COMBO" : "las TORTAS"} listo: ${mine.u >= 1 ? "¡tírenlo juntos!" : "cargá el tuyo"}` : "";
+    const pairTxt = mp && !mp.d && mp.u >= 1 ? `${NAME[mp.c] || "Tu pareja"} tiene ${mp.c === "thomas" ? "el COMBO listo" : "las TORTAS listas"}: ${mine.u >= 1 ? "¡tírenlo juntos!" : "cargá el tuyo"}` : "";
     put("pairult", "pairult", pairTxt, (e, v) => { e.hidden = !v; e.textContent = v; });
     put("ultpair", "ultbtn", !!pairTxt && mine.u >= 1, (e, v) => e.classList.toggle("pair", v));
     put("ultlabel", "ultlabel", mine.c === "thomas" ? "COMBO" : "TORTAS", (e, v) => { e.textContent = v; });
     // dinámica 11: botón de Maitena (solo si lo desbloquearon en la historia)
-    show("maitbtn", mine.mt !== undefined);
+    show("maitbtn", mine.mt !== undefined); put("maithud", "hud", mine.mt !== undefined, (e, v) => e.classList.toggle("mait", v));
     if (mine.mt !== undefined) { put("maitk", "maitbtn", Math.round(mine.mt * 20) * 5, (e, v) => e.style.setProperty("--k", v + "%")); put("maitready", "maitbtn", mine.mt >= 1, (e, v) => e.classList.toggle("ready", v)); }
     const dk = 1 - Math.min(1, (me.side === "guest" && guestPos ? Math.max(guestPos.dcd, mine.dc) : mine.dc) / 2.4);
     put("dashk", "dashbtn", Math.round(dk * 20) * 5, (e, v) => e.style.setProperty("--k", v + "%"));
