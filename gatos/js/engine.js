@@ -152,6 +152,9 @@ export const ARCADE = {
   // dinámica 4: arranque rápido de revancha (new Sim(mapa, guion, { fast: true })): el reloj arranca en t, con
   // `levels` mejoras para elegir apenas empieza, y el saltarín y las palomas habilitados desde `early` segundos
   fast: { t: 30, levels: 1, early: 15 },
+  // dinámica 8: segunda chance con Linda (una por partida): si caen todos mientras Linda está viva, llega un pedido de
+  // Roro's de emergencia: se levantan con hp de vida, Linda frena sus ataques `calm` s. La victoria paga la mitad del extra.
+  second: { boss: "linda", hp: 0.3, calm: 5 },
   win: { kill: "linda" },
   lose: { allDown: true },
   goal: null,
@@ -174,7 +177,7 @@ export function chapterGuion(ch) {
     id: ch.id, chapter: ch.id,
     bosses: pick("bosses", []), hordes: pick("hordes", []), orders: pick("orders", []), elites: pick("elites", null),
     crates: pick("crates", ARCADE.crates), pigeons: pick("pigeons", ARCADE.pigeons), hazards: pick("hazards", true),
-    rate: pick("rate", ARCADE.rate), mix: pick("mix", ARCADE.mix), events: pick("events", []), mid: pick("mid", null), fast: pick("fast", null),
+    rate: pick("rate", ARCADE.rate), mix: pick("mix", ARCADE.mix), events: pick("events", []), mid: pick("mid", null), fast: pick("fast", null), second: pick("second", null),
     goal: ch.goal || { kind: "none" }, dur: ch.dur, allies: ch.allies || [], intro: ch.intro || [], outro: ch.outro || [],
     win: pick("win", {}), lose: pick("lose", { allDown: true })
   });
@@ -302,8 +305,23 @@ export class Sim {
     if (this.goal) this.updateGoal(dt);
     this.updateGems(dt);
     this.cleanup();
-    if (this.G.lose.allDown !== false && this.alive().length === 0) { this.state = "over"; this.ev.push(["over"]); }
+    if (this.G.lose.allDown !== false && this.alive().length === 0 && !this.secondChance()) { this.state = "over"; this.ev.push(["over"]); }
     else if (this.G.win.t && this.t >= this.G.win.t && this.state === "run") this.win();
+  }
+  // dinámica 8: pedido de Roro's de emergencia. Devuelve true si salvó la partida.
+  secondChance() {
+    const S = this.G.second, B = this.bossRef;
+    if (!S || this.stats.second || !B || B.hp <= 0 || B.type !== S.boss || !Object.keys(this.players).length) return false;
+    this.stats.second = 1;
+    for (const p of Object.values(this.players)) {
+      p.downed = false; p.reviveT = 0; p.hp = p.maxHp * S.hp; p.inv = 2.5;
+      // los gatos de alrededor salen despedidos (la caja de Roro's cae entre ellos)
+      this.near(p.x, p.y, 60, e => { if (!this.foe(e) || ENEMY[e.type].boss) return; const dx = e.x - p.x, dy = e.y - p.y, m = Math.hypot(dx, dy) || 1; e.kx += dx / m * 260; e.ky += dy / m * 260; });
+    }
+    B.cd = Math.max(B.cd, S.calm); B.zcd = Math.max(B.zcd || 0, S.calm); B.st = 0;
+    this.eproj = []; this.zones = []; this.calm = S.calm;
+    this.ev.push(["second", Math.round(B.x), Math.round(B.y)]);
+    return true;
   }
   // ganar: si el guion tiene epílogo (outro), primero se muestra y la victoria llega al cerrarlo
   win() {

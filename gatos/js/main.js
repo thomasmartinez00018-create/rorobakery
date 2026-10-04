@@ -203,6 +203,7 @@ function onEvents(ev) {
     if (e[0] === "mid") { const b = MID_BANNER[e[1]]; if (b) { const [t, sub] = e[2] ? b[0] : e[3] && b[2] ? b[2] : b[1]; banner(t, sub); } }
     // dinámica 5: combos de pareja (un cartel por combo cada 15 s)
     if (e[0] === "combo" && performance.now() - (comboMsgAt[e[1]] || -1e9) > 15000) { comboMsgAt[e[1]] = performance.now(); const c = COMBO_BANNER[e[1]]; if (c) banner(c[0], c[1]); }
+    if (e[0] === "second") banner("¡Pedido de Roro's de emergencia!", snap && Object.keys(snap.P).length === 1 ? "Te levantás. Linda se distrae 5 segundos" : "Se levantan los dos. Linda se distrae 5 segundos"); // dinámica 8
     if (e[0] === "fast") banner("Arranque rápido", "Revancha: arrancan en 0:30 con una mejora");
     if (e[0] === "ladron") banner("¡Gato ladrón!", "Se roba la experiencia del piso: agárrenlo antes de que escape");
     if (e[0] === "steal" && performance.now() - stealAt > 8000) { stealAt = performance.now(); banner("¡Se escapó un ladrón!", `Se llevó ${e[3]} de experiencia`); }
