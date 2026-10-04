@@ -143,7 +143,15 @@ try {
     // capítulo 1 desde "Siguiente"
     await page.click('[data-act="next"]');
     await page.waitForFunction(() => window.__g().snap && window.__g().snap.cap === "plaza");
-    r = await playToEnd(page, "capítulo 1", { shotAt: 40 });
+    // si el bot pierde (pasa: el capítulo se puede perder), se prueba también "Reintentar", hasta 3 veces
+    let tries = 1; r = await playToEnd(page, "capítulo 1", { shotAt: 40 });
+    while (!/Capítulo superado/.test(await page.textContent(".results h2")) && tries < 3) {
+      assert.ok(await page.$('[data-act="again"]'), "derrota con Reintentar"); assert.match(await page.textContent('[data-act="again"]'), /Reintentar/);
+      await page.click('[data-act="again"]'); tries++;
+      await page.waitForFunction(() => window.__g().snap && window.__g().snap.cap === "plaza" && window.__g().snap.t < 5);
+      const r2 = await playToEnd(page, "capítulo 1", { shotAt: 40 }); r = { ...r2, dlgShot: r.dlgShot || r2.dlgShot, gameShot: r.gameShot || r2.gameShot };
+    }
+    console.log(`   (capítulo 1: intentos ${tries})`);
     assert.match(await page.textContent(".results h2"), /Capítulo superado/, "capítulo 1 ganado");
     prof = await g(page, () => JSON.parse(localStorage.getItem("gdl-profile")));
     assert.equal(prof.story.cap, 2); assert.ok(prof.story.seen["plaza:intro"]);

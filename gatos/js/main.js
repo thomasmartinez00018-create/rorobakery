@@ -169,7 +169,12 @@ function startRun(m, chars, cap, skins = {}, opts = {}) {
   else banner(THEMES[map].name, map === "bielli" && (chars.host === "thomas" || chars.guest === "thomas") ? "Thomas juega de local: +15% de daño" : "Aguanten hasta que aparezca Linda");
   draw();
 }
-function endRun() { runOn = false; sim = null; keepAwake(false); setPaused(false); }
+function endRun() {
+  runOn = false; sim = null; keepAwake(false); setPaused(false);
+  // salir en medio de una subida de nivel o de un diálogo no deja el cartel tapando el menú (historia)
+  const lv = $("#levelup"); if (lv) { lv.hidden = true; lv.innerHTML = ""; } lastOffersKey = "";
+  const dl = $("#dialog"); if (dl) { dl.hidden = true; dl.innerHTML = ""; } dlgKey = ""; document.body.classList.remove("cine");
+}
 function toMenu() { screen = me.net && me.code ? "room" : "menu"; music.set("menu"); newDemo(); R.setMap(map); draw(); }
 
 function onEvents(ev) {

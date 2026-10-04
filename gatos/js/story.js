@@ -201,13 +201,13 @@ export const CHAPTERS = [
       kind: "trains", count: 3, label: "Rescatar a Amanda",
       start: { x: 512, y: 640 },                     // andén 2 (abajo)
       // al pasar el segundo tren se limpia la vía: Amanda espera en el refugio del andén de enfrente (andén 1, arriba)
-      rescue: { who: "amanda", after: 2, x: 776, y: 420, r: 24, hold: 3, holdPair: 1.5 }
+      rescue: { who: "amanda", after: 2, x: 776, y: 446, r: 24, hold: 3, holdPair: 1.5 }
     },
     hz: { first: 50, every: 80 },                    // trenes a los ~50, ~130 y ~210 s
     dur: 230, rate: 0.9, xpMul: 1.4, hordes: [100], orders: [],
     mix: [["gato", 8, 0], ["saltarin", 3, 20], ["negro", 3, 60], ["escupidor", 2, 90], ["madre", 1, 140]],
     events: [
-      { t: 1, do: "spawn", kind: "gato", n: 6, x: 776, y: 410 },
+      { t: 1, do: "spawn", kind: "gato", n: 6, x: 776, y: 440 },
       { t: 3, do: "hint", text: "Cuando suena la bocina, salí de las vías. Los gatos no se avivan." },
       { at: "step:1", do: "dialog", lines: [
         d("rocio", "Uno. Faltan dos. El tren es más puntual que vos."),
