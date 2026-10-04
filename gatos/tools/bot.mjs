@@ -30,20 +30,29 @@ export function brain(sim, p, other) {
   if (other) { const d = Math.hypot(other.x - p.x, other.y - p.y) || 1; const w = other.downed ? 3 : d > 60 ? 0.8 : 0; fx += (other.x - p.x) / d * w; fy += (other.y - p.y) / d * w; }
   const b = sim.cfg.b, cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2; const dc = Math.hypot(cx - p.x, cy - p.y) || 1; fx += (cx - p.x) / dc * 0.25 * (dc / 300); fy += (cy - p.y) / dc * 0.25 * (dc / 300);
   const m = Math.hypot(fx, fy); const dir = m > 0.05 ? { x: fx / m, y: fy / m } : { x: 0, y: 0 };
+  // Luz marcando: los que leyeron el cartel se juntan (el hilo de corazón la frena)
+  if (other && !other.downed) for (const e of sim.enemies) if (e.type === "luz" && e.st === 1) { const d = Math.hypot(other.x - p.x, other.y - p.y) || 1; if (d > 30) { fx += (other.x - p.x) / d * 3; fy += (other.y - p.y) / d * 3; } }
   let danger = false; for (const e of sim.enemies) if ((e.st === 1 || e.st === 2) && Math.hypot(e.x - p.x, e.y - p.y) < 40) danger = true;
   return { dir, dash: danger, ult: p.ult >= 1 };
 }
 
-// cómo elige mejoras: "builder" busca evoluciones, "greedy" es la de bot_new.mjs, "random" simula a quien toca sin leer
+// cómo elige mejoras: "builder" busca evoluciones, "greedy" es la de bot_new.mjs, "random" simula a quien toca sin leer,
+// "casual" elige al azar ponderado por el puntaje del builder (lee rápido: casi siempre algo razonable, no siempre lo mejor)
 export function choose(policy, p, opts) {
   if (policy === "random") return Math.floor(Math.random() * opts.length);
   if (policy === "greedy") { let i = opts.findIndex(x => x.kind === "w" && p.weapons[x.id]); if (i < 0) i = opts.findIndex(x => x.kind === "p" && x.id in { guantes: 1, amargo: 1, abrazo: 1, zapatillas: 1 }); return i < 0 ? 0 : i; }
   const nW = Object.keys(p.weapons).length;
   const score = o => {
-    if (o.kind === "w") { if (p.weapons[o.id]) return 10 + (p.passives[WEAPONS[o.id].evo.p] ? 2 : 0); return nW < 4 ? 8 : 3; }
+    // o.cb: la tarjeta dice "Combina con ... de tu pareja" (ofertas con roles); quien lee la tarjeta la prefiere un poco
+    if (o.kind === "w") { if (p.weapons[o.id]) return 10 + (p.passives[WEAPONS[o.id].evo.p] ? 2 : 0); return (nW < 4 ? 8 : 3) + (o.cb ? 2 : 0); }
     if (o.kind === "p") { const pair = EVO_OF[o.id]; if (pair && p.weapons[pair] && !p.passives[o.id]) return 9; if (pair && p.weapons[pair]) return 4; return ["guantes", "abrazo", "vendas"].includes(o.id) ? 3 : 2; }
     return 0;
   };
+  if (policy === "casual") {
+    const w = opts.map(o => Math.max(1, score(o))), tot = w.reduce((a, b) => a + b, 0);
+    let r = Math.random() * tot; for (let i = 0; i < w.length; i++) if ((r -= w[i]) <= 0) return i;
+    return w.length - 1;
+  }
   let bi = 0, bs = -1; opts.forEach((o, i) => { const s = score(o) + Math.random() * 0.1; if (s > bs) { bs = s; bi = i; } });
   return bi;
 }
