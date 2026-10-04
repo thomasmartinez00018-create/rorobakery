@@ -210,6 +210,8 @@ const STORY_EV = {
   bossdown() { return ""; }
 };
 
+// peligros cuyo dibujo tiene otro nombre (los de los mapas nuevos viven en maps.js)
+const HAZ_SPR = { bandejas: "m_carro_bandejas" };
 export class Renderer {
   constructor(canvas) {
     this.cv = canvas; this.ctx = canvas.getContext("2d");
@@ -771,7 +773,8 @@ export class Renderer {
   }
   drawHazard(g, z, X, Y) {
     const [k, y, h, x, dir, , len] = z, name = HAZ_ID[k], by = Y(y + h);
-    const put = (sp, px) => { const s = SPR[sp]; g.drawImage(dir < 0 ? s.fl[0] : s.f[0], Math.round(px - (s.w >> 1)), by - s.h + 1); };
+    // si falta un dibujo, no se dibuja (nunca cortar el bucle del juego por un sprite)
+    const put = (sp, px) => { const s = SPR[HAZ_SPR[sp] || sp]; if (!s) return; g.drawImage(dir < 0 ? s.fl[0] : s.f[0], Math.round(px - (s.w >> 1)), by - s.h + 1); };
     const back = dir > 0 ? -1 : 1;
     g.fillStyle = "rgba(0,0,0,.3)"; g.fillRect(X(dir > 0 ? x - len : x), by - 1, len, 3);
     if (name === "tren") { put("locomotora", X(x + back * 30)); for (let i = 0; i < 3; i++) put("vagon", X(x + back * (60 + 42 + i * 86))); }

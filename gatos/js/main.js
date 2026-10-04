@@ -319,7 +319,8 @@ function loop(now) {
     const ds = demo.snapshot(); R.events(ds.ev, "host");
     V = view(ds, "host");
   }
-  if (V) R.frame(V, dt);
+  // un error de dibujo no puede congelar la partida: se registra una vez y el bucle sigue
+  if (V) try { R.frame(V, dt); } catch (e) { if (!loop.err) { loop.err = 1; console.error(e); } }
   if (screen === "run" && snap) updateHud(dt);
   requestAnimationFrame(loop);
 }
