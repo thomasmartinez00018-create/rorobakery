@@ -13,7 +13,7 @@ export function brain(sim, p, other) {
   const melee = p.weapons.patada && p.hp / p.maxHp > 0.4;
   const fr = melee ? 34 : 90;
   let ne = null, nd = 1e9;
-  for (const e of sim.enemies) { if (e.hp <= 0 || e.type === "caja") continue; const dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy) || 1; const boss = e.type === "luz" || e.type === "linda"; if (!boss && d < nd) { nd = d; ne = e; } if (d < (boss ? 90 : fr)) { const w = (boss ? 3 : 1) / (d * d) * 900; fx += dx / d * w; fy += dy / d * w; } }
+  for (const e of sim.enemies) { if (e.hp <= 0 || e.type === "caja" || e.type === "premio" || e.surr) continue; const dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy) || 1; const boss = e.type === "luz" || e.type === "linda" || e.type === "luz2" || e.type === "canicheBoss"; if (!boss && d < nd) { nd = d; ne = e; } if (d < (boss ? 90 : fr)) { const w = (boss ? 3 : 1) / (d * d) * 900; fx += dx / d * w; fy += dy / d * w; } }
   if (melee && ne && nd > 24 && nd < 160) { fx += (ne.x - p.x) / nd * 1.1; fy += (ne.y - p.y) / nd * 1.1; }
   for (const h of sim.eproj) { const dx = p.x - h.x, dy = p.y - h.y, d = Math.hypot(dx, dy) || 1; if (d < 50) { fx += dx / d * 3; fy += dy / d * 3; } }
   for (const z of sim.zones) { const dx = p.x - z.x, dy = p.y - z.y, d = Math.hypot(dx, dy) || 1; if (d < z.r + 12) { fx += dx / d * 4; fy += dy / d * 4; } }
@@ -24,7 +24,7 @@ export function brain(sim, p, other) {
   let pk = null, pd = 200; for (const k of sim.pickups) { const d = Math.hypot(k.x - p.x, k.y - p.y) || 1; if (d < pd) { pd = d; pk = k; } }
   if (pk) { fx += (pk.x - p.x) / pd * 1.2; fy += (pk.y - p.y) / pd * 1.2; }
   // modo historia: se queda cerca de lo que hay que defender y va a los rastros o al destino
-  const G = sim.goal, gt = G && !G.done && (G.target || (G.k === "reach" && { x: G.to[0], y: G.to[1] }) || (G.k === "escort" && G.ally) || (G.pts && G.pts.length && { x: G.pts[0][0], y: G.pts[0][1] }));
+  const G = sim.goal, gt = G && !G.done && (G.target || (G.k === "reach" && (G.aim || (G.to && { x: G.to[0], y: G.to[1] }))) || (G.k === "escort" && G.ally) || (G.pts && G.pts.length && { x: G.pts[0][0], y: G.pts[0][1] }));
   if (gt) { const d = Math.hypot(gt.x - p.x, gt.y - p.y) || 1; if (d > (G.target ? 45 : 8)) { fx += (gt.x - p.x) / d * 1.6; fy += (gt.y - p.y) / d * 1.6; } }
   if (sim.obj) { const d = Math.hypot(sim.obj.x - p.x, sim.obj.y - p.y) || 1; fx += (sim.obj.x - p.x) / d * 1.5; fy += (sim.obj.y - p.y) / d * 1.5; }
   if (other) { const d = Math.hypot(other.x - p.x, other.y - p.y) || 1; const w = other.downed ? 3 : d > 60 ? 0.8 : 0; fx += (other.x - p.x) / d * w; fy += (other.y - p.y) / d * w; }

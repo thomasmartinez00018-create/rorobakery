@@ -1,5 +1,5 @@
 // Modo historia de "Gatos de Linda 2.0": "La otra Linda".
-// Solo datos (guion y diseño de niveles). La lógica la pone el runtime del modo historia (fase B1).
+// Solo datos (guion y diseño de niveles). La lógica la pone el runtime del modo historia: js/historia.js.
 // Contrato: DISENO.md sección 6. Lo que va más allá del contrato está explicado acá abajo y es opcional para el motor.
 //
 // Campos de cada capítulo
@@ -15,11 +15,27 @@
 //   extras opcionales           rate (multiplica el ritmo de aparición), xpMul (multiplica la experiencia),
 //                               hz (peligro del mapa: { first, every } o null para apagarlo), hordes (segundos de las hordas),
 //                               orders (segundos de los pedidos de Roro's), give (armas al arrancar: [{ weapon, lv }]),
-//                               solo (variante para uno), cast (personajes en escena, solo epílogo)
+//                               solo (variante para uno: goal se mezcla con el del capítulo, hint suma un cartel y
+//                               cualquier otro campo pisa al del capítulo), cast (personajes en escena)
 //   En el modo historia no salen Luz a los 3:30 ni Linda a los 7:00 del arcade: cada jefa entra por evento.
 //
 // Posiciones: mundo de 1024 x 1024, siempre dentro de la zona caminable del mapa (MAPS[x].b en engine.js).
-// roros y abuela son mapas nuevos: su zona caminable propuesta está en NEW_MAPS, al final.
+// roros y abuela son mapas nuevos: su zona caminable está en NEW_MAPS, al final (igual a GEO de maps.js).
+//
+// Ajustes del runtime (fase B1), lo mínimo para que el guion calce con los mapas rehechos con fotos (GEO de maps.js):
+//   - prólogo: horno y mesa de tortas en el lugar donde están dibujados (GEO.roros.points).
+//   - cap. 1: la catedral quedó arriba (sobre Belgrano) y Balbín abajo: el recorrido de Carmelo sale de la esquina de
+//     Balbín, pasa por Sarmiento, las palomas y los mástiles y termina en la escalinata. Velocidad ajustada por duración.
+//   - cap. 2: el andén de abajo es el 2 y Amanda espera en un refugio del andén 1 (arriba); gatos sentados a su lado.
+//   - cap. 6: el lago no es caminable (GEO.tortugas.b empieza en y = 404): se llega al pie del puente de la torre
+//     blanca, ahí bajan al Chema y ahí acorralan a la gata Linda. La caniche espera en la entrada (cast).
+//   - cap. 5 y 7: la caniche aparece en escena (cast y evento al terminar) para que la cámara tenga a quién mirar.
+//   - cast acepta { id, x, y } además del nombre suelto.
+//   - allyDown lleva `who` (qué aliado): sin eso, que Corbata se fuera a la cucha hacía perder el capítulo 6.
+//   - duraciones (medidas con tools/bot_historia.mjs para que cada capítulo dure 4 a 6 minutos con la lectura):
+//     Carmelo camina a 12 px/s, rastros más largos con 50 s entre uno y otro, puntos donde hay que quedarse en el
+//     capítulo 6 (hold), Luz con 9000 de vida y la caniche con 6000 que entra a los 100 s.
+//   - cap. 7: el diálogo de la gata cuando cae (allyDown) va con once: true; si no, cortaba la pelea final cada vez.
 
 const d = (who, text) => ({ who, text });
 
@@ -56,8 +72,8 @@ export const CHAPTERS = [
     goal: {
       kind: "defend", time: 90,
       targets: [
-        { id: "horno", name: "El horno", x: 300, y: 300, hp: 300 },
-        { id: "mesa", name: "La mesa de tortas", x: 640, y: 420, hp: 240 }
+        { id: "horno", name: "El horno", x: 180, y: 244, hp: 300 },
+        { id: "mesa", name: "La mesa de tortas", x: 800, y: 452, hp: 240 }
       ],
       targetBias: 0.6,        // 60% de los gatos van a los objetivos y no a los jugadores
       failOnLoss: false       // es el tutorial: si cae uno, se pierde una estrella, no el capítulo
@@ -113,16 +129,16 @@ export const CHAPTERS = [
     ],
     goal: {
       kind: "escort", ally: "carmelo",
-      // recorrido: de la esquina de Balbín y Sarmiento al monumento, las palomas, los mástiles y la catedral (abajo, sobre Belgrano)
+      // recorrido: de la esquina de Balbín (abajo) al monumento, las palomas, los mástiles y la catedral (arriba, sobre Belgrano)
       path: [
-        { x: 150, y: 170 }, { x: 330, y: 340 },
-        { x: 512, y: 500, wait: 6, tag: "sarmiento" },
-        { x: 700, y: 330 }, { x: 860, y: 170, wait: 5, tag: "palomas" },
-        { x: 700, y: 330 }, { x: 512, y: 512 },
-        { x: 512, y: 770, wait: 6, tag: "mastiles" },
-        { x: 512, y: 950, tag: "catedral" }
+        { x: 140, y: 880 }, { x: 320, y: 760 },
+        { x: 466, y: 664, wait: 8, tag: "sarmiento" },
+        { x: 700, y: 730 }, { x: 860, y: 850, wait: 6, tag: "palomas" },
+        { x: 700, y: 730 }, { x: 600, y: 560 },
+        { x: 606, y: 396, wait: 8, tag: "mastiles" },
+        { x: 512, y: 300 }, { x: 512, y: 222, tag: "catedral" }
       ],
-      speed: 16,              // px/s, solo camina si hay un jugador a menos de 70 px
+      speed: 12,              // px/s, solo camina si hay un jugador a menos de 70 px (16 duraba 2 min: ver HISTORIA.md)
       near: 70,
       calm: 2                 // segundos al lado para que deje de llorar
     },
@@ -148,7 +164,7 @@ export const CHAPTERS = [
         d("thomas", "Es el viento."),
         d("carmelo", "No. Están bailando.")
       ] },
-      { at: "allyDown", do: "dialog", once: true, lines: [
+      { at: "allyDown", who: "carmelo", do: "dialog", once: true, lines: [
         d("carmelo", "¡QUIERO A MI MAMÁ!"),
         d("rocio", "Ya casi, Carme. Desde acá se ve la torre del reloj. Vení que te acompaño.")
       ] },
@@ -182,14 +198,15 @@ export const CHAPTERS = [
     ],
     goal: {
       kind: "trains", count: 3,
-      start: { x: 512, y: 840 },                     // andén de abajo
-      // al pasar el segundo tren se limpia la vía: Amanda espera en el refugio del andén de enfrente
-      rescue: { who: "amanda", after: 2, x: 780, y: 210, r: 24, hold: 3, holdPair: 1.5 }
+      start: { x: 512, y: 640 },                     // andén 2 (abajo)
+      // al pasar el segundo tren se limpia la vía: Amanda espera en el refugio del andén de enfrente (andén 1, arriba)
+      rescue: { who: "amanda", after: 2, x: 776, y: 420, r: 24, hold: 3, holdPair: 1.5 }
     },
     hz: { first: 50, every: 80 },                    // trenes a los ~50, ~130 y ~210 s
     dur: 230, rate: 0.9, xpMul: 1.4, hordes: [100], orders: [],
     mix: [["gato", 8, 0], ["saltarin", 3, 20], ["negro", 3, 60], ["escupidor", 2, 90], ["madre", 1, 140]],
     events: [
+      { t: 1, do: "spawn", kind: "gato", n: 6, x: 776, y: 410 },
       { t: 3, do: "hint", text: "Cuando suena la bocina, salí de las vías. Los gatos no se avivan." },
       { at: "step:1", do: "dialog", lines: [
         d("rocio", "Uno. Faltan dos. El tren es más puntual que vos."),
@@ -238,11 +255,12 @@ export const CHAPTERS = [
       kind: "track", count: 3,
       // rastros de a uno: quedarse encima hasta llenarlo; los gatos que se sientan arriba lo frenan
       spots: [{ x: 230, y: 430 }, { x: 820, y: 560 }, { x: 520, y: 880 }],
-      r: 26, fill: 6, fillPair: 3, window: 45,
+      r: 26, fill: 24, fillPair: 14, window: 60,
+      gap: 50,                 // segundos hasta que aparece el rastro siguiente (con 6 s de llenado el capítulo duraba 30 s)
       onTimeout: "move",       // si se vence, el rastro salta a otro puesto y llega una tanda de negros
       sniffers: { kind: "negro", every: 6 }   // un gato va derecho al rastro cada 6 s
     },
-    dur: 260, rate: 1.0, xpMul: 1.3, hordes: [170], orders: [],
+    dur: 260, rate: 0.85, xpMul: 1.6, hordes: [170], orders: [],
     mix: [["gato", 8, 0], ["saltarin", 3, 15], ["escupidor", 2, 40], ["negro", 3, 60], ["madre", 2, 110], ["gordo", 1, 160]],
     events: [
       { t: 3, do: "hint", text: "Párense encima del rastro hasta llenarlo. Los dos juntos, el doble de rápido." },
@@ -274,7 +292,7 @@ export const CHAPTERS = [
     ],
     give: [{ weapon: "juli", lv: 1 }],
     allies: ["amanda"],
-    solo: { goal: { fill: 4 } },
+    solo: { goal: { fill: 14, gap: 35, sniffers: { every: 14 } }, hordes: [], rate: 0.6 },
     outro: [
       d("romero", "Seguí el olog hasta acá. Miguen lo que tenían los gatos: premios de pollo."),
       d("rocio", "Del Carrefour. El mismo paquete que dejaron en la cocina."),
@@ -361,9 +379,10 @@ export const CHAPTERS = [
         d("luz", "Ah, ¿se ayudan? Qué asco. Qué asco el amor."),
         d("thomas", "Gracias, Luz. Lo tomamos como un cumplido.")
       ] },
-      { at: "allyDown", do: "dialog", once: true, lines: [
+      { at: "allyDown", who: "corbata", do: "dialog", once: true, lines: [
         d("corbata", "Guau. (Se va a su cucha a juntar fuerzas. Ya vuelve.)")
-      ] }
+      ] },
+      { at: "goalDone", do: "ally", who: "caniche", idle: true, from: { x: 512, y: 840 } }
     ],
     allies: ["amanda", "corbata"],
     give: [{ weapon: "juli", lv: 1 }, { weapon: "romero", lv: 2 }],
@@ -398,16 +417,19 @@ export const CHAPTERS = [
       kind: "reach",
       start: { x: 120, y: 820 },
       // por los puentes de madera del lago hasta la torre blanca reticulada
-      path: [{ x: 330, y: 700 }, { x: 560, y: 600, tag: "puente" }, { x: 760, y: 420 }, { x: 880, y: 240, tag: "torre" }],
+      // por el estacionamiento y el boulevard hasta el pie del puente de la torre blanca (el lago no se camina)
+      // hold: segundos que hay que quedarse en ese punto (en el puente, cruzar juntos); sin esto el capítulo duraba 50 s
+      path: [{ x: 420, y: 900 }, { x: 820, y: 930 }, { x: 900, y: 720, hold: 26, holdPair: 18, holdSolo: 14 }, { x: 560, y: 650 }, { x: 512, y: 560, tag: "puente", hold: 36, holdPair: 26, holdSolo: 18 }, { x: 512, y: 436, tag: "torre" }],
       r: 40,
-      rescue: { who: "chema", x: 880, y: 240, r: 24, hold: 3, holdPair: 1.5 },
+      // el Chema no se anima a bajar de la torre: hay que quedarse abajo hasta convencerlo
+      rescue: { who: "chema", x: 512, y: 424, r: 24, hold: 44, holdPair: 32, holdSolo: 14 },
       // después del rescate llega la gata Linda corrida por sus propios gatos
-      then: { kind: "protect", ally: "gataLinda", x: 860, y: 290, time: 40 }
+      then: { kind: "protect", ally: "gataLinda", x: 560, y: 470, time: 40 }
     },
-    dur: 270, rate: 1.05, xpMul: 1.4, hordes: [], orders: [],
+    dur: 270, rate: 0.95, xpMul: 1.5, hz: { first: 20, every: 15 }, hordes: [], orders: [],
     mix: [["gato", 6, 0], ["saltarin", 3, 0], ["negro", 5, 0], ["escupidor", 2, 40], ["madre", 2, 70], ["gordo", 2, 110]],
     events: [
-      { t: 3, do: "hint", text: "Crucen por los puentes hasta la torre blanca. Los carritos avisan con una franja roja." },
+      { t: 3, do: "hint", text: "Lleguen al puente de la torre blanca. Los carritos avisan con una franja roja." },
       { t: 30, do: "call", who: "comisario",
         lines: [
           d("narrador", "Suena el teléfono. Número privado."),
@@ -425,7 +447,7 @@ export const CHAPTERS = [
         d("rocio", "¡Chema! ¿Estás bien, mi amor?"),
         d("chema", "Sí. La torre es blanca.")
       ] },
-      { at: "rescue", do: "ally", who: "gataLinda", from: { x: 1000, y: 300 } },
+      { at: "rescue", do: "ally", who: "gataLinda", from: { x: 1040, y: 470 } },
       { at: "rescue", do: "dialog", lines: [
         d("gata", "No digan nada. Sí, me persiguen. Sí, son mis propios gatos. Qué vergüenza."),
         d("thomas", "Linda, ¿te ayudamos o te pegamos?"),
@@ -433,13 +455,14 @@ export const CHAPTERS = [
         d("rocio", "Rodéenla. Nadie toca a la abuela de los chicos.")
       ] },
       { at: "rescue", do: "horde", n: 30, around: "gataLinda" },
-      { at: "allyDown", do: "fail", banner: ["Se llevaron a Linda", "Revancha"] },
+      { at: "allyDown", who: "gataLinda", do: "fail", banner: ["Se llevaron a Linda", "Revancha"] },
       { t: 100, do: "elite", kind: "negro" },
       { t: 190, do: "elite", kind: "gordo" }
     ],
     allies: ["amanda", "corbata"],
+    cast: [{ id: "caniche", x: 170, y: 860 }],
     give: [{ weapon: "juli", lv: 1 }, { weapon: "romero", lv: 2 }],
-    solo: { goal: { then: { time: 30 } } },
+    solo: { goal: { then: { time: 60 } } },
     outro: [
       d("gata", "Gracias. No se acostumbren."),
       d("chema", "Abuela Linda, te trajimos un regalo."),
@@ -471,7 +494,7 @@ export const CHAPTERS = [
     events: [
       { t: 3, do: "hint", text: "Los premios de la caniche agrandan a los gatos. Levántenlos antes que ellos." },
       { t: 40, do: "elite", kind: "gordo" },
-      { t: 60, do: "boss", kind: "canicheBoss" },
+      { t: 100, do: "boss", kind: "canicheBoss" },
       { at: "bossPhase2", do: "dialog", lines: [
         d("caniche", "¡Carritos! ¡Del Carrefour! ¡Los traje yo!"),
         d("rocio", "Premios, carritos y una bandeja de alfajores. Sos una banda entera vos sola.")
@@ -481,11 +504,13 @@ export const CHAPTERS = [
         d("gata", "Berrinche. Denle con todo, que se cansa sola.")
       ] },
       { at: "bossPhase3", do: "hint", text: "Es el momento: ¡Llamá a Maitena!" },
-      { at: "allyDown", do: "dialog", lines: [
+      { at: "allyDown", who: "gataLinda", do: "dialog", once: true, lines: [
         d("gata", "Me quedan seis vidas. Me tomo un minuto y vuelvo.")
       ] }
     ],
     allies: ["amanda", "corbata", "chema", "gataLinda"],
+    cast: [{ id: "caniche", x: 512, y: 300 }],   // en la intro está ahí parada; a los 100 s pasa a ser la jefa
+    solo: { rate: 0.85 },
     give: [{ weapon: "juli", lv: 1 }, { weapon: "romero", lv: 2 }],
     outro: [
       d("caniche", "Bueno. Perdón. Un poquito. Pero yo tenía razón en algo. No sé en qué."),
@@ -574,7 +599,7 @@ export const NEW_TYPES = {
           "Sale como élite en el ring (x8 de vida, suelta caja). Fuera del ring se comporta como un negro."
   },
   luz2: {
-    base: { hp: 1100, spd: 28, dmg: 16, r: 13, xp: 40, boss: true },
+    base: { hp: 9000, spd: 28, dmg: 16, r: 13, xp: 40, boss: true },
     look: "Luz de siempre (atigrada, panza naranja)",
     does: "Pelea de pareja. Marca a un jugador con una línea roja 1 s y carga hacia él. " +
           "Si al arrancar la carga el otro jugador está a menos de 28 px del marcado, Luz se frena en seco y queda " +
@@ -583,7 +608,7 @@ export const NEW_TYPES = {
           "A 0 de vida no muere: se rinde (goalDone)."
   },
   canicheBoss: {
-    base: { hp: 3600, spd: 30, dmg: 18, r: 15, xp: 0, boss: true },
+    base: { hp: 6000, spd: 30, dmg: 18, r: 15, xp: 0, boss: true },
     look: "caniche crema con moñito rosa, cara de buena (hasta que deja de tenerla)",
     does: "Fase 1, Premios (100% a 66%): cada 3 s tira 4 premios del Carrefour a 60-120 px; llama gatos y negros. " +
           "Fase 2, Carritos (66% a 33%): silba y cruzan dos filas de carritos (peligro carritos) cada 7 s con aviso; " +
@@ -662,13 +687,13 @@ export const EVO_NAMES = {
 /* ---------- mapas nuevos: propuesta de zona caminable y puntos que usa el guion ---------- */
 export const NEW_MAPS = {
   roros: {
-    b: [24, 150, 1000, 1000],
-    points: { horno: { x: 300, y: 300 }, mesa: { x: 640, y: 420 }, ventana: { x: 980, y: 200 }, vidriera: { x: 512, y: 960 } },
+    b: [24, 214, 1000, 956],
+    points: { horno: { x: 180, y: 226 }, mesaTortas: { x: 800, y: 436 }, isla: { x: 512, y: 392 }, vidriera: { x: 512, y: 610 }, puerta: { x: 512, y: 950 }, ventana: { x: 980, y: 200 } },
     note: "Cocina arriba (horno, mesada, ventana por donde entran los gatos), local abajo con la vidriera. Delantal celeste del logo."
   },
   abuela: {
-    b: [24, 160, 1000, 1000],
-    points: { techo: { x: 512, y: 230 }, cucha: { x: 860, y: 300 }, patio: { x: 512, y: 600 }, tendedero: { x: 260, y: 420 } },
+    b: [32, 200, 992, 856],
+    points: { galeria: { x: 512, y: 236 }, cucha: { x: 300, y: 650 }, porton: { x: 512, y: 850 }, limonero: { x: 220, y: 430 } },
     note: "Patio con piso rojo, pared de ladrillo, tendedero y la cucha de Corbata. La abuela no se ve nunca, ni en silueta."
   }
 };

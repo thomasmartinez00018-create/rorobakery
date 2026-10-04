@@ -4,7 +4,7 @@
 // Uso: node make_inst.mjs [ruta del motor]   (lo llama solo bot.mjs; no hace falta correrlo a mano)
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_ENGINE = path.resolve(HERE, "../js/engine.js");
@@ -32,8 +32,9 @@ const PATCHES = [
   ["  hurt(p, dmg, force) {", "  _tele(k, e, p) { const v = this.view[p.side]; const off = !v || Math.abs(e.x - p.x) > v.hw || Math.abs(e.y - p.y) > v.hh; const T = this._tl || (this._tl = {}); const o = T[k] || (T[k] = { n: 0, off: 0 }); o.n++; if (off) o.off++; }\n  hurt(p, dmg, force) {"]
 ];
 
-export function instrument(src) {
-  let s = src;
+export function instrument(src, engine = DEFAULT_ENGINE) {
+  // los imports relativos del motor (js/historia.js) apuntan al archivo real, no a .gen/
+  let s = src.replace(/from "\.\/([a-z_]+\.js)"/g, (m, f) => `from "${pathToFileURL(path.join(path.dirname(engine), f)).href}"`);
   for (const p of PATCHES) {
     const variants = Array.isArray(p[0]) ? p : [p];
     const hit = variants.find(([a]) => s.split(a).length - 1 === 1);
@@ -46,7 +47,7 @@ export function instrument(src) {
 // genera el archivo instrumentado y devuelve su ruta (escritura atómica: varios procesos pueden llamarlo a la vez)
 export function build(engine = process.env.ENGINE || DEFAULT_ENGINE) {
   const src = fs.readFileSync(engine, "utf8");
-  const out = instrument(src);
+  const out = instrument(src, engine);
   const dir = path.join(HERE, ".gen"); fs.mkdirSync(dir, { recursive: true });
   const tag = engine === DEFAULT_ENGINE ? "" : "_" + Buffer.from(path.resolve(engine)).toString("base64url").slice(-24);
   const file = path.join(dir, `engine_inst${tag}.mjs`);

@@ -19,7 +19,14 @@ const t = (name, fn) => { fn(); ok++; console.log("ok -", name); };
 /* ---------- 1. arcade idéntico al motor de antes ---------- */
 const refFile = path.join(HERE, ".gen", "engine_ref_" + REF + ".js");
 fs.mkdirSync(path.dirname(refFile), { recursive: true });
-fs.writeFileSync(refFile, execFileSync("git", ["show", REF + ":gatos/js/engine.js"], { cwd: HERE }));
+// la geometría de los mapas cambió a propósito (GEO de maps.js, fase de la historia): el motor de referencia se compara
+// con las zonas caminables y los carriles del tren nuevos; todo lo demás tiene que dar idéntico
+const GEO_NEW = { plaza: "[12, 204, MAP - 12, MAP - 12]", estacion: "[12, 100, MAP - 12, MAP - 12]", tortugas: "[12, 404, MAP - 12, MAP - 12]", terrazas: "[12, 240, MAP - 12, MAP - 12]" };
+let refSrc = String(execFileSync("git", ["show", REF + ":gatos/js/engine.js"], { cwd: HERE }));
+for (const [m, bb] of Object.entries(GEO_NEW)) refSrc = refSrc.replace(new RegExp("(" + m + ":\\s*\\{ tier: \\d, b: )\\[[^\\]]*\\]"), "$1" + bb);
+refSrc = refSrc.replace("y = Math.abs(p.y - 335) < Math.abs(p.y - 675) ? 335 : 675;", "y = Math.abs(p.y - 488) < Math.abs(p.y - 536) ? 488 : 536;");
+assert.ok(refSrc.includes("b: [12, 404, MAP - 12, MAP - 12]") && refSrc.includes("? 488 : 536"), "no se pudo poner la geometría nueva en el motor de referencia");
+fs.writeFileSync(refFile, refSrc);
 const maps = ["plaza", "estacion", "feria", "bielli", "cancha", "tortugas", "terrazas"];
 const run = (out, engine) => {
   fs.rmSync(path.join(HERE, "results", out), { recursive: true, force: true });
@@ -33,7 +40,7 @@ for (const f of fs.readdirSync(path.join(HERE, "results", "test_ref"))) {
   assert.equal(b, a, "distinto en " + f);
   games += JSON.parse(a).length;
 }
-ok++; console.log(`ok - arcade idéntico byte a byte al motor ${REF} en ${games} partidas con bots (7 mapas, dúo y solo)`);
+ok++; console.log(`ok - arcade idéntico byte a byte al motor ${REF} (con la geometría de GEO) en ${games} partidas con bots (7 mapas, dúo y solo)`);
 
 /* ---------- 2. semilla y guiones chicos ---------- */
 const play = (sim, secs, dt = 1 / 30) => {

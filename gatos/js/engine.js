@@ -1,17 +1,23 @@
 // Simulación de "Gatos de Linda". La corre solo el anfitrión; el invitado recibe fotos del estado.
+import { installStory, storyGuion } from "./historia.js";
 export const MAP = 1024;          // el mundo mide 1024 x 1024 px (baja resolución)
 export const RUN_BOSS1 = 210;     // Luz aparece a los 3:30
 export const RUN_BOSS2 = 420;     // Linda aparece a los 7:00
 
 // b: zona caminable [x0, y0, x1, y1]; hz: peligro que cruza el mapa; tier: dificultad del lugar
 export const MAPS = {
-  plaza:    { tier: 0, b: [12, 12, MAP - 12, MAP - 12], hz: null, pigeons: 30 },
-  estacion: { tier: 1, b: [12, 12, MAP - 12, MAP - 12], hz: "tren", hzEvery: 30, hzFirst: 35 },
+  // historia: zonas caminables de GEO (maps.js), alineadas con los mapas rehechos con fotos (antes plaza, estación,
+  // tortugas y terrazas dejaban caminar por encima de las fachadas y del lago)
+  plaza:    { tier: 0, b: [12, 204, MAP - 12, MAP - 12], hz: null, pigeons: 30 },
+  estacion: { tier: 1, b: [12, 100, MAP - 12, MAP - 12], hz: "tren", hzEvery: 30, hzFirst: 35, rails: [488, 536] },
   feria:    { tier: 2, b: [12, 202, MAP - 12, MAP - 12], hz: "fletero", hzEvery: 26, hzFirst: 40, crates: 6 },
   bielli:   { tier: 3, b: [30, 200, MAP - 30, 984], hz: "trote", hzEvery: 22, hzFirst: 30 },
   cancha:   { tier: 3, b: [12, 136, MAP - 12, MAP - 136], hz: "cortadora", hzEvery: 24, hzFirst: 30 },
-  tortugas: { tier: 4, b: [12, 176, MAP - 12, 870], hz: "carritos", hzEvery: 22, hzFirst: 30 },
-  terrazas: { tier: 5, b: [12, 214, MAP - 12, MAP - 12], hz: "autos", hzEvery: 18, hzFirst: 25 }
+  tortugas: { tier: 4, b: [12, 404, MAP - 12, MAP - 12], hz: "carritos", hzEvery: 22, hzFirst: 30 },
+  terrazas: { tier: 5, b: [12, 240, MAP - 12, MAP - 12], hz: "autos", hzEvery: 18, hzFirst: 25 },
+  // historia: mapas nuevos (se desbloquean jugando la historia; en el menú van después de los de siempre)
+  abuela:   { tier: 3, b: [32, 200, 992, 856], hz: "corbata", hzEvery: 24, hzFirst: 30, story: true },
+  roros:    { tier: 1, b: [24, 214, 1000, 956], hz: "bandejas", hzEvery: 26, hzFirst: 35, story: true }
 };
 export const HAZ = {
   tren:      { len: 330, spd: 560, h: 22, dmg: 40, edmg: 9999, warn: 2.2 },
@@ -19,7 +25,10 @@ export const HAZ = {
   cortadora: { len: 22, spd: 120, h: 11, dmg: 18, edmg: 90, warn: 1.4 },
   carritos:  { len: 156, spd: 210, h: 9, dmg: 20, edmg: 80, warn: 1.7 },
   autos:     { len: 44, spd: 360, h: 13, dmg: 28, edmg: 160, warn: 1.5 },
-  trote:     { len: 112, spd: 140, h: 10, dmg: 16, edmg: 80, warn: 1.6 }
+  trote:     { len: 112, spd: 140, h: 10, dmg: 16, edmg: 80, warn: 1.6 },
+  // historia: peligros de los mapas nuevos (GEO de maps.js); siempre al final, el índice viaja en la foto
+  corbata:   { len: 26, spd: 300, h: 9, dmg: 12, edmg: 120, warn: 1.4 },
+  bandejas:  { len: 30, spd: 170, h: 10, dmg: 14, edmg: 90, warn: 1.6 }
 };
 export const HAZ_ID = Object.keys(HAZ);
 
@@ -34,23 +43,34 @@ export const ENEMY = {
   escupidor: { hp: 18, spd: 26, dmg: 5, r: 6, xp: 3 },
   madre:     { hp: 40, spd: 23, dmg: 8, r: 7, xp: 3 },
   gatito:    { hp: 4, spd: 50, dmg: 3, r: 4, xp: 1 },
-  caja:      { hp: 24, spd: 0, dmg: 0, r: 7, xp: 0, obj: true }
+  caja:      { hp: 24, spd: 0, dmg: 0, r: 7, xp: 0, obj: true },
+  // historia (NEW_TYPES de story.js): el comportamiento está en js/historia.js
+  guantes:   { hp: 26, spd: 34, dmg: 10, r: 7, xp: 3 },
+  luz2:      { hp: 9000, spd: 28, dmg: 16, r: 13, xp: 40, boss: true },
+  canicheBoss: { hp: 6000, spd: 30, dmg: 18, r: 15, xp: 0, boss: true },
+  premio:    { hp: 1, spd: 0, dmg: 0, r: 4, xp: 0, obj: true }
 };
 // el número de cada tipo viaja en la foto: los nuevos (enemigos o aliados) van SIEMPRE al final, nunca se reordena
 export const ENEMY_ID = { gato: 0, negro: 1, paloma: 2, gordo: 3, luz: 4, linda: 5, saltarin: 6, escupidor: 7, madre: 8, gatito: 9, caja: 10,
-  carmelo: 11, corbata: 12, gatalinda: 13, maitena: 14, chema: 15, amanda: 16 };
+  carmelo: 11, corbata: 12, gatalinda: 13, maitena: 14, chema: 15, amanda: 16,
+  guantes: 17, luz2: 18, canicheBoss: 19, premio: 20, juli: 21, romero: 22, caniche: 23 };
 export const ENEMY_NAME = Object.keys(ENEMY_ID);
 export const PICKS = ["alfajor", "moneda", "caja", "iman", "manguera"];
-// aliados del modo historia. kind: cómo se dibujan mientras no tengan sprite propio (humano, perro, gato).
-// act: follow (sigue al jugador más cercano o escolta y pega pataditas), ram (embiste en línea con aviso), area (golpe en área con aviso).
-// Valores iniciales: los ajusta la fase del modo historia. Un capítulo puede pisar cualquiera ({ id, hp, dmg, ... }).
+// aliados del modo historia (ALLIES de story.js). kind: tipo de cuerpo; act: cómo pelea (lo resuelve js/historia.js):
+// escort (Carmelo: camina por el recorrido, patadita y miedo), ram (embiste con aviso), scratch (araña lo que tiene al
+// lado), follow (acompaña; el Chema y Amanda tienen pasivas), maitena (entra, tres patadas giratorias y se va).
+// down: segundos que tarda en volver si cae (Corbata a la cucha, la gata Linda en el capítulo 7).
 export const ALLY = {
-  carmelo:   { kind: "humano", act: "follow", hp: 60, spd: 46, r: 5, dmg: 8, cd: 0.9, reach: 16, kb: 140 },
-  corbata:   { kind: "perro", act: "ram", hp: 140, spd: 64, r: 7, dmg: 40, cd: 2.4, reach: 150, kb: 220 },
-  gatalinda: { kind: "gato", act: "area", hp: 400, spd: 40, r: 9, dmg: 26, cd: 2.6, reach: 48, kb: 160 },
-  maitena:   { kind: "humano", act: "area", hp: 200, spd: 70, r: 6, dmg: 60, cd: 1.6, reach: 56, kb: 260, inv: true },
-  chema:     { kind: "gato", act: "follow", hp: 40, spd: 60, r: 4, dmg: 0, cd: 9, reach: 0, kb: 0 },
-  amanda:    { kind: "gato", act: "follow", hp: 40, spd: 60, r: 4, dmg: 0, cd: 9, reach: 0, kb: 0 }
+  carmelo:   { kind: "humano", act: "escort", hp: 60, spd: 46, r: 5, dmg: 8, cd: 0.8, reach: 16, kb: 120 },
+  corbata:   { kind: "perro", act: "ram", hp: 200, spd: 64, r: 7, dmg: 30, cd: 4, reach: 140, kb: 220, down: 20 },
+  gatalinda: { kind: "gato", act: "scratch", hp: 400, spd: 44, r: 9, dmg: 12, cd: 0.6, reach: 20, kb: 70, down: 15 },
+  maitena:   { kind: "humano", act: "maitena", hp: 200, spd: 150, r: 6, dmg: 160, cd: 0.8, reach: 120, kb: 260, inv: true },
+  chema:     { kind: "gato", act: "follow", hp: 40, spd: 60, r: 4, dmg: 0, cd: 9, reach: 0, kb: 0, inv: true },
+  amanda:    { kind: "gato", act: "follow", hp: 40, spd: 60, r: 4, dmg: 0, cd: 9, reach: 0, kb: 0, inv: true },
+  // solo en escenas (epílogo, la caniche en el capítulo 6): se quedan cerca de donde aparecen
+  juli:      { kind: "gato", act: "idle", hp: 40, spd: 30, r: 5, dmg: 0, cd: 9, reach: 0, kb: 0, inv: true },
+  romero:    { kind: "perro", act: "idle", hp: 40, spd: 30, r: 5, dmg: 0, cd: 9, reach: 0, kb: 0, inv: true },
+  caniche:   { kind: "perro", act: "idle", hp: 40, spd: 30, r: 5, dmg: 0, cd: 9, reach: 0, kb: 0, inv: true }
 };
 // banderas de cada gato en la foto del estado
 export const F_FLASH = 1, F_TELE = 2, F_ELITE = 4, F_RUSH = 8, F_WET = 16, F_LEFT = 32, F_DOWN = 64; // LEFT y DOWN: solo aliados
@@ -76,6 +96,10 @@ export const PASSIVES = {
   delantal:   { name: "Delantal de Roro", desc: "+10% de área en golpes, charcos y explosiones.", max: 5 },
   vendas:     { name: "Vendas", desc: "Recibís 7% menos de daño.", max: 5 }
 };
+// historia: nombres de evolución del canon de Thomas (EVO_NAMES de story.js). Se pisan acá y no en la tabla de arriba
+// para no chocar con los cambios de armas del arcade.
+WEAPONS.juli.evo.name = "Juliano Benito Mostacholi"; WEAPONS.juli.evo.desc = "4 Julis que te curan cada vez que arañan. Nombre completo, por favor.";
+WEAPONS.romero.evo.name = "Monsieur Gomeghooo"; WEAPONS.romero.evo.desc = "Con boina y bigotito. Más rápido, y cada mordida pega a todos alrededor.";
 export const EVO_OF = Object.fromEntries(Object.entries(WEAPONS).map(([w, d]) => [d.evo.p, w]));
 export const SLOTS = 5;
 export const GEM_CAP = 120;       // pasadas estas gemas en el piso, las más viejas se fusionan con la vecina
@@ -130,19 +154,8 @@ export function makeGuion(g) {
   return out;
 }
 
-// capítulo de js/story.js → guion. Lo que el capítulo no dice queda como en el arcade, salvo jefes, hordas,
-// pedidos y élites, que en la historia arrancan apagados (cada capítulo pone los suyos).
-export function chapterGuion(ch) {
-  const pick = (k, dflt) => ch[k] !== undefined ? ch[k] : dflt;
-  return makeGuion({
-    id: ch.id, chapter: ch.id,
-    bosses: pick("bosses", []), hordes: pick("hordes", []), orders: pick("orders", []), elites: pick("elites", null),
-    crates: pick("crates", ARCADE.crates), pigeons: pick("pigeons", ARCADE.pigeons), hazards: pick("hazards", true),
-    rate: pick("rate", ARCADE.rate), mix: pick("mix", ARCADE.mix), events: pick("events", []),
-    goal: ch.goal || { kind: "none" }, dur: ch.dur, allies: ch.allies || [], intro: ch.intro || [], outro: ch.outro || [],
-    win: pick("win", {}), lose: pick("lose", { allDown: true })
-  });
-}
+// capítulo de js/story.js → guion (js/historia.js). opts.solo aplica la variante para uno del capítulo.
+export function chapterGuion(ch, opts = {}) { return storyGuion(ch, opts, ARCADE); }
 
 export class Sim {
   constructor(map = "plaza", guion, opts = {}) {
@@ -157,7 +170,7 @@ export class Sim {
     this.ev = []; this.spawnAcc = 0; this.bossIdx = 0; this.bossRef = null;
     this.bosses = G.bosses.slice().sort((a, b) => a.t - b.t);
     this.hordes = G.hordes.slice().sort((a, b) => a.t - b.t); this.calm = 0;
-    this.eliteNext = G.elites ? G.elites.first : 9e9; this.crateNext = G.crates ? G.crates.first : 9e9; this.hzNext = (G.hazards && this.cfg.hzFirst) || 9e9;
+    this.eliteNext = G.elites ? G.elites.first : 9e9; this.crateNext = G.crates ? G.crates.first : 9e9; this.hzNext = (G.hazards && (G.hzFirst || this.cfg.hzFirst)) || 9e9; // historia: G.hzFirst/G.hzEvery
     this.objTimes = G.orders.slice().sort((a, b) => a - b); this.obj = null;
     // copias: el mismo capítulo se puede jugar de nuevo (revancha) sin arrastrar qué eventos ya pasaron
     this.events = G.events.filter(e => e.t !== undefined).map(e => ({ ...e })).sort((a, b) => a.t - b.t); this.evIdx = 0;
@@ -245,8 +258,7 @@ export class Sim {
     this.updateProjectiles(dt);
     this.updateHazards(dt);
     this.updateObjective(dt);
-    if (this.allies.length) this.updateAllies(dt);
-    if (this.goal) this.updateGoal(dt);
+    if (this.story) this.storyTick(dt, input); // historia.js: aliados, objetivo, especiales, premios, ondas
     this.updateGems(dt);
     this.cleanup();
     if (this.G.lose.allDown !== false && this.alive().length === 0) { this.state = "over"; this.ev.push(["over"]); }
@@ -377,7 +389,7 @@ export class Sim {
       if (bossAlive) this.objTimes[0] += 12; else { this.objTimes.shift(); this.startObjective(); }
     }
     // peligro del lugar
-    if (G.hazards && this.cfg.hz && t >= this.hzNext) { this.hzNext = t + this.cfg.hzEvery * this.rr(0.85, 1.15); this.spawnHazard(); }
+    if (G.hazards && this.cfg.hz && t >= this.hzNext) { this.hzNext = t + (G.hzEvery || this.cfg.hzEvery) * this.rr(0.85, 1.15); this.spawnHazard(); }
     // eventos sueltos del guion (modo historia)
     if (this.evIdx < this.events.length) this.runEvents();
 
@@ -440,11 +452,11 @@ export class Sim {
   }
 
   /* ---------- peligros que cruzan el mapa (avisan antes) ---------- */
-  spawnHazard() {
-    const k = this.cfg.hz, H = HAZ[k], ps = this.alive(); if (!ps.length) return;
+  spawnHazard(kind) {
+    const k = kind || this.cfg.hz, H = HAZ[k], ps = this.alive(); if (!ps.length) return; // historia: kind (carritos de la caniche)
     const p = ps[Math.floor(this.rnd() * ps.length)], b = this.cfg.b;
     let y = clamp(p.y + this.rr(-6, 6), b[1] + H.h, b[3] - H.h);
-    if (k === "tren") y = Math.abs(p.y - 335) < Math.abs(p.y - 675) ? 335 : 675;
+    if (k === "tren") { const [r0, r1] = this.cfg.rails; y = Math.abs(p.y - r0) < Math.abs(p.y - r1) ? r0 : r1; } // carriles de GEO
     const dir = this.rnd() < 0.5 ? 1 : -1;
     const lanes = k === "cortadora" ? [y, clamp(y + (this.rnd() < 0.5 ? -60 : 60), b[1] + H.h, b[3] - H.h)] : [y];
     for (const ly of lanes) this.hz.push({ k, y: ly, h: H.h, dir, warn: H.warn, x: dir > 0 ? -10 : MAP + 10, len: H.len, spd: H.spd, dmg: H.dmg, edmg: H.edmg, hit: new Set(), ph: new Set() });
@@ -496,7 +508,7 @@ export class Sim {
       let tgt = null, bd = Infinity;
       for (const p of alive) { const d = d2(p, e); if (d < bd) { bd = d; tgt = p; } }
       // lo que hay que defender o proteger atrae a los gatos (pesa como si estuviera más cerca)
-      for (const L of this.lures) { if (L.down) continue; const d = d2(L, e) * 0.5; if (d < bd) { bd = d; tgt = L; } }
+      if (this.lures.length) { const L = this.pickLure(e, bd); if (L) tgt = L; } // historia.js
       if (!tgt) continue;
       let dx = tgt.x - e.x, dy = tgt.y - e.y; const m = Math.hypot(dx, dy) || 1; dx /= m; dy /= m;
       let spd = e.spd * (e.slow > 0 ? 0.5 : 1);
@@ -521,6 +533,8 @@ export class Sim {
           else if (e.cd <= 0) { e.st = 1; e.stT = e.dbl ? 0.4 : 0.65; e.ax = dx; e.ay = dy; this.ev.push(["charge", Math.round(e.x), Math.round(e.y)]); }
           break;
         case "linda": spd *= this.linda(e, dx, dy, dt, dmgScale); break;
+        // historia: tipos nuevos (js/historia.js)
+        case "guantes": case "luz2": case "canicheBoss": [dx, dy, spd] = this.storyEnemy(e, tgt, dx, dy, m, spd, dt, dmgScale); break;
       }
       // separación entre gatos para que no se amontonen en un punto
       let sx = 0, sy = 0;
@@ -586,7 +600,7 @@ export class Sim {
   damage(e, dmg, p, kx = 0, ky = 0, raw) {
     if (e.hp <= 0) return;
     const crit = !raw && this.rnd() < 0.08;
-    const d = Math.round(raw ? dmg : dmg * (p ? p.dmgMul * (p.bond ? 1.2 : 1) : 1) * (crit ? 2 : 1));
+    const d = Math.round((raw ? dmg : dmg * (p ? p.dmgMul * (p.bond ? 1.2 : 1) : 1) * (crit ? 2 : 1)) * (e.dmgIn || 1)); // dmgIn: historia
     e.hp -= d; e.flash = 0.12;
     const kb = ENEMY[e.type].boss ? 0.15 : ENEMY[e.type].obj ? 0 : e.elite ? 0.35 : 1;
     e.kx += kx * kb; e.ky += ky * kb;
@@ -595,6 +609,7 @@ export class Sim {
   }
 
   kill(e, p) {
+    if (e.surrender || e.type === "premio") return this.storyKill(e, p); // historia: jefas que se rinden, premios
     const B = ENEMY[e.type];
     this.ev.push(["die", Math.round(e.x), Math.round(e.y), ENEMY_ID[e.type]]);
     if (B.obj) { this.dropCrate(e); return; }
@@ -1105,3 +1120,7 @@ export class Sim {
     return { t: Math.round(this.t * 100) / 100, st: this.state, lv: this.level, xp: Math.round(this.xp * 100) / 100, xn: this.xpNext, kl: this.kills, co: this.coins, E, B, H, G, K, U, M, Bu, Z, Hz, ob, tg: this.bond ? 1 : 0, P, boss, of: this.offers, ev, map: this.map, A, dlg, goal, cam: this.camPos(), cap: this.G.chapter || null };
   }
 }
+
+// modo historia: el runtime vive en js/historia.js y se instala sobre Sim (pisa begin, initGoal, updateGoal, aliados,
+// diálogo y foto). En el arcade sin aliados ni objetivo no corre nada de eso y no consume azar.
+installStory(Sim, { MAP, MAPS, HAZ, ENEMY, ENEMY_ID, ALLY, WEAPONS, ARCADE, F_FLASH, F_TELE, F_RUSH, F_LEFT, F_DOWN });
