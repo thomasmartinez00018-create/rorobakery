@@ -20,6 +20,7 @@ const P = (c, dx, dy, o = {}) => ({ c, x: CX + dx, y: CY + dy, f: 1, m: 0, hp: 1
 const base = {
   quieto: P("thomas", -60, -40), camina: P("thomas", -20, -40, { m: 1 }), golpe: P("thomas", 20, -40), invul: P("thomas", 60, -40, { m: 1, i: 1 }),
   rquieto: P("rocio", -60, 10), rcamina: P("rocio", -20, 10, { m: 1, f: -1 }), lanza: P("rocio", 20, 10), esquive: P("rocio", 60, 10, { m: 1 }),
+  lejos: P("rocio", 420, -260), lejosT: P("thomas", -500, 300, { d: 1, rv: 0.5 }),
   caidoT: P("thomas", -40, 60, { d: 1, rv: 1.1 }), caidoR: P("rocio", 0, 60, { d: 1, rv: 0.4 }), poca: P("thomas", 40, 60, { hp: 18, u: 1 })
 };
 const enemies = [];

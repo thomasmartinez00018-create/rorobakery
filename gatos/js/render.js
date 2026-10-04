@@ -19,16 +19,35 @@ function digitSheet(col) {
   digitSheets.set(col, c);
   return c;
 }
-function drawNum(g, n, x, y, col) {
+function drawNum(g, n, x, y, col, sc = 1) {
   const s = String(n), sheet = digitSheet(col);
-  const w = s.length * 4 - 1;
-  let ox = Math.round(x - w / 2); const oy = Math.round(y);
+  const w = (s.length * 4 - 1) * sc;
+  let ox = Math.round(x - w / 2); const oy = Math.round(y - (sc - 1) * 3);
   for (let i = 0; i < s.length; i++) {
     const d = s.charCodeAt(i) - 48;
-    if (d >= 0 && d <= 9) g.drawImage(sheet, d * 4, 0, 4, 6, ox, oy, 4, 6);
-    ox += 4;
+    if (d >= 0 && d <= 9) g.drawImage(sheet, d * 4, 0, 4, 6, ox, oy, 4 * sc, 6 * sc);
+    ox += 4 * sc;
   }
 }
+// letras de 3x5 para los indicadores (T de Thomas, R de Rocío, ! de caído)
+const GLY = { T: "111010010010010", R: "110101110101101", "!": "010010010000010" };
+function glyph(g, ch, x, y, col) { const b = GLY[ch]; g.fillStyle = col; for (let i = 0; i < 15; i++) if (b[i] === "1") g.fillRect(x + (i % 3), y + ((i / 3) | 0), 1, 1); }
+// flecha pixelada en una de 8 direcciones (0 = derecha, en sentido horario), con la base a `d` px del centro
+const DIR8 = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+function pixArrow(g, x, y, o, col, d) {
+  const [dx, dy] = DIR8[o];
+  for (const [c, grow] of [["#16121c", 1], [col, 0]]) {
+    g.fillStyle = c;
+    if (dx && dy) { // diagonal: triángulo rectángulo con la punta hacia afuera
+      const tx = x + dx * (d + 3), ty = y + dy * (d + 3), n = 3 + grow;
+      for (let i = 0; i <= n; i++) for (let j = 0; i + j <= n; j++) g.fillRect(tx - dx * i + (grow ? dx : 0), ty - dy * j + (grow ? dy : 0), 1, 1);
+    } else for (let i = -grow; i <= 3 + grow; i++) { // recto: cuatro filas que se angostan hacia la punta
+      const u = d + 3 - i, w = Math.max(0, i) + grow;
+      if (dx) g.fillRect(x + dx * u, y - w, 1, w * 2 + 1); else g.fillRect(x - w, y + dy * u, w * 2 + 1, 1);
+    }
+  }
+}
+const MATE = c => c && c.startsWith("thomas") ? "#ffb938" : "#c9a0ff";
 // huecos de luz y tintes: degradés pre-dibujados una vez por radio (antes, un createRadialGradient por luz y por cuadro)
 const holeSprites = new Map(), tintSprites = new Map();
 function holeSprite(rad) {
@@ -472,8 +491,16 @@ export class Renderer {
 
     // números de daño arriba de todo
     { let j = 0; const ns = this.nums;
-      for (let i = 0; i < ns.length; i++) { const n = ns[i]; n.life -= dt; if (n.life <= 0) { this.numFree.push(n); continue; } n.y -= 22 * dt; if (vis(n.x, n.y)) drawNum(g, n.n, X(n.x), Y(n.y), n.c); ns[j++] = n; }
-      ns.length = j; }
+      // normales: chicos, suben y se apagan; críticos: el doble de grandes, de color, con un golpe de escala al salir y brillo
+      for (let i = 0; i < ns.length; i++) {
+        const n = ns[i]; n.life -= dt; if (n.life <= 0) { this.numFree.push(n); continue; } ns[j++] = n;
+        if (!vis(n.x, n.y)) continue;
+        const k = 1 - n.life / n.max, rise = (1 - (1 - k) * (1 - k)) * (n.big ? 16 : 13), y = Y(n.y) - rise, x = X(n.x);
+        g.globalAlpha = k > 0.7 ? (1 - k) / 0.3 : 1;
+        if (n.big) { if (k < 0.5) this.glow(n.x, n.y - rise, 10, n.c, 0.45 * (1 - k)); drawNum(g, n.n, x, y, n.c, k < 0.1 ? 3 : 2); }
+        else drawNum(g, n.n, x, y, n.c);
+      }
+      g.globalAlpha = 1; ns.length = j; }
     // juntos: hilo de corazón entre los dos
     if (V.bond) {
       const ps = Object.values(V.players); if (ps.length === 2) {
@@ -485,17 +512,15 @@ export class Renderer {
     }
     if (V.obj) this.edgeArrow(g, X(V.obj[0]), Y(V.obj[1]) - 6, "#ff5fb0");
     if (V.goal) this.goalArrows(g, V, X, Y);
-    // indicadores de la pareja
-    for (const [side, p] of Object.entries(V.players)) {
-      if (side === V.local) continue;
-      const px = X(p.x), py = Y(p.y) - 10;
-      if (px < 4 || px > bw - 4 || py < 4 || py > bh - 4) {
-        const ax = Math.max(6, Math.min(bw - 6, px)), ay = Math.max(6, Math.min(bh - 6, py));
-        g.fillStyle = p.d ? (Math.floor(this.t * 6) % 2 ? "#ff4a5a" : "#ffffff") : (p.c === "thomas" ? "#ffb938" : "#c9a0ff");
-        g.fillRect(ax - 2, ay - 2, 5, 5); g.fillStyle = "#16121c"; g.fillRect(ax, ay - 1, 1, 3);
-      }
+    // indicador de la pareja fuera de cámara: insignia con su inicial y una flecha hacia donde está
+    for (const side in V.players) { if (side !== V.local) this.mateBadge(g, V.players[side], X, Y); }
+    // poca vida: viñeta roja que late como un corazón (más fuerte cuanto menos vida queda)
+    const mine = V.players[V.local];
+    if (mine && !mine.d && mine.mh > 0 && mine.hp / mine.mh < 0.3) {
+      const sev = 1 - mine.hp / mine.mh / 0.3, beat = Math.pow(Math.max(0, Math.sin(this.t * 5.2)), 6);
+      g.globalAlpha = Math.min(1, 0.35 + sev * 0.4 + beat * 0.25); g.drawImage(this.redLayer(), 0, 0); g.globalAlpha = 1;
     }
-    if (this.hurtFlash > 0) { this.hurtFlash -= dt; g.fillStyle = `rgba(255,40,60,${this.hurtFlash})`; g.fillRect(0, 0, bw, bh); }
+    if (this.hurtFlash > 0) { this.hurtFlash -= dt; g.globalAlpha = Math.min(1, this.hurtFlash * 3); g.drawImage(this.redLayer(), 0, 0); g.globalAlpha = 1; }
 
     const c = this.ctx; c.imageSmoothingEnabled = false;
     c.drawImage(this.buf, 0, 0, this.bw, this.bh, 0, 0, this.bw * this.s * (this.cv.width / innerWidth / 1), this.bh * this.s * (this.cv.height / innerHeight / 1));
@@ -613,15 +638,41 @@ export class Renderer {
     else if (name === "autos") put(["auto", "auto3", "auto2"][Math.abs(y) % 3], X(x + back * 22));
     else put(name, X(x + back * (len >> 1)));
   }
+  // viñeta roja precalculada (para poca vida y para el golpe recibido)
+  redLayer() {
+    const bw = this.bw, bh = this.bh;
+    if (this.redC && this.redC.width === bw && this.redC.height === bh) return this.redC;
+    const c = this.redC || (this.redC = document.createElement("canvas")); c.width = bw; c.height = bh;
+    const g = c.getContext("2d"), cx = bw / 2, cy = bh / 2, gr = g.createRadialGradient(cx, cy, Math.min(bw, bh) * 0.3, cx, cy, Math.hypot(bw, bh) * 0.55);
+    gr.addColorStop(0, "rgba(220,20,50,0)"); gr.addColorStop(0.55, "rgba(220,20,50,0.18)"); gr.addColorStop(1, "rgba(200,10,40,0.7)");
+    g.fillStyle = gr; g.fillRect(0, 0, bw, bh);
+    return c;
+  }
+  mateBadge(g, p, X, Y) {
+    const bw = this.bw, bh = this.bh, s = this.s || 2;
+    // margen para no quedar debajo del HUD (arriba: tiempo y vidas; abajo: botones y armas)
+    const top = Math.ceil(78 / s), bot = Math.ceil(118 / s);
+    const px = X(p.x), py = Y(p.y) - 10;
+    if (px >= 4 && px <= bw - 4 && py >= top - 6 && py <= bh - bot + 6) return;
+    // la insignia queda adentro y la flecha (que sale 11 px hacia la pareja) siempre entra en pantalla
+    const ax = Math.round(Math.max(15, Math.min(bw - 16, px))), ay = Math.round(Math.max(top + 8, Math.min(bh - bot - 8, py)));
+    const col = p.d ? (Math.floor(this.t * 6) % 2 ? "#ff4a5a" : "#ffffff") : MATE(p.c);
+    const a = Math.atan2(py - ay, px - ax), pulse = p.d ? Math.round(Math.abs(Math.sin(this.t * 6))) : 0;
+    // flecha de píxeles en 8 direcciones (rotar el canvas la dejaba borrosa)
+    pixArrow(g, ax, ay, Math.round(a / (Math.PI / 4)) & 7, col, 7);
+    // insignia con la inicial (o un ! titilando si está caído)
+    const r = 5 + pulse;
+    g.fillStyle = "#16121c"; g.fillRect(ax - r - 1, ay - r - 1, r * 2 + 3, r * 2 + 3);
+    g.fillStyle = col; g.fillRect(ax - r, ay - r, r * 2 + 1, r * 2 + 1);
+    g.fillStyle = "#16121c"; g.fillRect(ax - r + 1, ay - r + 1, r * 2 - 1, r * 2 - 1);
+    glyph(g, p.d ? "!" : p.c.startsWith("thomas") ? "T" : "R", ax - 1, ay - 2, col);
+  }
   edgeArrow(g, px, py, col) {
     const bw = this.bw, bh = this.bh;
     if (px >= 6 && px <= bw - 6 && py >= 6 && py <= bh - 6) return;
     const cx = bw / 2, cy = bh / 2, a = Math.atan2(py - cy, px - cx);
-    const ax = Math.max(8, Math.min(bw - 8, px)), ay = Math.max(8, Math.min(bh - 8, py));
-    g.save(); g.translate(Math.round(ax), Math.round(ay)); g.rotate(a);
-    g.fillStyle = "#16121c"; g.fillRect(-5, -4, 9, 9); g.fillStyle = Math.floor(this.t * 4) % 2 ? col : "#ffffff";
-    for (let i = 0; i < 4; i++) g.fillRect(-3 + i, -3 + i, 1, 7 - i * 2);
-    g.restore();
+    const ax = Math.round(Math.max(9, Math.min(bw - 10, px))), ay = Math.round(Math.max(9, Math.min(bh - 10, py)));
+    pixArrow(g, ax, ay, Math.round(a / (Math.PI / 4)) & 7, Math.floor(this.t * 4) % 2 ? col : "#ffffff", -2);
   }
 
   drawPlayer(g, p, side, isMe, X, Y, dt) {
@@ -661,12 +712,20 @@ export class Renderer {
       for (let k = 1; k < Math.min(4, st.tn); k++) { const j = (st.tn - 1 - k) & 3; g.globalAlpha = 0.45 - k * 0.12; g.drawImage(s.wh[fr], X(st.tx[j]) - (s.w >> 1), Y(st.ty[j]) - s.ay); }
       g.globalAlpha = 1;
     }
+    // especial listo: anillo de puntos que gira alrededor de los pies (la mitad de atrás va antes del sprite)
+    const ult = p.u >= 1 && (isMe ? 1 : 0.55);
+    if (ult) this.ultRing(g, x, y, MATE(p.c), ult, 0);
     const img = face < 0 ? s.fl[fr] : s.f[fr], dw = s.w + sq, dh = s.h - sq;
     const dx = x - (dw >> 1), dy = y - s.ay + sq - bob;
     g.drawImage(img, dx, dy, dw, dh);
+    if (ult) { this.ultRing(g, x, y, MATE(p.c), ult, 1); if (isMe) this.glow(p.x, p.y - 4, 16, MATE(p.c), 0.3 + 0.15 * Math.sin(this.t * 6)); }
     // invulnerable: el sprite no desaparece; titila un velo blanco suave
     if (p.i && st.dash <= 0 && Math.floor(this.t * 12) % 2) { g.globalAlpha = 0.55; g.drawImage(s.wh[fr], dx, dy, dw, dh); g.globalAlpha = 1; }
-    if (!isMe) { g.fillStyle = p.c.startsWith("thomas") ? "#ffb938" : "#c9a0ff"; g.fillRect(x - 1, y - s.h - 3, 3, 2); }
+    // tu pareja: flechita de su color arriba de la cabeza, con contorno para que se lea sobre cualquier piso
+    if (!isMe) {
+      const hy = y - s.h - 6 - Math.round(Math.abs(Math.sin(this.t * 4))); g.fillStyle = "#16121c"; g.fillRect(x - 3, hy - 1, 7, 4); g.fillRect(x - 1, hy + 3, 3, 1);
+      g.fillStyle = MATE(p.c); g.fillRect(x - 2, hy, 5, 1); g.fillRect(x - 1, hy + 1, 3, 1); g.fillRect(x, hy + 2, 1, 1);
+    }
     // barra de vida chiquita
     const w = 12, k = Math.max(0, p.hp / p.mh);
     g.fillStyle = "#16121c"; g.fillRect(x - w / 2 - 1, y + 3, w + 2, 3);
@@ -696,6 +755,16 @@ export class Renderer {
       g.fillStyle = gr; g.fillRect(0, 0, bw, bh);
     }
     return c;
+  }
+  ultRing(g, x, y, col, a, front) {
+    const n = 14, rot = this.t * 2.4;
+    g.globalAlpha = a;
+    for (let i = 0; i < n; i++) {
+      const ang = rot + i / n * 6.2832, sn = Math.sin(ang); if ((sn > 0) !== !!front) continue;
+      const px = Math.round(x + Math.cos(ang) * 11), py = Math.round(y + 1 + sn * 5);
+      g.fillStyle = "#16121c"; g.fillRect(px - 1, py, 3, 2); g.fillStyle = (i + Math.floor(this.t * 10)) % 3 ? col : "#ffffff"; g.fillRect(px, py, 2, 1);
+    }
+    g.globalAlpha = 1;
   }
   lighting(V, cx, cy) {
     const lg = this.lg, bw = this.bw, bh = this.bh;
