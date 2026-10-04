@@ -59,8 +59,8 @@ document.head.insertAdjacentHTML("beforeend", `<style id="a11y-dinamica">
 #hud.grandes .ultbtn{width:112px;height:112px}#hud.grandes .ultbtn span{width:88px;height:88px;font-size:26px}
 #hud.grandes .dashbtn{width:84px;height:84px;bottom:calc(26px + env(safe-area-inset-bottom,0px));right:calc(142px + env(safe-area-inset-right,0px))}
 #hud.grandes.zurdo .dashbtn{right:auto;left:calc(142px + env(safe-area-inset-left,0px))}#hud.grandes .dashbtn span{width:64px;height:64px;font-size:18px}
-.pairult{position:absolute;right:calc(14px + env(safe-area-inset-right,0px));bottom:calc(128px + env(safe-area-inset-bottom,0px));max-width:52vw;background:rgba(58,31,0,.88);border:3px solid var(--amber);clip-path:var(--notch);padding:3px 8px;font-size:18px;color:var(--amber);text-align:center;animation:pulse .6s steps(2) infinite}
-#hud.zurdo .pairult{right:auto;left:calc(14px + env(safe-area-inset-left,0px))}#hud.grandes .pairult{bottom:calc(156px + env(safe-area-inset-bottom,0px))}
+.pairult{position:absolute;right:calc(14px + env(safe-area-inset-right,0px));bottom:calc(158px + env(safe-area-inset-bottom,0px));max-width:52vw;background:rgba(58,31,0,.88);border:3px solid var(--amber);clip-path:var(--notch);padding:3px 8px;font-size:18px;color:var(--amber);text-align:center;animation:pulse .6s steps(2) infinite}
+#hud.zurdo .pairult{right:auto;left:calc(14px + env(safe-area-inset-left,0px))}#hud.grandes .pairult{bottom:calc(184px + env(safe-area-inset-bottom,0px))}
 .pairult[hidden]{display:none}.ultbtn.pair{box-shadow:0 0 0 4px var(--pink),0 4px 0 #000}
 </style>`);
 /* dinámica 11: especial "Llamá a Maitena". Se desbloquea en la historia: story.js pone "special:maitena" en el
@@ -69,12 +69,12 @@ document.head.insertAdjacentHTML("beforeend", `<style id="a11y-dinamica">
 const hasUnlock = id => !!(prof.unlock && (prof.unlock["special:" + id] || prof.unlock[id]));
 let hostMait = false, guestMait = false;
 document.head.insertAdjacentHTML("beforeend", `<style id="mait-dinamica">
-.maitbtn{position:absolute;right:calc(110px + env(safe-area-inset-right,0px));bottom:calc(96px + env(safe-area-inset-bottom,0px));width:60px;height:60px;border-radius:50%;
+.maitbtn{position:absolute;right:calc(190px + env(safe-area-inset-right,0px));bottom:calc(22px + env(safe-area-inset-bottom,0px));width:60px;height:60px;border-radius:50%;
   background:conic-gradient(var(--pink) var(--k,0%),rgba(40,44,80,.85) 0);display:grid;place-items:center;border:4px solid #000;box-shadow:0 4px 0 #000;touch-action:none}
 .maitbtn span{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:#15183a;font:12px/1 var(--display);color:var(--muted)}
 .maitbtn.ready span{background:#3a0f2a;color:var(--pink)}.maitbtn[hidden]{display:none}
-#hud.zurdo .maitbtn{right:auto;left:calc(110px + env(safe-area-inset-left,0px))}#hud.grandes .maitbtn{bottom:calc(124px + env(safe-area-inset-bottom,0px));right:calc(140px + env(safe-area-inset-right,0px))}
-#hud.grandes.zurdo .maitbtn{right:auto;left:calc(140px + env(safe-area-inset-left,0px))}
+#hud.zurdo .maitbtn{right:auto;left:calc(190px + env(safe-area-inset-left,0px))}#hud.grandes .maitbtn{bottom:calc(30px + env(safe-area-inset-bottom,0px));right:calc(236px + env(safe-area-inset-right,0px))}
+#hud.grandes.zurdo .maitbtn{right:auto;left:calc(236px + env(safe-area-inset-left,0px))}
 </style>`);
 function applyA11y() { hud.classList.toggle("zurdo", leftBtn); hud.classList.toggle("grandes", bigBtn); }
 const input = new Input($("#touch"), $("#joy-base"), $("#joy-knob"));
@@ -558,7 +558,8 @@ function mapCards() {
   return `<div class="maps">${Object.entries(THEMES).map(([k, t]) => {
     const owned = prof.maps[k];
     const tier = MAPS[k].tier;
-    return `<button class="mapc ${map === k ? "on" : ""} ${owned ? "" : "locked"}" data-act="${owned ? "map" : "buymap"}" data-v="${k}"><div><b>${t.name}</b><small>${"★".repeat(tier + 1)}${"☆".repeat(5 - tier)} · ${esc(t.sub)}${tier ? ` · +${tier * 12}%${COIN()}` : ""}</small></div><span>${owned ? (map === k ? "Elegido" : "Elegir") : `${MAP_COST[k]}${COIN()}`}</span></button>`;
+    const mt = (prof.arcade.metas[k] || []).filter(Boolean).length; // dinámica 9: metas cumplidas en ese mapa
+    return `<button class="mapc ${map === k ? "on" : ""} ${owned ? "" : "locked"}" data-act="${owned ? "map" : "buymap"}" data-v="${k}"><div><b>${t.name}</b><small>${"★".repeat(tier + 1)}${"☆".repeat(5 - tier)} · ${esc(t.sub)}${tier ? ` · +${tier * 12}%${COIN()}` : ""}${owned ? ` · metas ${mt}/3` : ""}</small></div><span>${owned ? (map === k ? "Elegido" : "Elegir") : `${MAP_COST[k]}${COIN()}`}</span></button>`;
   }).join("")}</div>`;
 }
 // capítulos de la historia (por ahora una lista simple; la pantalla de la historia es de la fase siguiente)
@@ -643,7 +644,7 @@ function draw(result) {
       <div class="stats"><div><b>${fmt(r.t)}</b><span>tiempo${r.newBest ? " · ¡récord!" : ""}</span></div><div><b>${r.k}</b><span>gatos</span></div><div><b>${r.lv}</b><span>nivel</span></div><div><b>+${earned}</b><span>monedas</span></div></div>
       ${r.metas ? `<p class="label">Metas de ${esc(THEMES[map].name)}</p>${r.metas.map(m => `<p class="hint">${m.ok || m.antes ? "★" : "☆"} ${esc(m.txt)}${m.nueva ? " · ¡nueva!" : ""}</p>`).join("")}` : ""}
       ${r.win && !r.cap ? `<p class="hint">Ganar paga x${r.second ? "1,25 (usaron la segunda chance)" : "1,5"}${r.extra.length ? " · " + esc(r.extra.join(" · ")) : ""}</p>` : r.extra && r.extra.length ? `<p class="hint">${esc(r.extra.join(" · "))}</p>` : ""}
-      ${r.alcAdd ? `<p class="hint">Alcancía de la pareja +${r.alcAdd}. ${esc(alcText())}</p>` : ""}
+      ${r.alcAdd ? `<p class="hint">Alcancía de la pareja +${r.alcAdd}. ${esc(alcText().replace("Alcancía de la pareja: ", "Ya tienen "))}</p>` : ""}
       ${me.side === "host" ? `<button class="big" data-act="again">Revancha</button>` : `<p class="busy">Esperando la revancha</p>`}
       <button class="mid ghost" data-act="shop">Taller (${COIN()}${prof.coins})</button>
       <button class="link" data-act="menu">Menú</button>

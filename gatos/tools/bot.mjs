@@ -5,6 +5,8 @@ import { pathToFileURL } from "url";
 import { build } from "./make_inst.mjs";
 const ENG = await import(pathToFileURL(build()).href);
 const { Sim, MAPS, WEAPONS, PASSIVES, EVO_OF } = ENG;
+// calibración: DIFF='{"hp":1.1,"tierHp":0.05}' pisa la curva de dificultad del motor (si la tiene)
+if (process.env.DIFF && ENG.DIFF) Object.assign(ENG.DIFF, JSON.parse(process.env.DIFF));
 export { Sim, MAPS };
 
 // misma lógica de movimiento que bot_new.mjs: huye ponderado de gatos y proyectiles, junta gemas, va al pedido y a la pareja
@@ -105,6 +107,9 @@ export function runGame({ map = "plaza", duo = true, policy = "builder", meta = 
       else if (k === "sync") S.sync++;
       else if (k === "revive") S.revives++;
       else if (k === "warn") S.hz++;
+      else if (k === "mark") S.marks = (S.marks || 0) + 1;      // dinámica 2: cargas de Luz
+      else if (k === "stun") S.stuns = (S.stuns || 0) + 1;      // dinámica 2: Luz frenada por la pareja
+      else if (k === "second") S.second = Math.round(sim.t);   // dinámica 8
     }
     sim.ev = [];
     // muestreo por ventana

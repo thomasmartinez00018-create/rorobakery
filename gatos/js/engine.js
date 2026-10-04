@@ -87,11 +87,11 @@ export function coinsFor({ co = 0, kl = 0, t = 0, win = false, tier = 0, second 
 export const METAS = {
   plaza:    { mid: [8, "Que Corbata voltee 8 gatos"] },
   estacion: { mid: [1, "Que nadie caiga en el apagón"] },
-  feria:    { mid: [5, "Romper 5 cajones de la liquidación"] },
+  feria:    { mid: [12, "Romper 12 cajones de la liquidación"] },
   bielli:   { mid: [1, "Ganarle al sparring"] },
-  cancha:   { mid: [40, "Mojar 40 gatos con el riego"] },
-  tortugas: { mid: [200, "Voltear 200 gatos en la promo 2x1"] },
-  terrazas: { mid: [12, "Que los autos se lleven 12 gatos a la salida del cine"] }
+  cancha:   { mid: [60, "Mojar 60 gatos con el riego"] },
+  tortugas: { mid: [500, "Voltear 500 gatos en la promo 2x1"] },
+  terrazas: { mid: [25, "Que los autos se lleven 25 gatos a la salida del cine"] }
 };
 export const METAS_TXT = map => [(METAS[map] || METAS.plaza).mid[1], "Entregar los 3 pedidos de Roro's", "Ganar sin que nadie caiga"];
 // premios de la alcancía de la pareja (monedas juntadas de a dos, no se gastan): opciones de la sala
@@ -105,6 +105,12 @@ export const ALCANCIA = [
    Si la pareja la llamó hace menos de `pair` s: radio pairR y daño x pairK. Sim.callMaitena(p, { free: true }) la
    llama sin gastar la carga (para el evento "maitena" de la historia). */
 export const MAITENA = { kills: 250, r: 120, dmg: 160, hits: 3, every: 0.5, enter: 0.5, ko: 2, pair: 2.5, pairR: 170, pairK: 1.5 };
+/* curva de dificultad del arcade en un solo lugar (calibrada con los bots de tools/: ver tools/mediciones.md).
+   hp, dmg y rate multiplican vida, daño y ritmo de aparición de los gatos; tierHp, tierDmg y tierRate son lo que suma
+   cada nivel de mapa (antes 0,07, 0,05 y 0,04); boss y tierBoss, la vida de las jefas; linda y lindaDmg, la vida y el
+   daño extra de Linda (antes 1 y 1); dmgT: el daño de los gatos crece 1 + t/dmgT (antes 330); salto: segundos de
+   aviso del saltarín. Los bots la pueden pisar con DIFF='{"hp":1.1}' (tools/bot.mjs). */
+export const DIFF = { hp: 1, dmg: 1, rate: 1, tierHp: 0.04, tierDmg: 0.03, tierRate: 0.02, boss: 1, linda: 1.7, lindaDmg: 1.5, dmgT: 250, salto: 0.5, tierBoss: 0.06 };
 export const MID_IDS = ["corbata", "apagon", "liquidacion", "sparring", "riego", "promo", "salida"];
 export const MID_OF = { plaza: "corbata", estacion: "apagon", feria: "liquidacion", bielli: "sparring", cancha: "riego", tortugas: "promo", terrazas: "salida" };
 export const GOALS = ["none", "survive", "defend", "escort", "trains", "track", "boss", "reach", "protect"];
@@ -166,7 +172,7 @@ export const LUZ_PAR = { mark: 0.65, markDbl: 0.4, near: 72, half: 0.35, stun: 2
 export const ARCADE = {
   id: "arcade",
   // hp: multiplicador de vida del jefe; pair: true (LUZ_PAR) u objeto que pisa valores de LUZ_PAR
-  bosses: [{ t: 210, type: "luz", dist: 150, calm: 3, hp: 2.5, pair: true }, { t: 420, type: "linda", dist: 160, calm: 4, phase: 1 }],
+  bosses: [{ t: 210, type: "luz", dist: 150, calm: 3, hp: 1.8, pair: true }, { t: 420, type: "linda", dist: 160, calm: 4, phase: 1 }],
   hordes: [{ t: 150, n: 40, dist: 150, kinds: ["gato"] }, { t: 330, n: 40, dist: 150, kinds: ["saltarin", "negro", "negro"] }],
   orders: [95, 250, 365],
   elites: { first: 70, min: 38, max: 58, slope: 25, pools: [[0, ["gato", "saltarin"]], [110, ["saltarin", "negro", "madre"]], [200, ["negro", "gordo", "madre", "saltarin"]]] },
@@ -404,9 +410,9 @@ export class Sim {
   /* ---------- aparición de enemigos ---------- */
   spawnAt(type, x, y, hpMul = 1) {
     const b = ENEMY[type], tier = this.cfg.tier;
-    const scale = (1 + this.t / 130 + (this.t / 270) ** 2) * (1 + tier * 0.07);
+    const scale = (1 + this.t / 130 + (this.t / 270) ** 2) * (1 + tier * DIFF.tierHp) * DIFF.hp;
     const solo = Object.keys(this.players).length === 1 ? 0.7 : 1;
-    const hp = (b.boss ? b.hp * solo * (1 + tier * 0.06) * (1 + this.level * 0.08) : b.hp * scale * hpMul * (solo < 1 ? 0.85 : 1)) * (this.hot ? 1.25 : 1); // hot: picante
+    const hp = (b.boss ? b.hp * solo * (1 + tier * DIFF.tierBoss) * (1 + this.level * 0.08) * DIFF.boss * (type === "linda" ? DIFF.linda : 1) : b.hp * scale * hpMul * (solo < 1 ? 0.85 : 1)) * (this.hot ? 1.25 : 1); // hot: picante
     const [x0, y0, x1, y1] = this.cfg.b;
     const e = { id: this.nextId++, type, x: clamp(x, x0, x1), y: clamp(y, y0, y1), hp, maxHp: hp, spd: b.spd * (b.boss ? 1 : 1 + this.t / 900), dmg: b.dmg, r: b.r, flash: 0, kx: 0, ky: 0, wob: this.rnd() * 9, cd: this.rr(1, 2.5), st: 0, stT: 0, ax: 0, ay: 0, slow: 0, hits: {} };
     if (type === "paloma") { e.x = x; e.y = y; }
@@ -502,7 +508,7 @@ export class Sim {
     const moving = this.enemies.length - this.count("caja");
     if (moving >= G.rate.cap) return;
     const mk = this.mid && this.mid.k, promo = mk === "promo"; // dinámica 3: la promo 2x1 duplica y afloja; el apagón trae negros
-    const rate = Math.min(G.rate.max, G.rate.base + t / G.rate.per) * this.pressure() * (1 + tier * 0.04) * (this.calm > 0 ? 0.2 : 1) * (Object.keys(this.players).length === 1 ? 0.72 : 1) * (promo ? 2 : 1);
+    const rate = Math.min(G.rate.max, G.rate.base + t / G.rate.per) * this.pressure() * (1 + tier * DIFF.tierRate) * DIFF.rate * (this.calm > 0 ? 0.2 : 1) * (Object.keys(this.players).length === 1 ? 0.72 : 1) * (promo ? 2 : 1);
     this.spawnAcc += rate * dt;
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
@@ -539,7 +545,7 @@ export class Sim {
     const M = this.mid = { k, t0: this.t, end: this.t + Math.min(G.dur, G.end - this.t), acc: 0.5, fall: 0, win: 0 };
     if (k === "corbata") { const q = this.edgePos(120); M.ally = this.addAlly("corbata", { x: q.x, y: q.y, hp: 200, cd: 2 }); }
     if (k === "sparring") {
-      const q = this.edgePos(150), e = M.boss = this.spawnAt("sparring", q.x, q.y, 10);
+      const q = this.edgePos(150), e = M.boss = this.spawnAt("sparring", q.x, q.y, 25); // x25: que haya que ir a buscarlo
       e.elite = true; e.r = Math.round(e.r * 1.8); e.dmg *= 1.4; e.spd *= 0.85;
     }
     this.ev.push(["mid", k, 1]);
@@ -647,7 +653,7 @@ export class Sim {
 
   moveEnemies(dt) {
     const alive = this.alive(), [bx0, by0, bx1, by1] = this.cfg.b;
-    const dmgScale = (1 + this.t / 330) * (1 + this.cfg.tier * 0.05) * (this.hot ? 1.25 : 1); // hot: picante (dinámica 9)
+    const dmgScale = (1 + this.t / DIFF.dmgT) * (1 + this.cfg.tier * DIFF.tierDmg) * DIFF.dmg * (this.hot ? 1.25 : 1); // hot: picante (dinámica 9)
     for (const e of this.enemies) {
       if (e.hp <= 0) continue;
       e.flash = Math.max(0, e.flash - dt); e.slow = Math.max(0, e.slow - dt);
@@ -665,7 +671,7 @@ export class Sim {
         case "saltarin":
           if (e.st === 1) { spd = 0; if ((e.stT -= dt) <= 0) { e.st = 2; e.stT = 0.36; } }
           else if (e.st === 2) { spd = 235; dx = e.ax; dy = e.ay; if ((e.stT -= dt) <= 0) { e.st = 0; e.cd = this.rr(2.4, 3.4); } }
-          else if ((e.cd -= dt) <= 0 && m < 85) { e.st = 1; e.stT = e.elite ? 0.6 : 0.5; e.ax = dx; e.ay = dy; }
+          else if ((e.cd -= dt) <= 0 && m < 85) { e.st = 1; e.stT = e.elite ? DIFF.salto + 0.1 : DIFF.salto; e.ax = dx; e.ay = dy; }
           break;
         case "escupidor":
           e.cd -= dt;
@@ -682,7 +688,7 @@ export class Sim {
           else if (e.st === 2) { spd *= 4.4; dx = e.ax; dy = e.ay; if ((e.stT -= dt) <= 0) { e.st = 0; if (e.hp < e.maxHp * 0.5 && !e.dbl) { e.dbl = true; e.cd = 0.25; } else { e.dbl = false; e.cd = 2.6; } } }
           else if (e.cd <= 0) { e.st = 1; e.stT = e.dbl ? 0.4 : 0.65; e.ax = dx; e.ay = dy; this.ev.push(["charge", Math.round(e.x), Math.round(e.y)]); }
           break;
-        case "linda": spd *= this.linda(e, dx, dy, dt, dmgScale); break;
+        case "linda": spd *= this.linda(e, dx, dy, dt, dmgScale * DIFF.lindaDmg); break;
         case "sparring": // dinámica 3: jab doble (se frena con aviso y tira dos embestidas cortas de unos 40 px)
           if (e.st === 1) { spd = 0; if ((e.stT -= dt) <= 0) { e.st = 2; e.stT = 0.13; e.jab = 1; } }
           else if (e.st === 2) { spd = 320; dx = e.ax; dy = e.ay; if ((e.stT -= dt) <= 0) { if (e.jab < 2) { e.st = 4; e.stT = 0.2; } else { e.st = 0; e.cd = this.rr(1.6, 2.4); } } }
