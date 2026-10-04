@@ -167,3 +167,68 @@ Perfil de CPU (`PROF=1`), tiempo inclusivo de `R.frame` en ms por segundo a 60 c
 - Sombra suave (sprite) solo para jugadores, aliados, jefas y élites; los gatos comunes siguen con el rectángulo (en estrés, la sombra en sprite para 220 gatos costaba cerca de 1 ms).
 - Muerte de gato con 10 partículas como antes.
 - Todo lo de postproceso es precalculado: gradación horneada en el mapa al cargarlo, noche + tinte + viñeta en una capa por mapa y tamaño, brillos con discos cacheados, viñeta roja cacheada. Partículas en pools de arrays tipados (600 de efectos, 220 de ambiente), sin objetos por cuadro.
+
+## 8. Dinámica del arcade (rama gdl/dinamica)
+
+Bots de `tools/`: perfecto = `bot.mjs` con policy builder, decide en cada cuadro; casual = policy casual (mejoras al azar ponderado por el puntaje del builder) y decide cada 0,3 s. `node bateria.mjs <nombre>` corre los dos, solo y dúo, en los 7 mapas sobre una copia congelada del motor. La base (`0_antes`) es de 40 partidas por configuración; desde el cambio 6 se midió con 20 (freno de carga en la Mac compartida, de a un proceso), así que cada celda final tiene un margen de unos ±10 a 20 puntos.
+
+### Victorias y fin mediano, antes (8bba9e4, n=40) → después (038a90f, n=20)
+
+| Mapa | Perfecto dúo | Perfecto solo | Casual dúo | Casual solo |
+| --- | --- | --- | --- | --- |
+| Plaza | 98% 7:46 → 95% 8:06 | 78% 7:43 → 70% 8:05 | 70% 7:45 → 45% 7:41 | 5% 3:09 → 0% 3:25 |
+| Estación | 100% 7:55 → 100% 8:08 | 65% 7:39 → 50% 8:03 | 57% 7:40 → 45% 8:06 | 3% 2:07 → 0% 2:13 |
+| Feria | 95% 8:01 → 95% 8:19 | 63% 7:42 → 50% 7:57 | 30% 5:41 → 40% 7:37 | 0% 1:53 → 0% 1:51 |
+| Bielli | 98% 7:53 → 95% 8:12 | 50% 7:35 → 50% 7:56 | 33% 3:45 → 20% 3:42 | 0% 1:45 → 0% 1:42 |
+| Cancha | 90% 7:57 → 90% 8:31 | 38% 7:30 → 30% 7:41 | 8% 3:25 → 20% 3:53 | 0% 1:56 → 0% 2:33 |
+| Tortugas | 93% 7:57 → 90% 8:17 | 48% 7:40 → 40% 7:56 | 23% 3:40 → 15% 7:41 | 0% 1:44 → 0% 1:41 |
+| Terrazas | 95% 8:08 → 75% 8:27 | 38% 7:34 → 50% 7:48 | 15% 3:32 → 15% 3:32 | 0% 1:46 → 0% 1:49 |
+
+Objetivo pedido: casual dúo entre 35 y 60% en Plaza (45%) y entre 15 y 35% en Terrazas (15%, en el borde de abajo); perfecto dúo no más de 95% en Plaza (95%).
+
+### Paso a paso (Plaza casual dúo / Terrazas casual dúo / Plaza perfecto dúo)
+
+| Commit | Resultado | n |
+| --- | --- | --- |
+| 0 base | 70% / 15% / 98% | 40 |
+| 1 escupidor justo | 65% / 13% / 98% | 40 |
+| 2 Luz de pareja (x2,5) | 65% / 10% / 100% | 40 |
+| 3 evento y ladrón | 68% / 15% / 98% | 40 |
+| 5 combos | 60% / 8% / 95% | 40 |
+| 6 roles | 50% / 25% / 100% | 20 |
+| 7 Juli y Palo | 55% / 10% / 100% | 20 |
+| 8 segunda chance | 60% / 15% / 100% | 20 |
+| calibración (DIFF) | 45% / 15% / 95% | 20 |
+
+Los cambios 4 (arranque rápido), 9 (monedas), 10 (accesibilidad) y 11 (Maitena) no cambian una partida normal de los bots.
+
+### Otras medidas (Plaza dúo; antes → después)
+
+- Escupidas cargadas fuera de la pantalla del que la recibe: 24 a 25% → 0%. La escupida pasa de 14% a 7 a 11% del daño recibido.
+- Luz: dura 15 a 17 s → 21 s (perfecto) y 26 s (casual), con 5 a 6 cargas marcadas y 2 a 3 frenadas por la pareja por pelea. Con x2,5 duraba 26 a 34 s, pero en Terrazas la pareja casual moría con ella (10 de 18 derrotas entre 3:30 y 5:30): se bajó a x1,8, como pedía la auditoría para ese caso.
+- Armas en común al final (dúo): 3,1 → 2,6 (perfecto) y 2,2 (casual); en Terrazas casual 2,5 → 1,95. No llega a la meta de menos de 1.
+- Combos de pareja por partida: 220 (casual) a 810 (perfecto), casi todos medialuna al mate.
+- Segunda chance usada: 4 de 20 partidas del perfecto y 9 de 20 del casual en Plaza.
+- Arranque rápido (Plaza casual dúo, n=20): el primer golpe llega entre los 10 y 20 s de partida, igual que sin él; la partida dura 30 s menos y gana 10/20 contra 9/20.
+- Monedas por partida en Plaza: perfecto 542 → 728, casual 443 → 400 (ganar paga x1,5, perder no cambia). El Taller cuesta x1,5.
+
+### weapons_bench.mjs (semilla fija, RUNS=12, nivel 5, promedio de las dos densidades)
+
+| Arma | Antes | Después |
+| --- | --- | --- |
+| Patada | 123 (-17%) | 123 (-17%) |
+| Medialunas | 236 (+58%) | 188 (+26%) |
+| Juli | 50 (-66%) | 141 (-5%) |
+| Romero | 145 (-3%) | 145 (-3%) |
+| Mate | 153 (+3%) | 153 (+3%) |
+| El 315 | 202 (+36%) | 180 (+21%) |
+| Palo de amasar | 35 (-77%) | 102 (-32%) |
+| Torta | 191 (+28%) | 191 (+28%) |
+
+Mediana 149: todas dentro de ±35% (antes, cuatro afuera). Por densidad separada no entran todas: el banco tiene al jugador quieto y castiga a lo cuerpo a cuerpo con pocos gatos, y El 315 y la Torta son armas de horda.
+
+### Pruebas
+
+- `test_dinamica.mjs`: 11 en verde. `test_guion.mjs` compara contra 038a90f: 84 partidas idénticas byte a byte.
+- `prueba_dinamica.mjs` en Chromium (390 x 844): partida de 2 minutos de reloj sin errores en consola y 21 capturas en `gatos-dev/capturas/dinamica-*.png`.
+- `test_historia.mjs` falla desde 8bba9e4 (story.js ya no exporta EXAMPLE): no es de esta rama.

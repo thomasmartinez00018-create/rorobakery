@@ -19,7 +19,8 @@ const PATCHES = [
   ["    if (W.romero) {", "    this._src = 'romero'; if (W.romero) {"],
   ["  ultimate(p) {\n    p.ult = 0;", "  ultimate(p) {\n    p.ult = 0; this._src = 'especial'; this._ults = (this._ults || 0) + 1;"],
   ["dmg: 55 * k, own: p.side });", "dmg: 55 * k, own: p.side, ult: 1 });"],
-  ["for (const b of this.proj) {\n      b.life", "for (const b of this.proj) {\n      this._src = b.k === 0 ? 'medialuna' : 'rodillo'; b.life"],
+  [["for (const b of this.proj) {\n      b.life", "for (const b of this.proj) {\n      this._src = b.k === 0 ? 'medialuna' : 'rodillo'; b.life"],
+   ["for (const b of this.proj) {\n      // dinámica 5", "for (const b of this.proj) {\n      this._src = b.k === 0 ? 'medialuna' : 'rodillo';\n      // dinámica 5"]],
   ["for (const pl of this.pools) {", "for (const pl of this.pools) { this._src = 'mate';"],
   ["for (const bm of this.bombs) {\n      bm.t += dt;", "for (const bm of this.bombs) {\n      this._src = bm.ult ? 'especial' : 'torta'; bm.t += dt;"],
   ["for (const bus of this.buses) {", "for (const bus of this.buses) { this._src = 'bondi';"],
@@ -27,7 +28,8 @@ const PATCHES = [
   ["if (d2(p, z) < z.r * z.r) this.hurt(p, z.dmg);", "if (d2(p, z) < z.r * z.r) { this._h = 'zona de Linda'; this.hurt(p, z.dmg); }"],
   ["this.near(p.x, p.y, 150, e => { if (!this.foe(e)) return;", "this._src = 'manguera'; this.near(p.x, p.y, 150, e => { if (!this.foe(e)) return;"],
   // telegrafía fuera de cámara: ¿el que recibe el ataque ve al gato cuando avisa?
-  ["else if (m < 125 && e.cd <= 0 && this.eproj.length < 48) { e.st = 1; e.stT = 0.6; spd = 0; }", "else if (m < 125 && e.cd <= 0 && this.eproj.length < 48) { e.st = 1; e.stT = 0.6; spd = 0; this._tele('spit', e, tgt); }"],
+  [["else if (m < 125 && e.cd <= 0 && this.eproj.length < 48) { e.st = 1; e.stT = 0.6; spd = 0; }", "else if (m < 125 && e.cd <= 0 && this.eproj.length < 48) { e.st = 1; e.stT = 0.6; spd = 0; this._tele('spit', e, tgt); }"],
+   ["this.sees(tgt, e.x, e.y - 10)) { e.st = 1; e.stT = 0.6; spd = 0; }", "this.sees(tgt, e.x, e.y - 10)) { e.st = 1; e.stT = 0.6; spd = 0; this._tele('spit', e, tgt); }"]],
   ["else if ((e.cd -= dt) <= 0 && m < 85) { e.st = 1;", "else if ((e.cd -= dt) <= 0 && m < 85) { this._tele('salto', e, tgt); e.st = 1;"],
   ["  hurt(p, dmg, force) {", "  _tele(k, e, p) { const v = this.view[p.side]; const off = !v || Math.abs(e.x - p.x) > v.hw || Math.abs(e.y - p.y) > v.hh; const T = this._tl || (this._tl = {}); const o = T[k] || (T[k] = { n: 0, off: 0 }); o.n++; if (off) o.off++; }\n  hurt(p, dmg, force) {"]
 ];

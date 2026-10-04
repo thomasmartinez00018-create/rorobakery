@@ -265,3 +265,19 @@ body.cine #hud .build,body.cine #hud .ultbtn,body.cine #hud .dashbtn,body.cine #
 @media (max-width:560px){.hinthud{top:calc(232px + env(safe-area-inset-top,0px))}.maibtn{bottom:calc(118px + env(safe-area-inset-bottom,0px))}}
 /* ---------- transición pixelada entre pantallas (canvas de render.js, encima de todo y sin tomar toques) ---------- */
 .wipe{position:fixed;inset:0;width:100%;height:100%;z-index:30;display:none;pointer-events:none;image-rendering:pixelated}
+/* dinámica 10: accesibilidad (botones grandes, para zurdos, aviso del especial de la pareja); antes se inyectaba desde main.js */
+#hud.zurdo .ultbtn{right:auto;left:calc(18px + env(safe-area-inset-left,0px))}
+#hud.zurdo .dashbtn{right:auto;left:calc(116px + env(safe-area-inset-left,0px))}
+#hud.grandes .ultbtn{width:112px;height:112px}#hud.grandes .ultbtn span{width:88px;height:88px;font-size:26px}
+#hud.grandes .dashbtn{width:84px;height:84px;bottom:calc(26px + env(safe-area-inset-bottom,0px));right:calc(142px + env(safe-area-inset-right,0px))}
+#hud.grandes.zurdo .dashbtn{right:auto;left:calc(142px + env(safe-area-inset-left,0px))}#hud.grandes .dashbtn span{width:64px;height:64px;font-size:18px}
+.pairult{position:absolute;right:calc(14px + env(safe-area-inset-right,0px));bottom:calc(158px + env(safe-area-inset-bottom,0px));max-width:52vw;background:rgba(58,31,0,.88);border:3px solid var(--amber);clip-path:var(--notch);padding:3px 8px;font-size:18px;color:var(--amber);text-align:center;animation:pulse .6s steps(2) infinite}
+#hud.zurdo .pairult{right:auto;left:calc(14px + env(safe-area-inset-left,0px))}#hud.grandes .pairult{bottom:calc(184px + env(safe-area-inset-bottom,0px))}
+.pairult[hidden]{display:none}.ultbtn.pair{box-shadow:0 0 0 4px var(--pink),0 4px 0 #000}
+#hud.zurdo .build{left:auto;right:calc(10px + env(safe-area-inset-right,0px))}#hud.zurdo .build>div{justify-content:flex-end}
+#hud.grandes .build{max-width:calc(100% - 270px)}
+/* Maitena (historia y arcade, un solo botón): va arriba del combo; para zurdos, a la izquierda; con botones grandes, más arriba.
+   Si está el botón, el aviso del especial de la pareja sube para no taparlo. */
+#hud.zurdo .maibtn{right:auto;left:calc(18px + env(safe-area-inset-left,0px))}
+#hud.grandes .maibtn{bottom:calc(150px + env(safe-area-inset-bottom,0px))}
+#hud.mait .pairult{bottom:calc(210px + env(safe-area-inset-bottom,0px))}#hud.mait.grandes .pairult{bottom:calc(236px + env(safe-area-inset-bottom,0px))}

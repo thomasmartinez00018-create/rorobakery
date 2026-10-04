@@ -1,7 +1,7 @@
 // Conexión P2P con PeerJS: el anfitrión crea la sala con un código de 4 letras y el invitado entra con ese código.
 // PROTO sube cada vez que cambian los mensajes o la foto del estado de forma incompatible: los dos celus lo
 // mandan en hello y lobby, y si no coincide no se arranca. El prefijo de sala cambia solo con cambios grandes.
-export const PROTO = 2;
+export const PROTO = 3; // 3: historia (cap, skin, avail, skins, opts, mt) y dinámica (meta.maitena, md, monedas y metas en la foto, banderas 512 y 2048)
 const PREFIX = "gatos-de-linda-v2-";
 const LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 

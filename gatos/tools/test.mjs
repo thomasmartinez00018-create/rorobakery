@@ -6,9 +6,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const run = f => { console.log(`\n== ${f}`); const r = spawnSync(process.execPath, [path.join(HERE, f)], { stdio: "inherit", env: process.env }); return r.status === 0; };
+// URL también para las pruebas hijas (test_historia_nav.mjs tenía otro puerto por defecto)
+const run = f => { console.log(`\n== ${f}`); const r = spawnSync(process.execPath, [path.join(HERE, f)], { stdio: "inherit", env: { ...process.env, URL: process.env.URL || "http://127.0.0.1:8811/" } }); return r.status === 0; };
 const res = {};
-for (const f of ["test_perfil.mjs", "test_guion.mjs", "test_historia.mjs"]) res[f] = run(f);
+for (const f of ["test_perfil.mjs", "test_guion.mjs", "test_historia.mjs", "test_dinamica.mjs"]) res[f] = run(f);
 if (process.env.NAV !== "0") {
   const url = process.env.URL || "http://127.0.0.1:8811/";
   const up = await fetch(url + "index.html").then(r => r.ok).catch(() => false);

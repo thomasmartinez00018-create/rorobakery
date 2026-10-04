@@ -1,5 +1,5 @@
-// Gatos de Linda — menús, salas, bucle de juego y sincronización entre los dos celus.
-import { Sim, WEAPONS, PASSIVES, MAPS, EVO_OF, chapterGuion } from "./engine.js";
+// Gatos de Linda: menús, salas, bucle de juego y sincronización entre los dos celus.
+import { Sim, WEAPONS, PASSIVES, MAPS, EVO_OF, chapterGuion, MID_IDS, coinsFor, METAS_TXT, ALCANCIA } from "./engine.js";
 import { buildSprites, SPR, portrait as portraitPng, dialogPortrait } from "./sprites.js";
 import { Renderer, THEMES } from "./render.js";
 import { STORY_MAPS } from "./maps.js";
@@ -19,7 +19,22 @@ const NAME = { thomas: "Thomas", rocio: "Rocío" };
 const ICON = { patada: "thomas", medialuna: "medialuna", juli: "juli", romero: "romero", mate: "mate", bondi: "bus", rodillo: "rodillo", torta: "torta", guantes: "guante", zapatillas: "zapa", termo: "termo", iman: "iman", amargo: "mate", abrazo: "corazon", delantal: "delantal", vendas: "vendas", alfajor: "alfajor" };
 const HZ_BANNER = { tren: ["¡Viene el tren!", "Salgan de las vías"], fletero: ["¡El fletero!", "Pasa la camioneta sin frenar"], cortadora: ["¡La cortadora!", "El canchero no mira"], carritos: ["¡Carritos!", "Se soltó una fila del súper"], autos: ["¡Auto!", "Cuidado en el estacionamiento"], trote: ["¡Entrada en calor!", "Pasa la fila trotando"] };
 const UPG = { hp: ["Vida", "+10 de vida"], dmg: ["Fuerza", "+8% de daño"], spd: ["Velocidad", "+5% de velocidad"], mag: ["Imán", "+15% de alcance"] };
-const UPG_COST = [15, 35, 70, 120, 200];
+const UPG_COST = [25, 50, 100, 180, 300]; // dinámica 9: x1,5 porque ganar ahora paga x1,5 (el Taller dura lo mismo)
+// dinámica 9: premios de primera victoria por mapa y por meta nueva (x el multiplicador del mapa)
+const FIRST_WIN = 150, NEW_META = 40;
+const alcOn = id => { const a = ALCANCIA.find(x => x.id === id); return !!a && prof.arcade.alc >= a.at; };
+const optOn = id => alcOn(id) && !!prof.arcade.opt[id];
+// dinámica 3: carteles del evento de mitad de partida (inicio, fin, y fin ganado para el sparring)
+const MID_BANNER = {
+  corbata: [["¡Corbata se escapó!", "El perro de la abuela los ayuda 30 segundos"], ["Corbata volvió a su casa", "Gracias, Corbata"]],
+  apagon: [["¡Apagón en la estación!", "Los gatos negros aprovechan la oscuridad"], ["Volvió la luz", ""]],
+  liquidacion: [["¡Liquidación de cajones!", "Caen cajones: ojo con las sombras rojas"], ["Terminó la liquidación", "Rompan los cajones que quedaron"]],
+  sparring: [["¡Sparring!", "Un gato con guantes: tienen 30 segundos para ganarle"], ["Terminó el round", "El sparring se fue a las duchas"], ["¡Le ganaron al sparring!", "Caja de Roro's y monedas extra"]],
+  riego: [["¡Se prendió el riego!", "Los gatos mojados van más lento"], ["Se apagó el riego", ""]],
+  promo: [["¡Promo 2x1!", "Salen el doble de gatos, pero más flojitos"], ["Terminó la promo", ""]],
+  salida: [["¡Salida del cine!", "Los autos pasan sin parar: llévenles los gatos"], ["Se vació el estacionamiento", ""]]
+};
+const MID_HUD = { corbata: "Corbata", apagon: "Apagón", liquidacion: "Liquidación", sparring: "Sparring", riego: "Riego", promo: "Promo 2x1", salida: "Salida del cine" };
 const MAP_COST = { plaza: 0, estacion: 60, feria: 120, bielli: 150, cancha: 180, tortugas: 260, terrazas: 350 };
 // historia: mapas que se ganan jugando la historia (no se compran) y qué capítulo los da
 const STORY_MAP_FROM = { roros: "el prólogo", abuela: "el capítulo 5" };
@@ -39,6 +54,16 @@ let backupIn = "", backupMsg = null, backupPending = null;
 /* ---------------- estado general ---------------- */
 buildSprites();
 const R = new Renderer($("#game"));
+/* dinámica 10: accesibilidad. "Ver más" (zoom), botones grandes y lado de los botones (zurdos), guardados en el celu.
+   Los estilos van acá para no tocar css/app.css (el integrador los puede pasar a ese archivo). */
+const pref = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v === "1"; } catch (e) { return d; } };
+const setPref = (k, v) => { try { localStorage.setItem(k, v ? "1" : "0"); } catch (e) {} };
+let zoomOn = pref("gdl-zoom", false), bigBtn = pref("gdl-bigbtn", false), leftBtn = pref("gdl-zurdo", false);
+R.zoomOut = zoomOn; R.resize();
+// Maitena: una sola fuente de desbloqueo para la historia y el arcade, prof.unlock["special:maitena"] (lo pone
+// saveChapter con el `unlock` del capítulo de Bielli de story.js). El botón es #maibtn (estilos en css/app.css).
+const hasUnlock = id => !!(prof.unlock && (prof.unlock["special:" + id] || prof.unlock[id]));
+function applyA11y() { hud.classList.toggle("zurdo", leftBtn); hud.classList.toggle("grandes", bigBtn); }
 const input = new Input($("#touch"), $("#joy-base"), $("#joy-knob"));
 const ui = $("#ui"), hud = $("#hud");
 let screen = "title";
@@ -49,6 +74,11 @@ let sim = null, snap = null, runId = 0, runOn = false, paused = false, endShown 
 let pendingEv = [], sendAcc = 0, lastSeen = 0;
 let guestPos = null, guestInput = { pos: null, face: 1, moving: 0, ult: false, dash: false };
 const smooth = new Map();
+let luzMsgAt = 0; // dinámica 2: para no repetir el cartel de Luz en cada carga
+let stealAt = 0; // dinámica 3
+const comboMsgAt = {}; // dinámica 5
+const COMBO_BANNER = { mate: ["¡Medialuna al mate!", "Sale mojada: pega más y frena"], torta: ["¡Patada a la torta!", "Gato pateado a la explosión: doble daño"], juli: ["¡Juli marca, Romero muerde!", "Triple daño al gato marcado"] };
+let arcadeRuns = 0; // dinámica 4: partidas de arcade en esta sesión (el anfitrión decide el arranque rápido)
 let bannerT = 0, errMsg = null, busyMsg = null, joinDraft = cleanCode(new URLSearchParams(location.search).get("sala") || "");
 
 /* ---------------- modo historia (js/story.js, si existe; si no, nada cambia) ---------------- */
@@ -84,7 +114,7 @@ function netHandlers() {
   return {
     status(st) {
       me.connected = st === "connected";
-      if (st === "connected") { sfx.join(); me.protoBad = false; if (me.side === "guest") me.net.send({ t: "hello", who: prof.who, meta: prof.up, proto: PROTO, cap: prof.story.cap | 0, skin: skinOf(prof.who) }); else sendLobby(); }
+      if (st === "connected") { sfx.join(); me.protoBad = false; if (me.side === "guest") me.net.send({ t: "hello", who: prof.who, meta: { ...prof.up, maitena: hasUnlock("maitena") ? 1 : 0 }, proto: PROTO, cap: prof.story.cap | 0, skin: skinOf(prof.who) }); else sendLobby(); }
       if (st === "busy") { errMsg = "Esa sala ya está llena."; leave(); }
       if (st === "closed") onPartnerLost();
       draw();
@@ -108,7 +138,7 @@ function netHandlers() {
     }
   };
 }
-const cleanMeta = m => { const o = {}; for (const k of ["hp", "dmg", "spd", "mag"]) o[k] = Math.max(0, Math.min(5, (m && m[k]) | 0)); return o; };
+const cleanMeta = m => { const o = {}; for (const k of ["hp", "dmg", "spd", "mag"]) o[k] = Math.max(0, Math.min(5, (m && m[k]) | 0)); o.maitena = !!(m && m.maitena); return o; }; // maitena: la pareja la desbloqueó en la historia
 function sendLobby() { if (me.net && me.net.connected) me.net.send({ t: "lobby", who: prof.who, map, cap: capSel, avail: prof.story.cap | 0, proto: PROTO }); }
 
 async function createRoom() {
@@ -148,7 +178,8 @@ function hostStart() {
   const chars = { host: prof.who, guest: me.connected ? me.partner : null };
   const skins = { host: skinOf(prof.who), guest: me.connected ? me.partnerSkin || null : null };
   // historia: lo que se desbloqueó y se puede usar en el arcade (Maitena y Corbata)
-  const opts = { maitena: !!prof.unlock["special:maitena"], corbata: !!(prof.unlock["ally:corbata"] && prof.corbataOn) };
+  // Maitena: una sola fuente de desbloqueo (prof.unlock["special:maitena"]); en el arcade alcanza con que la tenga uno de los dos
+  const opts = { maitena: hasUnlock("maitena") || !!(me.connected && me.partnerMeta && me.partnerMeta.maitena), corbata: !!(prof.unlock["ally:corbata"] && prof.corbataOn) };
   if (me.net && me.net.connected) me.net.send({ t: "start", map, chars, cap: capSel, skins, opts });
   startRun(map, chars, capSel, skins, opts);
 }
@@ -158,8 +189,11 @@ function startRun(m, chars, cap, skins = {}, opts = {}) {
   runId++; runOn = true; paused = false; lastGuestMsg = lastSeen = performance.now(); guestAway = false; endShown = false; earned = 0; smooth.clear(); pendingEv = [];
   guestInput.pos = null; guestInput.mai = false; dlgSeenNow = new Set(); // historia: la revancha no arrastra la posición vieja del invitado
   if (me.side === "host") {
+    // historia: Maitena y Corbata en el arcade. Dinámica 4: desde la segunda partida de arcade de la sesión, arranque
+    // rápido (reloj en 0:30 y una mejora); dinámica 9: opciones de la alcancía
     const arcadeOpts = !chapter(cap) && (opts.maitena || opts.corbata) ? { specials: opts.maitena ? { maitena: true } : {}, allies: opts.corbata ? ["corbata"] : [] } : undefined;
-    sim = new Sim(map, chapter(cap) ? chapterGuion(curCap, { solo: !chars.guest }) : arcadeOpts);
+    const fast = !chapter(cap) && arcadeRuns > 0; if (!chapter(cap)) arcadeRuns++;
+    sim = new Sim(map, chapter(cap) ? chapterGuion(curCap, { solo: !chars.guest }) : arcadeOpts, { fast, picante: !chapter(cap) && optOn("picante"), sinfin: !chapter(cap) && optOn("sinfin") });
     sim.addPlayer("host", chars.host || "thomas", prof.up, skins.host);
     if (chars.guest) sim.addPlayer("guest", chars.guest, me.partnerMeta || {}, skins.guest);
     snap = sim.snapshot();
@@ -196,6 +230,23 @@ function onEvents(ev) {
     if (e[0] === "warn") { const b = HZ_BANNER[e[1]]; if (b) banner(b[0], b[1]); }
     if (e[0] === "phase") banner(e[1] === 2 ? "¡Linda se enoja!" : "¡Linda está furiosa!", e[1] === 2 ? "Salgan de los círculos rojos" : "Busquen el hueco en el anillo");
     if (e[0] === "sync") banner("¡Combo de pareja!", "Doble poder y se curan los dos");
+    // dinámica 2: Luz marca a uno y se frena si el otro está pegado (jugando solo, si esquivás justo)
+    // ("lmark": "mark" es la marca de Amanda en la historia; luz2 tiene su propia pista)
+    if (e[0] === "lmark" && snap && snap.boss && snap.boss.n === "luz" && performance.now() - luzMsgAt > 7000) {
+      luzMsgAt = performance.now(); const solo = snap && Object.keys(snap.P).length === 1;
+      const who = e[1] === me.side ? "¡Luz te marcó!" : `¡Luz marcó a ${NAME[(snap && snap.P[e[1]] && snap.P[e[1]].c) || ""] || "tu pareja"}!`;
+      banner(who, solo ? "Esquivá justo cuando arranca y se choca" : "Júntense: pegados la frenan");
+    }
+    if (e[0] === "stun" && snap && snap.boss && snap.boss.n === "luz") { luzMsgAt = performance.now(); banner("¡Luz se frenó!", "Está aturdida: le pegan el doble"); }
+    // dinámica 3: evento de mitad de partida y gato ladrón
+    if (e[0] === "mid") { const b = MID_BANNER[e[1]]; if (b) { const [t, sub] = e[2] ? b[0] : e[3] && b[2] ? b[2] : b[1]; banner(t, sub); } }
+    // dinámica 5: combos de pareja (un cartel por combo cada 15 s)
+    if (e[0] === "combo" && performance.now() - (comboMsgAt[e[1]] || -1e9) > 15000) { comboMsgAt[e[1]] = performance.now(); const c = COMBO_BANNER[e[1]]; if (c) banner(c[0], c[1]); }
+    if (e[0] === "second") banner("¡Pedido de Roro's de emergencia!", snap && Object.keys(snap.P).length === 1 ? "Te levantás. Linda se distrae 5 segundos" : "Se levantan los dos. Linda se distrae 5 segundos"); // dinámica 8
+    if (e[0] === "endless") banner("¡Linda cayó!", "Sin fin: ya es victoria. Aguanten todo lo que puedan"); // dinámica 9
+    if (e[0] === "fast") banner("Arranque rápido", "Revancha: arrancan en 0:30 con una mejora");
+    if (e[0] === "ladron") banner("¡Gato ladrón!", "Se roba la experiencia del piso: agárrenlo antes de que escape");
+    if (e[0] === "steal" && performance.now() - stealAt > 8000) { stealAt = performance.now(); banner("¡Se escapó un ladrón!", `Se llevó ${e[3]} de experiencia`); }
     if (e[0] === "obj") banner(["Se enfrió el pedido", "¡Pedido entregado!", "¡Pedido de Roro's!"][e[1]], ["Otra vez será", "Caja, alfajor y monedas", "Párense encima: juntos carga el doble"][e[1]]);
     if (e[0] === "vacuum" && e[3] === me.side) banner("¡Imán!", "Toda la experiencia para ustedes");
     if (e[0] === "splash" && e[3] === me.side) banner("¡Manguerazo!", "A los gatos no les gusta el agua");
@@ -308,7 +359,8 @@ function view(s, local, override) {
   }
   if (guest && smooth.size > seen.size + 50) for (const k of smooth.keys()) if (!seen.has(k)) smooth.delete(k);
   return { local, players, enemies, allies, proj: s.B, eproj: s.H, gems: s.G, pickups: s.K, pools: s.U, bombs: s.M, buses: s.Bu, zones: s.Z || [], hz: s.Hz || [], obj: s.ob, bond: s.tg, goal: s.goal || null, cam: s.cam || null,
-    waves: s.Wv || null, mark: (s.boss && s.boss.mk) || null }; // historia: ondas del berrinche y el marcado por Luz
+    waves: s.Wv || null, mark: (s.boss && s.boss.mk) || null, // historia: ondas del berrinche y el marcado por Luz
+    dark: !!(s.md && MID_IDS[s.md[0]] === "apagon") }; // dinámica 3: apagón
 }
 
 /* ---------------- HUD ---------------- */
@@ -329,6 +381,7 @@ function buildHud() {
     <div class="goalhud" id="goalhud" hidden><b id="goaltxt"></b><div class="gbar"><i id="goalfill"></i></div></div>
     <div class="hinthud" id="hinthud" hidden></div>
     <div class="talkhud" id="talkhud" hidden></div>
+    <div class="pairult" id="pairult" hidden></div>
     <button class="maibtn" id="maibtn" data-act="mai" hidden><span id="mailabel">MAITENA</span></button>
     <div class="objhud" id="objhud" hidden><img src="${portrait("regalo", 3)}" alt=""><span id="objtxt"></span></div>
     <div class="build" id="build"></div>
@@ -337,11 +390,12 @@ function buildHud() {
     <div class="pausemenu" id="pausemenu" hidden><div class="panel">
       <h2>Pausa</h2><p class="hint" id="pausenote"></p>
       <button class="big" data-act="resume">Seguir</button>
-      <div class="toggles"><button class="mid" data-act="snd" id="tsnd"></button><button class="mid" data-act="mus" id="tmus"></button><button class="mid" data-act="vib" id="tvib"></button><button class="mid" data-act="cal" id="tcal"></button></div>
+      <div class="toggles"><button class="mid" data-act="snd" id="tsnd"></button><button class="mid" data-act="mus" id="tmus"></button><button class="mid" data-act="vib" id="tvib"></button><button class="mid" data-act="cal" id="tcal"></button>
+        <button class="mid" data-act="zoom" id="tzoom"></button><button class="mid" data-act="bigbtn" id="tbig"></button><button class="mid" data-act="zurdo" id="tzurdo"></button></div>
       <p class="hint" id="calnote"></p>
       <button class="mid ghost" data-act="quit">Salir al menú</button>
     </div></div>`;
-  hudBuilt = true;
+  hudBuilt = true; applyA11y();
 }
 function banner(title, sub) { bannerT = 2.6; const b = $("#banner"); if (!b) return; $("#btitle").textContent = title; $("#bsub").textContent = sub || ""; b.classList.remove("on"); void b.offsetWidth; b.classList.add("on"); }
 let lastOffersKey = "", resultTimer = 0;
@@ -369,6 +423,11 @@ function updateHud(dt) {
   if (mine) {
     put("ultk", "ultbtn", Math.round(mine.u * 20) * 5, (e, v) => e.style.setProperty("--k", v + "%"));
     put("ultready", "ultbtn", mine.u >= 1, (e, v) => e.classList.toggle("ready", v));
+    // dinámica 10: aviso de que tu pareja tiene el especial listo (para buscar el combo de pareja)
+    const mate = Object.entries(s.P).find(([side]) => side !== me.side), mp = mate && mate[1];
+    const pairTxt = mp && !mp.d && mp.u >= 1 ? `${NAME[mp.c] || "Tu pareja"} tiene ${mp.c === "thomas" ? "el COMBO listo" : "las TORTAS listas"}: ${mine.u >= 1 ? "¡tírenlo juntos!" : "cargá el tuyo"}` : "";
+    put("pairult", "pairult", pairTxt, (e, v) => { e.hidden = !v; e.textContent = v; });
+    put("ultpair", "ultbtn", !!pairTxt && mine.u >= 1, (e, v) => e.classList.toggle("pair", v));
     put("ultlabel", "ultlabel", mine.c === "thomas" ? "COMBO" : "TORTAS", (e, v) => { e.textContent = v; });
     const dk = 1 - Math.min(1, (me.side === "guest" && guestPos ? Math.max(guestPos.dcd, mine.dc) : mine.dc) / 2.4);
     put("dashk", "dashbtn", Math.round(dk * 20) * 5, (e, v) => e.style.setProperty("--k", v + "%"));
@@ -377,18 +436,22 @@ function updateHud(dt) {
   if (hintT > 0) { hintT -= dt; const v = input.vec; if (v.x || v.y) hintT = Math.min(hintT, 0.6); show("movehint", !(hintT <= 0 || s.st !== "run")); } else show("movehint", false);
   show("objhud", !!s.ob);
   if (s.ob) put("objtxt", "objtxt", `Pedido de Roro's ${s.ob[2]}% · ${s.ob[3]}s`, (e, v) => { e.textContent = v; });
-  show("goalhud", !!s.goal && s.st !== "dialog");
+  // objetivo de la historia o, en el arcade, el evento de mitad de partida (dinámica 3) con su cuenta regresiva
+  show("goalhud", (!!s.goal || !!s.md) && s.st !== "dialog");
   if (s.goal) {
     put("goaltxt", "goaltxt", goalText(s.goal), (e, v) => { e.textContent = v; });
     put("goalfill", "goalfill", s.goal.p, (e, v) => { e.style.width = v + "%"; });
     put("goalcry", "goalhud", s.goal.k === "escort" && s.goal.hp < 0, (e, v) => e.classList.toggle("alert", v));
+  } else if (s.md) {
+    put("goaltxt", "goaltxt", `${MID_HUD[MID_IDS[s.md[0]]] || ""} · ${s.md[1]} s`, (e, v) => { e.textContent = v; });
+    put("goalfill", "goalfill", Math.max(0, Math.min(100, Math.round(s.md[1] / 30 * 100))), (e, v) => { e.style.width = v + "%"; });
   }
-  // historia: cartel chico (pistas), subtítulo que no pausa y botón de Maitena
+  // historia: cartel chico (pistas), subtítulo que no pausa y botón de Maitena (el mismo en la historia y el arcade)
   show("hinthud", !!s.hn && s.st === "run");
   if (s.hn) put("hint", "hinthud", s.hn[1], (e, v) => { e.textContent = v; });
   show("talkhud", !!s.tk && s.st !== "dialog");
   if (s.tk) put("talk", "talkhud", s.tk[0], e => { const img = dialogPortrait(portraitId(s.tk[1]), 2); e.innerHTML = `${img ? `<img src="${img}" alt="">` : ""}<span><b>${esc(speaker(s.tk[1]))}</b>${esc(s.tk[2])}</span>`; });
-  show("maibtn", !!s.mai && s.st === "run");
+  show("maibtn", !!s.mai && s.st === "run"); put("maithud", "hud", !!s.mai, (e, v) => e.classList.toggle("mait", v));
   if (s.mai) {
     put("maik", "maibtn", Math.round(s.mai[0] * 20) * 5, (e, v) => e.style.setProperty("--k", v + "%"));
     put("maiready", "maibtn", s.mai[0] >= 1 && !s.mai[2], (e, v) => e.classList.toggle("ready", v));
@@ -508,9 +571,11 @@ function renderLevelUp(s, of) {
       const def = o.kind === "w" ? WEAPONS[o.id] : o.kind === "p" ? PASSIVES[o.id] : { name: "Alfajor", desc: "Te recuperás entero." };
       const isNew = o.kind === "w" && !(mine && mine.w && mine.w[o.id]);
       const hint = o.kind === "w" ? `Evoluciona con ${PASSIVES[WEAPONS[o.id].evo.p].name}` : o.kind === "p" && EVO_OF[o.id] ? `Evoluciona ${WEAPONS[EVO_OF[o.id]].name}` : "";
+      // dinámica 6: el arma combina con una de tu pareja
+      const cbHint = o.cb && WEAPONS[o.cb] ? `Combina con ${WEAPONS[o.cb].name} de ${NAME[o.who] || "tu pareja"}` : "";
       return `<button class="opt" data-act="pick" data-i="${i}">
         <img src="${portrait(ICON[o.id] || "gem1", 4)}" alt="">
-        <span class="on"><b>${esc(def.name)}</b>${isNew ? `<em>NUEVA</em>` : `<small>Nivel ${o.lv}</small>`}<span>${esc(def.desc)}</span>${hint ? `<i class="evo">${esc(hint)}</i>` : ""}</span>
+        <span class="on"><b>${esc(def.name)}</b>${isNew ? `<em>NUEVA</em>` : `<small>Nivel ${o.lv}</small>`}<span>${esc(def.desc)}</span>${hint ? `<i class="evo">${esc(hint)}</i>` : ""}${cbHint ? `<i class="evo combo">${esc(cbHint)}</i>` : ""}</span>
         <span class="stars">${"■".repeat(o.lv)}${"□".repeat(Math.max(0, (def.max || 1) - o.lv))}</span></button>`;
     }).join("")}</div></div>`;
   sfx.play("levelup");
@@ -519,17 +584,30 @@ function finish(s) {
   const win = s.st === "win";
   const unl = win && curCap && curCap.unlock ? curCap.unlock.filter(u => !prof.unlock[u]) : [];
   if (win && s.cap) { saveChapter(s.cap, curCap ? curCap.n : 0, s.sr); if (me.side === "host" && me.net && me.net.connected) me.net.send({ t: "cap", id: s.cap, n: curCap ? curCap.n | 0 : 0, stars: s.sr | 0 }); }
-  earned = Math.round((s.co + Math.floor(s.kl / 12) + Math.floor(s.t / 20) + (win ? 60 : 0)) * (1 + (MAPS[s.map] || MAPS.plaza).tier * 0.12));
+  // dinámica 9: victoria x1,5 (x1,25 con la segunda chance), bonus de primera victoria por mapa, metas y alcancía
+  const tierK = 1 + (MAPS[s.map] || MAPS.plaza).tier * 0.12, A = prof.arcade, duo = Object.keys(s.P).length > 1;
+  const won = win || !!s.won;
+  earned = coinsFor({ co: s.co, kl: s.kl, t: s.t, win: won, tier: (MAPS[s.map] || MAPS.plaza).tier, second: !!s.sc, hot: !!s.hot });
+  const extra = [];
+  let metas = null, alcAdd = 0;
+  if (!s.cap) {
+    if (won && !A.win1[s.map]) { A.win1[s.map] = 1; const b = Math.round(FIRST_WIN * tierK); earned += b; extra.push(`primera victoria acá +${b}`); }
+    const had = A.metas[s.map] || [0, 0, 0], got = s.mt || [0, 0, 0];
+    metas = METAS_TXT(s.map).map((txt, i) => ({ txt, ok: !!got[i], nueva: !!got[i] && !had[i], antes: !!had[i] }));
+    const nuevas = metas.filter(m => m.nueva).length; if (nuevas) { const b = Math.round(NEW_META * tierK) * nuevas; earned += b; extra.push(`${nuevas === 1 ? "meta nueva" : nuevas + " metas nuevas"} +${b}`); }
+    A.metas[s.map] = had.map((v, i) => v || got[i] ? 1 : 0);
+    if (duo) { alcAdd = earned; A.alc += earned; }
+  }
   prof.coins += earned; prof.runs++;
   // los récords y las victorias son del arcade; un capítulo solo guarda su progreso
   const newBest = !s.cap && s.t > prof.best.t;
-  if (!s.cap) { if (win) prof.wins++; prof.best = { t: Math.max(prof.best.t, s.t), k: Math.max(prof.best.k, s.kl), lv: Math.max(prof.best.lv, s.lv) }; }
+  if (!s.cap) { if (won) prof.wins++; prof.best = { t: Math.max(prof.best.t, s.t), k: Math.max(prof.best.k, s.kl), lv: Math.max(prof.best.lv, s.lv) }; }
   save();
   hud.hidden = true; $("#levelup").hidden = true; keepAwake(false); setPaused(false);
   screen = "results"; music.set("menu");
   const duel = Object.values(s.P).map(p => ({ c: p.c, k: p.k })).sort((a, b) => b.k - a.k);
   document.body.classList.remove("cine");
-  draw({ win, t: s.t, k: s.kl, lv: s.lv, newBest, duel, cap: curCap, stars: s.sr | 0, eb: s.eb || null, unl });
+  draw({ win: won, t: s.t, k: s.kl, lv: s.lv, newBest, duel, cap: curCap, stars: s.sr | 0, eb: s.eb || null, unl, metas, extra, alcAdd, second: !!s.sc, endless: !!s.won && !win });
 }
 
 /* ---------------- pantallas ---------------- */
@@ -550,7 +628,8 @@ function mapCards() {
   return `<div class="maps">${list.map(([k, t]) => {
     const story = STORY_MAP_FROM[k], owned = story ? prof.unlock["map:" + k] : prof.maps[k];
     const tier = MAPS[k].tier;
-    return `<button class="mapc ${map === k ? "on" : ""} ${owned ? "" : "locked"}" data-act="${owned ? "map" : story ? "" : "buymap"}" data-v="${k}" ${!owned && story ? "disabled" : ""}><div><b>${t.name}</b><small>${"★".repeat(tier + 1)}${"☆".repeat(5 - tier)} · ${esc(t.sub)}${tier ? ` · +${tier * 12}%${COIN()}` : ""}</small></div><span>${owned ? (map === k ? "Elegido" : "Elegir") : story ? `Se gana en ${story}` : `${MAP_COST[k]}${COIN()}`}</span></button>`;
+    const mt = ((prof.arcade.metas || {})[k] || []).filter(Boolean).length; // dinámica 9: metas cumplidas en ese mapa
+    return `<button class="mapc ${map === k ? "on" : ""} ${owned ? "" : "locked"}" data-act="${owned ? "map" : story ? "" : "buymap"}" data-v="${k}" ${!owned && story ? "disabled" : ""}><div><b>${t.name}</b><small>${"★".repeat(tier + 1)}${"☆".repeat(5 - tier)} · ${esc(t.sub)}${tier ? ` · +${tier * 12}%${COIN()}` : ""}${owned ? ` · metas ${mt}/3` : ""}</small></div><span>${owned ? (map === k ? "Elegido" : "Elegir") : story ? `Se gana en ${story}` : `${MAP_COST[k]}${COIN()}`}</span></button>`;
   }).join("")}${prof.unlock["ally:corbata"] ? `<button class="link" data-act="corbata">Corbata te acompaña: ${prof.corbataOn ? "sí" : "no"}</button>` : ""}</div>`;
 }
 // historia: pantalla de capítulos. Disponibles = el máximo entre los dos celus; candado, tilde y estrellas.
@@ -583,6 +662,20 @@ function storyResult(r) {
     ${r.win ? `<p class="starsbig">${"★".repeat(r.stars || 1)}<span>${"☆".repeat(3 - (r.stars || 1))}</span></p><p class="hint">Una estrella por terminarlo, otra si nadie cayó y otra si no se perdió nada en el camino.</p>` : ""}
     ${r.unl && r.unl.length ? `<div class="unlnew"><b>¡Desbloquearon!</b>${r.unl.map(u => `<span>${esc(UNLOCK_NAME[u] || u)}</span>`).join("")}</div>` : ""}
     ${credits ? `<div class="credits">${credits.map(c => `<span>${esc(c)}</span>`).join("")}</div>` : ""}`;
+}
+// dinámica 9: alcancía de la pareja, metas por mapa y opciones de la sala
+function alcText() {
+  const a = prof.arcade.alc, next = ALCANCIA.find(x => a < x.at);
+  return next ? `Alcancía de la pareja: ${a} de ${next.at} para ${next.name}` : `Alcancía de la pareja: ${a} · todo desbloqueado`;
+}
+function metasBlock(m) {
+  const had = prof.arcade.metas[m] || [0, 0, 0];
+  return `<p class="hint">Metas: ${METAS_TXT(m).map((t, i) => `${had[i] ? "★" : "☆"} ${esc(t)}`).join(" · ")}</p>`;
+}
+function alcOptions() {
+  const on = ALCANCIA.filter(x => alcOn(x.id)); if (!on.length) return "";
+  return `<div class="toggles">${on.map(x => `<button class="mid ${prof.arcade.opt[x.id] ? "" : "ghost"}" data-act="alcopt" data-v="${x.id}">${esc(x.name)}: ${prof.arcade.opt[x.id] ? "sí" : "no"}</button>`).join("")}</div>
+    <p class="hint">${on.map(x => `${esc(x.name)}: ${esc(x.desc)}`).join(" ")}</p>`;
 }
 let lastResult = null;
 // gráficos: transición pixelada al cambiar de pantalla (R.wipe en render.js). Iris al entrar a jugar (rosa si es un
@@ -623,7 +716,11 @@ function draw(result) {
       ${STORY ? `<button class="mid story" data-act="story" ${prof.who ? "" : "disabled"}>Historia: La otra Linda</button>` : ""}
       ${unlockList()}
       <p class="rec">Récord: ${fmt(prof.best.t)} · ${prof.best.k} gatos · ${prof.wins} victorias</p>
+      <p class="rec">${alcText()}</p>
       <button class="link" data-act="snd">${sfx.muted ? "Sonido: apagado" : "Sonido: prendido"}</button>
+      <button class="link" data-act="zoom">Ver más: ${zoomOn ? "sí" : "no"}</button>
+      <button class="link" data-act="bigbtn">Botones grandes: ${bigBtn ? "sí" : "no"}</button>
+      <button class="link" data-act="zurdo">Botones: ${leftBtn ? "a la izquierda" : "a la derecha"}</button>
     </section>`;
     return;
   }
@@ -638,6 +735,8 @@ function draw(result) {
       ${me.connected && me.protoBad ? `<p class="err">${esc(PROTO_MSG)}</p>` : ""}`}
       ${capSel ? "" : `<p class="label">Mapa</p>`}
       ${me.side === "host" && !capSel ? mapCards() : capSel ? "" : `<p class="mapname">${THEMES[map].name}</p>`}
+      ${!capSel ? metasBlock(map) : ""}
+      ${me.side === "host" && !capSel ? alcOptions() : ""}
       ${me.side === "host" && STORY ? capCards() : capSel ? `<p class="label">Historia</p><div class="capsel"><b>${esc((chapter(capSel) || { title: "Capítulo" }).title)}</b><small>${esc((chapter(capSel) || { sub: "" }).sub)}</small></div>` : ""}
       ${me.side === "host" ? `<button class="big" data-act="go" ${solo || (me.connected && !me.protoBad) ? "" : "disabled"}>¡A jugar!</button>` : me.protoBad ? "" : `<p class="busy">Esperando que arranque ${partner || "tu pareja"}</p>`}
       <button class="link" data-act="back">Volver</button>
@@ -651,6 +750,9 @@ function draw(result) {
       <p>${r.win ? "El barrio está a salvo. Por esta noche." : "Linda se quedó con el barrio. Revancha."}</p>`}
       ${r.duel && r.duel.length > 1 ? `<div class="duel">${r.duel.map((d, i) => `<div class="${i === 0 ? "mvp" : ""}"><img src="${portrait(d.c, 3)}" alt=""><b>${NAME[d.c]}</b><span>${d.k} gatos</span>${i === 0 ? "<em>MVP</em>" : ""}</div>`).join("")}</div>` : ""}
       <div class="stats"><div><b>${fmt(r.t)}</b><span>tiempo${r.newBest ? " · ¡récord!" : ""}</span></div><div><b>${r.k}</b><span>gatos</span></div><div><b>${r.lv}</b><span>nivel</span></div><div><b>+${earned}</b><span>monedas</span></div></div>
+      ${r.metas ? `<p class="label">Metas de ${esc(THEMES[map].name)}</p>${r.metas.map(m => `<p class="hint">${m.ok || m.antes ? "★" : "☆"} ${esc(m.txt)}${m.nueva ? " · ¡nueva!" : ""}</p>`).join("")}` : ""}
+      ${r.win && !r.cap ? `<p class="hint">Ganar paga x${r.second ? "1,25 (usaron la segunda chance)" : "1,5"}${r.extra.length ? " · " + esc(r.extra.join(" · ")) : ""}</p>` : r.extra && r.extra.length ? `<p class="hint">${esc(r.extra.join(" · "))}</p>` : ""}
+      ${r.alcAdd ? `<p class="hint">Alcancía de la pareja +${r.alcAdd}. ${esc(alcText().replace("Alcancía de la pareja: ", "Ya tienen "))}</p>` : ""}
       ${r.cap && r.win && me.side === "host" && nextChapter(r.cap) ? `<button class="big" data-act="next">Siguiente: ${esc(nextChapter(r.cap).title)}</button>` : ""}
       ${me.side === "host" ? `<button class="${r.cap && r.win && nextChapter(r.cap) ? "mid" : "big"}" data-act="again">${r.cap ? (r.win ? "Jugar de nuevo" : "Reintentar") : "Revancha"}</button>` : `<p class="busy">Esperando a ${esc((me.partner && NAME[me.partner]) || "tu pareja")}</p>`}
       ${r.cap ? `<button class="mid ghost" data-act="story">Capítulos</button>` : ""}
@@ -718,6 +820,8 @@ function setPaused(on) {
 function paintToggles() {
   const t = (id, label, on) => { const el = $(id); if (el) { el.textContent = `${label}: ${on ? "sí" : "no"}`; el.classList.toggle("off", !on); } };
   t("#tsnd", "Sonido", !sfx.muted); t("#tmus", "Música", music.on); t("#tvib", "Vibrar", vibOn);
+  t("#tzoom", "Ver más", zoomOn); t("#tbig", "Botones grandes", bigBtn);
+  const z = $("#tzurdo"); if (z) { z.textContent = `Botones: ${leftBtn ? "izquierda" : "derecha"}`; z.classList.remove("off"); } // dinámica 10
   const v = $("#tvib"); if (v) v.hidden = !navigator.vibrate;
   // gráficos: calidad Alta / Ahorro (R.setQuality la guarda en localStorage)
   const q = $("#tcal"); if (q) q.textContent = `Calidad: ${R.q === "ahorro" ? "Ahorro" : "Alta"}`;
@@ -740,7 +844,7 @@ document.addEventListener("click", e => {
   const b = e.target.closest("[data-act]"); if (!b || b.disabled) return;
   const a = b.dataset.act, v = b.dataset.v;
   sfx.init();
-  if (a !== "ult" && a !== "pick" && a !== "dash") sfx.click();
+  if (a !== "ult" && a !== "pick" && a !== "dash" && a !== "mai") sfx.click();
   switch (a) {
     case "start": music.start(); music.set("menu"); screen = "menu"; if (joinDraft.length === 4 && prof.who) joinRoom(joinDraft); draw(); break;
     case "who": prof.who = v; save(); newDemo(); draw(); break;
@@ -762,6 +866,7 @@ document.addEventListener("click", e => {
     case "share": { const url = location.origin + location.pathname + "?sala=" + me.code; if (navigator.share) navigator.share({ title: "Gatos de Linda", text: "Entrá a mi sala", url }).catch(() => {}); else navigator.clipboard && navigator.clipboard.writeText(url).then(() => banner("Link copiado", "")).catch(() => {}); break; }
     case "pick": { if (performance.now() - lvShownAt < 350) break; const i = +b.dataset.i; if (me.side === "host") sim && sim.pick("host", i); else me.net && me.net.send({ t: "pick", i }); sfx.play("coin"); break; }
 
+    case "alcopt": if (alcOn(v)) { prof.arcade.opt[v] = prof.arcade.opt[v] ? 0 : 1; save(); } draw(); break; // dinámica 9
     case "cap": { capSel = v || null; const ch = chapter(capSel); if (ch && THEMES[ch.map]) { map = ch.map; R.setMap(map); newDemo(); } sendLobby(); draw(); break; }
     // historia
     case "story": storyBack = screen === "results" ? (me.net && me.code ? "room" : "menu") : screen; screen = "story"; if (!capSel && STORY) { const n = Math.min(8, storyCap()); const c = STORY.CHAPTERS.find(q => q.n === n); if (c) { capSel = c.id; map = c.map; R.setMap(map); newDemo(); } } sendLobby(); draw(); break;
@@ -777,6 +882,9 @@ document.addEventListener("click", e => {
     case "resume": setPaused(false); break;
     case "snd": sfx.toggle(); if (screen === "run") paintToggles(); else draw(); break;
     case "mus": music.toggle(); paintToggles(); break;
+    case "zoom": zoomOn = !zoomOn; setPref("gdl-zoom", zoomOn); R.zoomOut = zoomOn; R.resize(); paintToggles(); if (screen !== "run") draw(); break; // dinámica 10
+    case "bigbtn": bigBtn = !bigBtn; setPref("gdl-bigbtn", bigBtn); applyA11y(); paintToggles(); if (screen !== "run") draw(); break;
+    case "zurdo": leftBtn = !leftBtn; setPref("gdl-zurdo", leftBtn); applyA11y(); paintToggles(); if (screen !== "run") draw(); break;
     case "cal": R.setQuality(R.q === "ahorro" ? "alta" : "ahorro"); paintToggles(); break; // gráficos
     case "vib": vibOn = !vibOn; try { localStorage.setItem("gdl-vib", vibOn ? "1" : "0"); } catch (e) {} paintToggles(); buzz(40); break;
     case "quit":

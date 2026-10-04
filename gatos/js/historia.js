@@ -58,7 +58,9 @@ export function storyGuion(ch0, opts = {}, ARCADE) {
     xpMul: ch.xpMul || 1,
     events, goal, dur: ch.dur, allies: (ch.allies || []).slice(), cast: (ch.cast || []).slice(),
     intro: ch.intro || [], outro: ch.outro || [], credits: ch.credits || null, unlock: ch.unlock || [],
-    win: {}, lose: { allDown: true }
+    win: {}, lose: { allDown: true },
+    // la dinámica del arcade (evento de mitad de partida, arranque rápido, segunda chance) no corre en la historia
+    mid: null, fast: null, second: null
   };
 }
 
@@ -68,16 +70,21 @@ const M = {
   begin() {
     this.begun = true;
     const G = this.G;
+    if (this.fast) { this.ev.push(["fast"]); for (let i = 0; i < (G.fast.levels || 0); i++) this.gainXp(this.xpNext - this.xp); } // dinámica 4: sube de nivel y elige
     this.story = !!(G.story || (G.goal && G.goal.kind && G.goal.kind !== "none") || (G.allies && G.allies.length) || (G.specials && Object.keys(G.specials).length));
+    // contenedores de la historia: existen siempre porque los aliados del arcade (Corbata en el evento de mitad de
+    // partida de la plaza) usan los mismos métodos (hurtAlly cuenta en score, bark usa talks)
+    this.hint = null; this.hintN = 0; this.talks = []; this.talk = null; this.waves = []; this.premios = []; this.sniff = [];
+    this.trig = {}; this.score = { downs: 0, allyDown: 0, lost: 0, miss: 0 }; this.endBanner = null; this.kills0 = this.kills;
+    this.mai = null; this.maiArm = null; this.maiFree = 0; this.stars = 0; this.wasDown = {};
     if (!this.story) {
       for (const e of this.atEvents) if (e.at === "start") { e.fired = true; this.doEvent(e); }
       if (G.intro && G.intro.length) this.openDialog(G.intro, { id: "intro" });
       return;
     }
-    this.hint = null; this.hintN = 0; this.talks = []; this.talk = null; this.waves = []; this.premios = []; this.sniff = [];
-    this.trig = {}; this.score = { downs: 0, allyDown: 0, lost: 0, miss: 0 }; this.endBanner = null; this.kills0 = this.kills;
-    this.mai = null; this.maiArm = null; this.maiFree = 0; this.stars = 0; this.wasDown = {};
-    if (G.specials && G.specials.maitena) this.mai = { k: 0, base: this.kills };
+    // Maitena: en la historia carga con MAITENA_KILLS gatos; en el arcade (main.js pone specials.maitena si alguno de
+    // los dos la desbloqueó) con MAITENA.kills, recarga larga
+    if (G.specials && G.specials.maitena) this.mai = { k: 0, base: this.kills, need: G.story ? MAITENA_KILLS : K.MAITENA.kills };
     const pts = this.points();
     // los chicos del prólogo están en la cocina antes de que se los lleven
     for (const e of G.events) if (e.do === "kidnap") for (const w of e.who || []) { const q = pts.isla || pts.horno || null; this.addAlly(w, { act: "idle", x: q ? q.x + this.rr(-30, 30) : undefined, y: q ? q.y + 26 : undefined }); }
@@ -116,7 +123,7 @@ const M = {
       case "ally": { const w = allyId(e.who || e.type), had = this.allies.find(a => a.type === w && !a.gone);
         // el que esperaba quieto (Amanda en el refugio, el Chema en la torre) se suma al grupo
         if (had) { if (had.cfg.act === "idle" && !e.idle) had.cfg = { ...K.ALLY[w] }; break; } const o = e.from ? { x: e.from.x, y: e.from.y } : {}; if (e.idle) o.act = "idle"; this.addAlly(w, o); break; }
-      case "special": if (e.id === "maitena" && !this.mai) { this.mai = { k: 0, base: this.kills }; this.ev.push(["special", "maitena"]); } break;
+      case "special": if (e.id === "maitena" && !this.mai) { this.mai = { k: 0, base: this.kills, need: MAITENA_KILLS }; this.ev.push(["special", "maitena"]); } break;
       case "maitena": this.callMaitena(false, e.from); break;
       case "kidnap": this.kidnap(e); break;
       case "boss": this.spawnBoss(e.kind || e.type); break;
@@ -245,8 +252,11 @@ const M = {
   },
 
   /* ---------- aliados ---------- */
+  // sin historia (Corbata del evento de mitad de partida de la plaza) los aliados son los del motor, como los calibró
+  // la dinámica del arcade (test_guion.mjs compara el arcade byte a byte)
   addAlly(type, o = {}) {
     type = allyId(type);
+    if (!this.story) return this._o.addAlly.call(this, type, o);
     const base = K.ALLY[type]; if (!base) return null;
     const cfg = { ...base, ...o };
     if (type === "gatalinda" && this.goal && this.goal.k !== "protect" && !o.hp) cfg.hp = 500; // capítulo 7: aliada
@@ -259,6 +269,7 @@ const M = {
     return a;
   },
   hurtAlly(a, dmg) {
+    if (!this.story) return this._o.hurtAlly.call(this, a, dmg);
     if (a.down || a.gone) return;
     a.inv = 0.6; a.flash = 0.12;
     if (a.cfg.act === "escort") {
@@ -275,6 +286,7 @@ const M = {
     }
   },
   updateAllies(dt) {
+    if (!this.story) return this._o.updateAllies.call(this, dt);
     const alive = this.alive(), [bx0, by0, bx1, by1] = this.cfg.b, g = this.goal;
     for (const a of this.allies) {
       if (a.gone) continue;
@@ -393,6 +405,7 @@ const M = {
     const ps = this.alive(); if (!ps.length) return;
     const cx = ps.reduce((s, p) => s + p.x, 0) / ps.length, cy = ps.reduce((s, p) => s + p.y, 0) / ps.length;
     if (this.mai && !from) { this.mai.k = 0; this.mai.base = this.kills; }
+    // a.mt también lo lee la foto (patada) y updateAllies (act "maitena")
     let x, y;
     if (from) { x = from.x; y = from.y; }
     else { const q = this.edgePos(120, ps[0]); x = q.x; y = q.y; }
@@ -415,9 +428,11 @@ const M = {
       // tres patadas giratorias en 2,5 s
       if (S.t >= S.n * 0.8 && S.n < 3) {
         S.n++;
-        const R = S.pair ? 170 : a.cfg.reach, dmg = a.cfg.dmg * (S.pair ? 1.5 : 1);
+        const MT = K.MAITENA, R = S.pair ? MT.pairR : a.cfg.reach, dmg = a.cfg.dmg * (S.pair ? MT.pairK : 1);
         this.ev.push(["maikick", Math.round(a.x), Math.round(a.y), R]);
-        this.near(a.x, a.y, R, e => { if (!this.foe(e)) return; const dx = e.x - a.x, dy = e.y - a.y, m = Math.hypot(dx, dy) || 1; if (m > R) return; this.damage(e, dmg, null, dx / m * a.cfg.kb, dy / m * a.cfg.kb, true); if (e.hp > 0 && !K.ENEMY[e.type].boss) this.stun(e, 2); });
+        const by = this._by; this._by = "mait"; // no cuentan como gatos de Corbata (meta de la plaza)
+        this.near(a.x, a.y, R, e => { if (!this.foe(e)) return; const dx = e.x - a.x, dy = e.y - a.y, m = Math.hypot(dx, dy) || 1; if (m > R) return; this.damage(e, dmg, null, dx / m * a.cfg.kb, dy / m * a.cfg.kb, true); if (e.hp > 0 && !K.ENEMY[e.type].boss) this.stun(e, MT.ko); });
+        this._by = by;
       }
       if (S.t >= 2.5) { S.phase = 2; S.t = 0; }
       return [S.cx + 20, S.cy, 30];
@@ -426,7 +441,8 @@ const M = {
     if (S.t > 1.2) { a.gone = true; this.maiOn = null; this.ev.push(["allygone", a.id]); }
     return [a.x + 200, a.y, 160];
   },
-  stun(e, s) { e.stunT = this.t + s; e.sx = e.x; e.sy = e.y; },
+  // aturdido: no se mueve ni pega (e.ko lo respeta moveEnemies en los dos modos; stunT, la foto y storyTick)
+  stun(e, s) { e.stunT = e.ko = this.t + s; e.sx = e.x; e.sy = e.y; },
 
   /* ---------- objetivos ---------- */
   initGoal(def) {
@@ -685,9 +701,11 @@ const M = {
       if (!P || P.downed) { e.st = 0; e.cd = 0.6; return [dx, dy, 0]; }
       const ax = P.x - e.x, ay = P.y - e.y, am = Math.hypot(ax, ay) || 1; e.ax = ax / am; e.ay = ay / am;
       if ((e.stT -= dt) <= 0) {
-        const other = ps.find(q => q !== P);
+        // misma regla que la Luz del arcade (Sim.mateHolds): la pareja pegada al marcado la frena; acá a 28 px y al
+        // terminar el aviso (el capítulo 5 está medido así con bot_historia); jugando solo, la cucha o Corbata
+        const h = this.mateHolds(P, 28);
         const cucha = this.points().cucha, corb = this.allies.find(a => a.type === "corbata" && !a.down && !a.gone);
-        const blocked = other ? d2(other, P) < 28 * 28 : ((cucha && d2(P, cucha) < 40 * 40) || (corb && d2(corb, P) < 28 * 28));
+        const blocked = h !== null ? h : ((cucha && d2(P, cucha) < 40 * 40) || (corb && d2(corb, P) < 28 * 28));
         if (blocked) { e.st = 3; e.stT = 2.5; this.ev.push(["stun", Math.round(e.x), Math.round(e.y)]); if (!this.stunHint) { this.stunHint = 1; this.setHint("¡Se frenó! Aturdida: pega más fuerte"); } }
         else { e.st = 2; e.stT = 0.7; this.ev.push(["charge", Math.round(e.x), Math.round(e.y)]); }
       }
@@ -785,19 +803,20 @@ const M = {
       }
     }
     this.waves = this.waves.filter(W => W.t < W.dur);
-    // especial de Maitena: carga con gatos, se toca desde el HUD
-    if (this.mai) {
-      this.mai.k = Math.min(1, (this.kills - this.mai.base) / MAITENA_KILLS);
-      for (const [side, inp] of Object.entries(input || {})) if (inp && inp.mai && this.players[side]) this.pressMaitena(side);
-      if (this.maiArm && this.t - this.maiArm.t > MAITENA_PAIR) { this.maiArm = null; this.callMaitena(false); }
-    }
+    if (this.mai) this.maiTick(input);
     for (const p of Object.values(this.players)) { if (p.downed && !this.wasDown[p.side]) this.score.downs++; this.wasDown[p.side] = p.downed; }
     // subtítulos que no pausan (la cinemática del prólogo y lo que dicen los aliados)
     if (this.talk && this.t > this.talk.until) this.talk = null;
     if (!this.talk && this.talks.length) { const n = this.talks.shift(); this.talk = { who: n.who, text: n.text, until: this.t + n.dur, n: ++this.hintN }; }
     if (this.hint && this.t > this.hint.until) this.hint = null;
-    if (this.allies.length) this.updateAllies(dt);
+    if (this.allies.length) { this._by = "ally"; this.updateAllies(dt); this._by = null; }
     if (this.goal) this.updateGoal(dt);
+  },
+  // especial de Maitena: carga con gatos, se toca desde el HUD (historia y arcade)
+  maiTick(input) {
+    this.mai.k = Math.min(1, (this.kills - this.mai.base) / (this.mai.need || MAITENA_KILLS));
+    for (const [side, inp] of Object.entries(input || {})) if (inp && inp.mai && this.players[side]) this.pressMaitena(side);
+    if (this.maiArm && this.t - this.maiArm.t > MAITENA_PAIR) { this.maiArm = null; this.callMaitena(false); }
   },
 
   /* ---------- foto del estado: lo de la historia ---------- */
@@ -855,6 +874,7 @@ const M = {
 };
 const REPEAT = { allyDown: true };
 // banderas nuevas de la foto (las viejas: 1 destello, 2 aviso, 4 élite, 8 embestida, 16 mojado, 32 izquierda, 64 caído)
+// F_STUN es el mismo bit que engine.js (512): Luz del arcade y luz2 aturdidas se dibujan igual. F_BAG (ladrón) es 2048.
 export const F_MARK = 128, F_BUFF = 256, F_STUN = 512, F_SURR = 1024, F_CRY = 128, F_RUN = 256, F_KICK = 512; // CRY/RUN/KICK: solo aliados
 // puntos con nombre de los mapas nuevos (GEO de maps.js)
 const POINTS = {
@@ -865,7 +885,7 @@ export function installStory(Sim, consts) {
   K = consts;
   const P = Sim.prototype;
   // los métodos del motor que se envuelven quedan guardados en la propia clase (bot.mjs carga una copia del motor)
-  P._o = { gainXp: P.gainXp, addPlayer: P.addPlayer, doEvent: P.doEvent, win: P.win, snapshot: P.snapshot };
+  P._o = { gainXp: P.gainXp, addPlayer: P.addPlayer, doEvent: P.doEvent, win: P.win, snapshot: P.snapshot, addAlly: P.addAlly, hurtAlly: P.hurtAlly, updateAllies: P.updateAllies };
   // métodos del motor que pasan por acá aunque no haya historia: se comportan igual que antes en el arcade
   for (const [k, fn] of Object.entries(M)) P[k] = fn;
   P.step_ = M.step_;

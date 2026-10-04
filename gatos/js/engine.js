@@ -48,13 +48,20 @@ export const ENEMY = {
   guantes:   { hp: 26, spd: 34, dmg: 10, r: 7, xp: 3 },
   luz2:      { hp: 9000, spd: 28, dmg: 16, r: 13, xp: 40, boss: true },
   canicheBoss: { hp: 6000, spd: 30, dmg: 18, r: 15, xp: 0, boss: true },
-  premio:    { hp: 1, spd: 0, dmg: 0, r: 4, xp: 0, obj: true }
+  premio:    { hp: 1, spd: 0, dmg: 0, r: 4, xp: 0, obj: true },
+  // dinámica 3 (ids 30 y 31): el gato con guantes del sparring de Bielli y el gato ladrón que roba gemas desde las 5:00
+  sparring:  { hp: 26, spd: 34, dmg: 10, r: 7, xp: 3 },
+  ladron:    { hp: 14, spd: 40, dmg: 4, r: 6, xp: 1 }
 };
 // el número de cada tipo viaja en la foto: los nuevos (enemigos o aliados) van SIEMPRE al final, nunca se reordena
 export const ENEMY_ID = { gato: 0, negro: 1, paloma: 2, gordo: 3, luz: 4, linda: 5, saltarin: 6, escupidor: 7, madre: 8, gatito: 9, caja: 10,
   carmelo: 11, corbata: 12, gatalinda: 13, maitena: 14, chema: 15, amanda: 16,
-  guantes: 17, luz2: 18, canicheBoss: 19, premio: 20, juli: 21, romero: 22, caniche: 23 };
-export const ENEMY_NAME = Object.keys(ENEMY_ID);
+  // historia: tipos nuevos y aliados de escena (17 a 23)
+  guantes: 17, luz2: 18, canicheBoss: 19, premio: 20, juli: 21, romero: 22, caniche: 23,
+  // dinámica del arcade: ids desde 30 (del 24 al 29 quedan libres para lo que venga)
+  sparring: 30, ladron: 31 };
+// número → nombre (arreglo con huecos: los ids no son contiguos, del 24 al 29 no hay nada)
+export const ENEMY_NAME = []; for (const [k, v] of Object.entries(ENEMY_ID)) ENEMY_NAME[v] = k;
 export const PICKS = ["alfajor", "moneda", "caja", "iman", "manguera"];
 // aliados del modo historia (ALLIES de story.js). kind: tipo de cuerpo; act: cómo pelea (lo resuelve js/historia.js):
 // escort (Carmelo: camina por el recorrido, patadita y miedo), ram (embiste con aviso), scratch (araña lo que tiene al
@@ -74,6 +81,61 @@ export const ALLY = {
 };
 // banderas de cada gato en la foto del estado
 export const F_FLASH = 1, F_TELE = 2, F_ELITE = 4, F_RUSH = 8, F_WET = 16, F_LEFT = 32, F_DOWN = 64; // LEFT y DOWN: solo aliados
+// bits 128, 256 y 1024 los usa la historia (js/historia.js: marcado, agrandado, rendida; en aliados llora, corre, patea)
+export const F_STUN = 512;        // aturdido: Luz del arcade frenada por la pareja (dinámica 2), luz2 y los noqueados por Maitena (historia)
+export const F_BAG = 2048;        // dinámica 3: gato ladrón que lleva gemas robadas
+
+/* dinámica 3: evento de mitad de partida, uno por mapa. Arranca a los mid.t s (4:40) si no hay un jefe vivo (si lo hay,
+   espera hasta mid.last; después se saltea) y dura mid.dur s, cortado en mid.end para no pisar la horda de las 5:30.
+   corbata: Corbata se escapó de lo de la abuela y embiste gatos 30 s (aliado). apagon: solo quedan los faroles y la luz
+   de los jugadores, y vienen más gatos negros. liquidacion: caen cajones (sombra roja; el que cae pega a gatos y
+   jugadores). sparring: un élite con guantes (jab doble); si le ganan antes del final, monedas extra. riego: aspersores
+   que mojan y frenan gatos. promo: 2x1, salen el doble de gatos con 60% de vida. salida: salida del cine, los autos
+   pasan cada 5 s. stats.mid cuenta lo de cada evento para las metas del mapa. */
+/* dinámica 5: combos de pareja entre armas, activos con el hilo de corazón (los dos a menos de 72 px) y siempre entre
+   armas de los DOS (la de uno con la del otro). Cada arma → el arma de la pareja con la que combina:
+   medialuna que cruza un charco de mate de la pareja sale mojada (x1,5 y frena); un gato pateado que cae en una
+   explosión de torta de la pareja recibe x2; un gato que Juli arañó lo muerde el Romero de la pareja con x3. */
+export const COMBO_OF = { medialuna: "mate", mate: "medialuna", patada: "torta", torta: "patada", juli: "romero", romero: "juli" };
+export const COMBO = { mate: 1.5, torta: 2, juli: 3, win: 0.8, mark: 2 }; // multiplicadores; win: s que dura la patada; mark: s que dura la marca de Juli
+/* dinámica 9: monedas y metas.
+   Monedas de una partida: (juntadas + gatos/12 + segundos/20) x1,5 si ganan (x1,25 si usaron la segunda chance)
+   x (1 + nivel del mapa x 0,12) x1,4 en picante. Antes ganar sumaba +60 fijos (un 17% más que perder a las 6:50).
+   Tres metas por mapa (estrellas): la del evento de mitad de partida, los tres pedidos y ganar sin que nadie caiga.
+   La alcancía de la pareja (main.js) suma lo de las partidas a dúo y desbloquea ALCANCIA. */
+export function coinsFor({ co = 0, kl = 0, t = 0, win = false, tier = 0, second = false, hot = false }) {
+  return Math.round((co + Math.floor(kl / 12) + Math.floor(t / 20)) * (win ? (second ? 1.25 : 1.5) : 1) * (1 + tier * 0.12) * (hot ? 1.4 : 1));
+}
+export const METAS = {
+  plaza:    { mid: [8, "Que Corbata voltee 8 gatos"] },
+  estacion: { mid: [1, "Que nadie caiga en el apagón"] },
+  feria:    { mid: [12, "Romper 12 cajones de la liquidación"] },
+  bielli:   { mid: [1, "Ganarle al sparring"] },
+  cancha:   { mid: [60, "Mojar 60 gatos con el riego"] },
+  tortugas: { mid: [500, "Voltear 500 gatos en la promo 2x1"] },
+  terrazas: { mid: [25, "Que los autos se lleven 25 gatos a la salida del cine"] }
+};
+export const METAS_TXT = map => [(METAS[map] || METAS.plaza).mid[1], "Entregar los 3 pedidos de Roro's", "Ganar sin que nadie caiga"];
+// premios de la alcancía de la pareja (monedas juntadas de a dos, no se gastan): opciones de la sala
+export const ALCANCIA = [
+  { id: "picante", at: 1200, name: "Picante", desc: "Gatos con 25% más de vida y daño. 40% más de monedas." },
+  { id: "sinfin", at: 3000, name: "Sin fin", desc: "Después de Linda la partida sigue hasta que caigan. Cuenta como victoria." }
+];
+/* especial "Llamá a Maitena" (SPECIALS.maitena de story.js), uno solo para la historia y el arcade. El runtime está en
+   js/historia.js (pressMaitena, callMaitena, maitenaTick, maiTick): carga compartida de la pareja, un botón para los
+   dos; si los dos lo tocan con menos de `pair` s de diferencia sale doble (radio pairR, daño x pairK). Tres patadas
+   giratorias (radio y daño de ALLY.maitena) que aturden `ko` s. Se carga con MAITENA_KILLS gatos en la historia y con
+   `kills` en el arcade (recarga larga). En el arcade lo habilita main.js (guion con specials.maitena) si alguno de los
+   dos lo desbloqueó en la historia (prof.unlock["special:maitena"]). */
+export const MAITENA = { kills: 250, r: 120, dmg: 160, hits: 3, every: 0.5, enter: 0.5, ko: 2, pair: 2.5, pairR: 170, pairK: 1.5 };
+/* curva de dificultad del arcade en un solo lugar (calibrada con los bots de tools/: ver tools/mediciones.md).
+   hp, dmg y rate multiplican vida, daño y ritmo de aparición de los gatos; tierHp, tierDmg y tierRate son lo que suma
+   cada nivel de mapa (antes 0,07, 0,05 y 0,04); boss y tierBoss, la vida de las jefas; linda y lindaDmg, la vida y el
+   daño extra de Linda (antes 1 y 1); dmgT: el daño de los gatos crece 1 + t/dmgT (antes 330); salto: segundos de
+   aviso del saltarín. Los bots la pueden pisar con DIFF='{"hp":1.1}' (tools/bot.mjs). */
+export const DIFF = { hp: 1, dmg: 1, rate: 1, tierHp: 0.04, tierDmg: 0.03, tierRate: 0.02, boss: 1, linda: 1.7, lindaDmg: 1.5, dmgT: 250, salto: 0.5, tierBoss: 0.06 };
+export const MID_IDS = ["corbata", "apagon", "liquidacion", "sparring", "riego", "promo", "salida"];
+export const MID_OF = { plaza: "corbata", estacion: "apagon", feria: "liquidacion", bielli: "sparring", cancha: "riego", tortugas: "promo", terrazas: "salida" };
 export const GOALS = ["none", "survive", "defend", "escort", "trains", "track", "boss", "reach", "protect"];
 
 export const WEAPONS = {
@@ -128,9 +190,16 @@ export function mulberry32(a) {
    - mix: [[tipo, peso, desde t, hasta t, tope], ...]  activo si t > desde y t <= hasta; tope = número o [base, cada t]
    - win: { kill: tipo } | { t: segundos } | { goal: true } · lose: { allDown: true }
    - goal, events, allies, dialogs: modo historia (ver más abajo) */
+/* dinámica 2: Luz como pelea de pareja. Valores por defecto de Sim.luzPar (reutilizable: un jefe del modo historia,
+   por ejemplo luz2, puede usar la misma lógica con { pair: { near: 28, stun: 2.5, stunMul: 1.5 } } en su entrada de bosses).
+   mark/markDbl: segundos de aviso (línea roja que sigue al marcado); near: px entre el marcado y su pareja para frenarla
+   (72 = hilo de corazón); half: segundos de carga antes de chequear; stun: segundos aturdida; stunMul: daño recibido;
+   cd: pausa entre cargas; dodge: jugando solo, esquivar en esos segundos antes del chequeo también la frena. */
+export const LUZ_PAR = { mark: 0.65, markDbl: 0.4, near: 72, half: 0.35, stun: 2, stunMul: 2, cd: 2.6, dodge: 0.6 };
 export const ARCADE = {
   id: "arcade",
-  bosses: [{ t: 210, type: "luz", dist: 150, calm: 3 }, { t: 420, type: "linda", dist: 160, calm: 4, phase: 1 }],
+  // hp: multiplicador de vida del jefe; pair: true (LUZ_PAR) u objeto que pisa valores de LUZ_PAR
+  bosses: [{ t: 210, type: "luz", dist: 150, calm: 3, hp: 1.8, pair: true }, { t: 420, type: "linda", dist: 160, calm: 4, phase: 1 }],
   hordes: [{ t: 150, n: 40, dist: 150, kinds: ["gato"] }, { t: 330, n: 40, dist: 150, kinds: ["saltarin", "negro", "negro"] }],
   orders: [95, 250, 365],
   elites: { first: 70, min: 38, max: 58, slope: 25, pools: [[0, ["gato", "saltarin"]], [110, ["saltarin", "negro", "madre"]], [200, ["negro", "gordo", "madre", "saltarin"]]] },
@@ -139,7 +208,15 @@ export const ARCADE = {
   hazards: true,
   rate: { base: 0.9, per: 34, max: 9, cap: 220 },
   mix: [["gato", 10, 0, 300], ["gato", 5, 300], ["saltarin", 3, 45, 200], ["saltarin", 4, 200], ["escupidor", 2, 90, 250, [4, 90]], ["escupidor", 3, 250, null, [4, 90]],
-    ["negro", 4, 110, 300], ["negro", 7, 300], ["madre", 2, 140, null, 7], ["gordo", 2, 180, 300], ["gordo", 3, 300]],
+    ["negro", 4, 110, 300], ["negro", 7, 300], ["madre", 2, 140, null, 7], ["gordo", 2, 180, 300], ["gordo", 3, 300],
+    ["ladron", 2, 300, null, 3]],                               // dinámica 3: gato ladrón desde las 5:00, hasta 3 a la vez
+  mid: { t: 280, dur: 30, last: 300, end: 325 },               // dinámica 3: evento de mitad de partida (MID_OF)
+  // dinámica 4: arranque rápido de revancha (new Sim(mapa, guion, { fast: true })): el reloj arranca en t, con
+  // `levels` mejoras para elegir apenas empieza, y el saltarín y las palomas habilitados desde `early` segundos
+  fast: { t: 30, levels: 1, early: 15 },
+  // dinámica 8: segunda chance con Linda (una por partida): si caen todos mientras Linda está viva, llega un pedido de
+  // Roro's de emergencia: se levantan con hp de vida, Linda frena sus ataques `calm` s. La victoria paga la mitad del extra.
+  second: { boss: "linda", hp: 0.3, calm: 5 },
   win: { kill: "linda" },
   lose: { allDown: true },
   goal: null,
@@ -162,8 +239,15 @@ export class Sim {
     this.map = MAPS[map] ? map : "plaza"; this.cfg = MAPS[this.map];
     this.seed = opts.seed !== undefined ? opts.seed >>> 0 : (Math.random() * 4294967296) >>> 0;
     this.rnd = mulberry32(this.seed);
-    const G = this.G = makeGuion(guion);
-    this.t = 0; this.state = "run";
+    let G = makeGuion(guion);
+    // dinámica 4: arranque rápido (solo si el guion lo tiene: el arcade sí, la historia no)
+    this.fast = !!(opts.fast && G.fast);
+    if (this.fast) {
+      const F = G.fast;
+      G = { ...G, pigeons: G.pigeons && { ...G.pigeons, from: Math.min(G.pigeons.from, F.early) }, mix: G.mix.map(m => m[0] === "saltarin" && m[2] > F.early && m[2] <= F.t + 30 ? [m[0], m[1], F.early, ...m.slice(3)] : m) };
+    }
+    this.G = G;
+    this.t = this.fast ? G.fast.t : 0; this.state = "run";
     this.players = {}; this.enemies = []; this.proj = []; this.eproj = []; this.gems = []; this.pools = []; this.bombs = []; this.buses = []; this.pickups = []; this.zones = []; this.hz = [];
     this.nextId = 1; this.level = 1; this.xp = 0; this.xpNext = 5; this.kills = 0; this.coins = 0;
     this.offers = {}; this.pendingLevels = 0;
@@ -178,6 +262,9 @@ export class Sim {
     // modo historia: diálogo, objetivo, aliados y cámara (en el arcade quedan vacíos y no tocan el azar)
     this.dlg = null; this.dlgQueue = []; this.dlgN = 0; this.goal = null; this.allies = []; this.lures = []; this.cam = null; this.begun = false;
     this.bond = false;
+    this.mid = null; this.midNext = G.mid ? G.mid.t : 9e9; this.stats = { mid: 0, cb: { mate: 0, torta: 0, juli: 0 }, ped: 0, downs: 0, second: 0, won: 0 }; // dinámica 3, 5, 8 y 9
+    this.hot = !!opts.picante; this.endless = !!opts.sinfin; this.endNext = 9e9;                   // dinámica 9: opciones de la alcancía
+    this.comboAt = {};                                                                                // dinámica 5
     this.view = {};                 // medio ancho y medio alto de lo que ve cada jugador, para que los gatos aparezcan fuera de cámara
     this.grid = new Map();
   }
@@ -212,6 +299,14 @@ export class Sim {
   // dentro de la cámara de algún jugador
   onScreen(x, y, m = 0) { for (const p of this.alive()) { const v = this.view[p.side]; if (v && Math.abs(x - p.x) < v.hw + m && Math.abs(y - p.y) < v.hh + m) return true; } return false; }
 
+  // dinámica 1: ¿el jugador p ve el punto (x, y) en su pantalla? Igual que la cámara de render.js: centrada en el
+  // jugador (8 px más arriba) y frenada en los bordes del mundo. m: margen hacia adentro. Sin tamaño de pantalla
+  // conocido (o si p no es un jugador: lo que se defiende en la historia) cuenta como visto.
+  sees(p, x, y, m = 6) {
+    const v = p && p.side && this.view[p.side]; if (!v) return true;
+    const cx = clamp(p.x, v.hw, MAP - v.hw), cy = clamp(p.y - 8, v.hh, MAP - v.hh);
+    return Math.abs(x - cx) < v.hw - m && Math.abs(y - cy) < v.hh - m;
+  }
   alive() { return Object.values(this.players).filter(p => !p.downed); }
   rr(a, b) { return a + this.rnd() * (b - a); }
   inB(x, y, m = 0) { const b = this.cfg.b; return x >= b[0] + m && x <= b[2] - m && y >= b[1] + m && y <= b[3] - m; }
@@ -238,7 +333,7 @@ export class Sim {
       if (inp.dash && p.dashCd <= 0) {
         p.dashCd = 2.4; p.inv = Math.max(p.inv, 0.35);
         if (!inp.pos) { if (!mx && !my) mx = p.face; const m = Math.hypot(mx, my); p.dvx = mx / m * 290; p.dvy = my / m * 290; p.dashT = 0.17; }
-        this.ev.push(["dash", Math.round(p.x), Math.round(p.y), p.side]);
+        this.ev.push(["dash", Math.round(p.x), Math.round(p.y), p.side]); p.lastDash = this.t;
       }
       if (p.dashT > 0) { p.dashT -= dt; p.x += p.dvx * dt; p.y += p.dvy * dt; }
       p.x = clamp(p.x, bx0, bx1); p.y = clamp(p.y, by0, by1);
@@ -259,10 +354,35 @@ export class Sim {
     this.updateHazards(dt);
     this.updateObjective(dt);
     if (this.story) this.storyTick(dt, input); // historia.js: aliados, objetivo, especiales, premios, ondas
+    else {
+      // arcade: aliados del evento de mitad de partida (Corbata en la plaza) y el especial de Maitena si está desbloqueado
+      if (this.mai) this.maiTick(input);
+      if (this.allies.length) { this._by = "ally"; this.updateAllies(dt); this._by = null; }
+    }
     this.updateGems(dt);
     this.cleanup();
-    if (this.G.lose.allDown !== false && this.alive().length === 0) { this.state = "over"; this.ev.push(["over"]); }
+    if (this.G.lose.allDown !== false && this.alive().length === 0 && !this.secondChance()) { this.state = "over"; this.ev.push(["over"]); }
     else if (this.G.win.t && this.t >= this.G.win.t && this.state === "run") this.win();
+  }
+  // dinámica 8: pedido de Roro's de emergencia. Devuelve true si salvó la partida.
+  secondChance() {
+    const S = this.G.second, B = this.bossRef;
+    if (!S || this.stats.second || !B || B.hp <= 0 || B.type !== S.boss || !Object.keys(this.players).length) return false;
+    this.stats.second = 1;
+    for (const p of Object.values(this.players)) {
+      p.downed = false; p.reviveT = 0; p.hp = p.maxHp * S.hp; p.inv = 2.5;
+      // los gatos de alrededor salen despedidos (la caja de Roro's cae entre ellos)
+      this.near(p.x, p.y, 60, e => { if (!this.foe(e) || ENEMY[e.type].boss) return; const dx = e.x - p.x, dy = e.y - p.y, m = Math.hypot(dx, dy) || 1; e.kx += dx / m * 260; e.ky += dy / m * 260; });
+    }
+    B.cd = Math.max(B.cd, S.calm); B.zcd = Math.max(B.zcd || 0, S.calm); B.st = 0;
+    this.eproj = []; this.zones = []; this.calm = S.calm;
+    this.ev.push(["second", Math.round(B.x), Math.round(B.y)]);
+    return true;
+  }
+  // dinámica 9: metas cumplidas en esta partida [evento, pedidos, ganar sin caer] (solo arcade)
+  metas() {
+    const M = METAS[this.map] || METAS.plaza, S = this.stats, won = this.state === "win" || !!S.won;
+    return [S.mid >= M.mid[0] ? 1 : 0, S.ped >= 3 ? 1 : 0, won && !S.downs ? 1 : 0];
   }
   // ganar: si el guion tiene epílogo (outro), primero se muestra y la victoria llega al cerrarlo
   win() {
@@ -308,12 +428,13 @@ export class Sim {
   /* ---------- aparición de enemigos ---------- */
   spawnAt(type, x, y, hpMul = 1) {
     const b = ENEMY[type], tier = this.cfg.tier;
-    const scale = (1 + this.t / 130 + (this.t / 270) ** 2) * (1 + tier * 0.07);
+    const scale = (1 + this.t / 130 + (this.t / 270) ** 2) * (1 + tier * DIFF.tierHp) * DIFF.hp;
     const solo = Object.keys(this.players).length === 1 ? 0.7 : 1;
-    const hp = b.boss ? b.hp * solo * (1 + tier * 0.06) * (1 + this.level * 0.08) : b.hp * scale * hpMul * (solo < 1 ? 0.85 : 1);
+    const hp = (b.boss ? b.hp * solo * (1 + tier * DIFF.tierBoss) * (1 + this.level * 0.08) * DIFF.boss * (type === "linda" ? DIFF.linda : 1) : b.hp * scale * hpMul * (solo < 1 ? 0.85 : 1)) * (this.hot ? 1.25 : 1); // hot: picante
     const [x0, y0, x1, y1] = this.cfg.b;
     const e = { id: this.nextId++, type, x: clamp(x, x0, x1), y: clamp(y, y0, y1), hp, maxHp: hp, spd: b.spd * (b.boss ? 1 : 1 + this.t / 900), dmg: b.dmg, r: b.r, flash: 0, kx: 0, ky: 0, wob: this.rnd() * 9, cd: this.rr(1, 2.5), st: 0, stT: 0, ax: 0, ay: 0, slow: 0, hits: {} };
     if (type === "paloma") { e.x = x; e.y = y; }
+    if (type === "ladron" && !this.stats.lad) { this.stats.lad = 1; this.ev.push(["ladron"]); } // dinámica 3: primer ladrón
     this.enemies.push(e);
     return e;
   }
@@ -353,6 +474,8 @@ export class Sim {
     while (this.bossIdx < this.bosses.length && t >= this.bosses[this.bossIdx].t) {
       const b = this.bosses[this.bossIdx++], q = this.ringPos(b.dist || 150);
       this.bossRef = this.spawnAt(b.type, q.x, q.y); if (b.phase) this.bossRef.phase = b.phase;
+      if (b.hp) { this.bossRef.hp *= b.hp; this.bossRef.maxHp = this.bossRef.hp; }                  // dinámica 2
+      if (b.pair) this.bossRef.pair = b.pair === true ? LUZ_PAR : { ...LUZ_PAR, ...b.pair };
       this.ev.push(["boss", b.type]); this.calm = b.calm || 0;
     }
     const bossAlive = this.bossRef && this.bossRef.hp > 0;
@@ -392,17 +515,23 @@ export class Sim {
     if (G.hazards && this.cfg.hz && t >= this.hzNext) { this.hzNext = t + (G.hzEvery || this.cfg.hzEvery) * this.rr(0.85, 1.15); this.spawnHazard(); }
     // eventos sueltos del guion (modo historia)
     if (this.evIdx < this.events.length) this.runEvents();
+    // dinámica 9: sin fin, después de Linda
+    if (t >= this.endNext) { this.endNext = t + 50; this.hordes.unshift({ t, n: 44, dist: 150, kinds: ["negro", "saltarin", "gordo", "madre"] }); }
+    // dinámica 3: evento de mitad de partida
+    if (t >= this.midNext) { if (!bossAlive) this.startMid(); else if (t > G.mid.last) this.midNext = 9e9; else this.midNext = t + 2; }
+    if (this.mid) this.midTick(dt);
 
     if (this.calm > 0) { this.calm -= dt; }
     if (!G.rate) return;
     const moving = this.enemies.length - this.count("caja");
     if (moving >= G.rate.cap) return;
-    const rate = Math.min(G.rate.max, G.rate.base + t / G.rate.per) * this.pressure() * (1 + tier * 0.04) * (this.calm > 0 ? 0.2 : 1) * (Object.keys(this.players).length === 1 ? 0.72 : 1);
+    const mk = this.mid && this.mid.k, promo = mk === "promo"; // dinámica 3: la promo 2x1 duplica y afloja; el apagón trae negros
+    const rate = Math.min(G.rate.max, G.rate.base + t / G.rate.per) * this.pressure() * (1 + tier * DIFF.tierRate) * DIFF.rate * (this.calm > 0 ? 0.2 : 1) * (Object.keys(this.players).length === 1 ? 0.72 : 1) * (promo ? 2 : 1);
     this.spawnAcc += rate * dt;
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
       const q = this.edgePos(150);
-      this.spawnAt(this.pickType(), q.x, q.y);
+      this.spawnAt(mk === "apagon" && this.rnd() < 0.4 ? "negro" : this.pickType(), q.x, q.y, promo ? 0.6 : 1);
     }
   }
   // mezcla de gatos del guion: [tipo, peso, desde t, hasta t, tope]
@@ -427,6 +556,47 @@ export class Sim {
     this.ev.push(["elite", Math.round(e.x), Math.round(e.y)]);
   }
 
+  /* ---------- dinámica 3: evento de mitad de partida (ver MID_OF) ---------- */
+  startMid() {
+    const k = MID_OF[this.map] || "corbata", G = this.G.mid;
+    this.midNext = 9e9;
+    const M = this.mid = { k, t0: this.t, end: this.t + Math.min(G.dur, G.end - this.t), acc: 0.5, fall: 0, win: 0 };
+    // Corbata del arcade con los números con que se calibró la dinámica (la historia le bajó daño y alcance a ALLY.corbata)
+    if (k === "corbata") { const q = this.edgePos(120); M.ally = this.addAlly("corbata", { x: q.x, y: q.y, hp: 200, cd: 2, dmg: 40, reach: 150 }); }
+    if (k === "sparring") {
+      const q = this.edgePos(150), e = M.boss = this.spawnAt("sparring", q.x, q.y, 25); // x25: que haya que ir a buscarlo
+      e.elite = true; e.r = Math.round(e.r * 1.8); e.dmg *= 1.4; e.spd *= 0.85;
+    }
+    this.ev.push(["mid", k, 1]);
+  }
+  midTick(dt) {
+    const M = this.mid, k = M.k;
+    if (k === "liquidacion" && (M.acc -= dt) <= 0) {
+      // cae un cajón cerca de alguien: sombra roja 1,2 s, pega al caer y queda para romper
+      M.acc = 2.4; const ps = this.alive(), p = ps[Math.floor(this.rnd() * ps.length)];
+      if (p) { const q = this.ringPos(this.rr(30, 110), p); if (this.inB(q.x, q.y, 16)) this.zones.push({ x: q.x, y: q.y, r: 16, t: 0, dur: 1.2, dmg: 10, crate: true }); }
+    }
+    if (k === "riego" && (M.acc -= dt) <= 0) {
+      M.acc = 4;
+      for (let i = 0; i < 3; i++) {
+        const ps = this.alive(), p = ps[Math.floor(this.rnd() * ps.length)]; if (!p) break;
+        const q = this.ringPos(this.rr(40, 140), p);
+        this.near(q.x, q.y, 55, e => { if (!this.foe(e) || d2(e, q) > 55 * 55) return; const ux = e.x - q.x, uy = e.y - q.y, m = Math.hypot(ux, uy) || 1; e.slow = 3; this.stats.mid++; this.damage(e, 8, null, ux / m * 140, uy / m * 140, true); });
+        this.ev.push(["splash", Math.round(q.x), Math.round(q.y), ""]);
+      }
+    }
+    if (k === "salida" && this.hzNext > this.t + 6.5) this.hzNext = this.t + this.rr(4, 6);
+    if (k === "sparring" && M.boss.hp <= 0 && !M.boss.gone) { M.win = 1; this.stats.mid++; this.coins += 10; this.drop("moneda", M.boss.x + 10, M.boss.y); return this.endMid(); }
+    if (this.t >= M.end) this.endMid();
+  }
+  endMid() {
+    const M = this.mid; this.mid = null;
+    if (M.ally) this.allies = this.allies.filter(a => a !== M.ally);
+    if (M.boss && M.boss.hp > 0) { M.boss.hp = 0; M.boss.gone = true; }
+    if (M.k === "apagon" && !M.fall) this.stats.mid = 1;
+    this.ev.push(["mid", M.k, 0, M.win, this.stats.mid]);
+  }
+
   /* ---------- pedido de Roro's: llevarlo juntos carga el doble ---------- */
   startObjective() {
     const ps = this.alive(); if (!ps.length) return;
@@ -447,7 +617,7 @@ export class Sim {
     if (inside) { o.acc += dt; if (o.acc > 1.1) { o.acc = 0; const a = this.rnd() * Math.PI * 2; this.spawnAt(this.rnd() < 0.5 ? "saltarin" : "gato", o.x + Math.cos(a) * 120, o.y + Math.sin(a) * 120); } }
     if (o.prog >= 1) {
       this.drop("caja", o.x, o.y + 6); this.drop("alfajor", o.x - 12, o.y); this.drop("moneda", o.x + 12, o.y); this.drop("moneda", o.x + 16, o.y + 8);
-      this.coins += 3; this.ev.push(["obj", 1, Math.round(o.x), Math.round(o.y)]); this.obj = null;
+      this.coins += 3; this.stats.ped++; this.ev.push(["obj", 1, Math.round(o.x), Math.round(o.y)]); this.obj = null;
     } else if (o.left <= 0) { this.ev.push(["obj", 0]); this.obj = null; }
   }
 
@@ -469,10 +639,12 @@ export class Sim {
       const a = z.dir > 0 ? z.x - z.len : z.x, b = z.dir > 0 ? z.x : z.x + z.len;
       if ((z.dir > 0 && a > MAP + 20) || (z.dir < 0 && b < -20)) { z.done = true; if (this.goal && this.goal.k === "trains") this.goal.n++; continue; }
       for (const p of this.alive()) if (!z.ph.has(p.side) && p.x > a && p.x < b && Math.abs(p.y - z.y) < z.h + 4) { z.ph.add(p.side); p.inv = 0; this.hurt(p, z.dmg, true); }
+      this._by = "hz"; // dinámica 3: para contar los gatos que se lleva el peligro en la salida del cine
       this.near((a + b) / 2, z.y, Math.max(z.len / 2, z.h) + 8, e => {
         if (z.hit.has(e.id) || e.x < a || e.x > b || Math.abs(e.y - z.y) > z.h + e.r) return;
         z.hit.add(e.id); this.damage(e, ENEMY[e.type].boss ? 220 : z.edmg, null, z.dir * 260, (e.y - z.y) * 10, true);
       });
+      this._by = null;
     }
   }
 
@@ -500,11 +672,12 @@ export class Sim {
 
   moveEnemies(dt) {
     const alive = this.alive(), [bx0, by0, bx1, by1] = this.cfg.b;
-    const dmgScale = (1 + this.t / 330) * (1 + this.cfg.tier * 0.05);
+    const dmgScale = (1 + this.t / DIFF.dmgT) * (1 + this.cfg.tier * DIFF.tierDmg) * DIFF.dmg * (this.hot ? 1.25 : 1); // hot: picante (dinámica 9)
     for (const e of this.enemies) {
       if (e.hp <= 0) continue;
       e.flash = Math.max(0, e.flash - dt); e.slow = Math.max(0, e.slow - dt);
       if (ENEMY[e.type].obj) continue;
+      if (e.ko > this.t) { e.x += e.kx * dt; e.y += e.ky * dt; e.kx *= Math.pow(0.02, dt); e.ky *= Math.pow(0.02, dt); e.x = clamp(e.x, bx0, bx1); e.y = clamp(e.y, by0, by1); continue; } // dinámica 11: noqueado
       let tgt = null, bd = Infinity;
       for (const p of alive) { const d = d2(p, e); if (d < bd) { bd = d; tgt = p; } }
       // lo que hay que defender o proteger atrae a los gatos (pesa como si estuviera más cerca)
@@ -517,24 +690,43 @@ export class Sim {
         case "saltarin":
           if (e.st === 1) { spd = 0; if ((e.stT -= dt) <= 0) { e.st = 2; e.stT = 0.36; } }
           else if (e.st === 2) { spd = 235; dx = e.ax; dy = e.ay; if ((e.stT -= dt) <= 0) { e.st = 0; e.cd = this.rr(2.4, 3.4); } }
-          else if ((e.cd -= dt) <= 0 && m < 85) { e.st = 1; e.stT = e.elite ? 0.6 : 0.5; e.ax = dx; e.ay = dy; }
+          else if ((e.cd -= dt) <= 0 && m < 85) { e.st = 1; e.stT = e.elite ? DIFF.salto + 0.1 : DIFF.salto; e.ax = dx; e.ay = dy; }
           break;
         case "escupidor":
           e.cd -= dt;
           if (e.st === 1) { spd = 0; if ((e.stT -= dt) <= 0) { e.st = 0; e.cd = this.rr(2.8, 3.8); const n = e.elite ? 3 : 1; for (let i = 0; i < n; i++) { const a = Math.atan2(tgt.y - e.y, tgt.x - e.x) + (i - (n - 1) / 2) * 0.28; this.eproj.push({ k: 1, x: e.x, y: e.y - 5, vx: Math.cos(a) * 88, vy: Math.sin(a) * 88, life: 2.6, dmg: 9 * dmgScale }); } this.ev.push(["spit", Math.round(e.x), Math.round(e.y)]); } }
-          else if (m < 125 && e.cd <= 0 && this.eproj.length < 48) { e.st = 1; e.stT = 0.6; spd = 0; }
+          // dinámica 1 (escupidor justo): carga a menos de 95 px y solo si su objetivo lo ve en su pantalla
+          else if (m < 95 && e.cd <= 0 && this.eproj.length < 48 && this.sees(tgt, e.x, e.y - 10)) { e.st = 1; e.stT = 0.6; spd = 0; }
           else if (m < 72) { dx = -dx; dy = -dy; spd *= 0.8; }
-          else if (m < 115) spd *= 0.25;
+          else if (m < 92) spd *= 0.25;
           break;
         case "luz":
+          if (e.pair) { spd *= this.luzPar(e, dt, e.pair); if (e.st === 2) { dx = e.ax; dy = e.ay; } break; } // dinámica 2
           e.cd -= dt;
           if (e.st === 1) { spd = 0; if ((e.stT -= dt) <= 0) { e.st = 2; e.stT = 0.7; } }
           else if (e.st === 2) { spd *= 4.4; dx = e.ax; dy = e.ay; if ((e.stT -= dt) <= 0) { e.st = 0; if (e.hp < e.maxHp * 0.5 && !e.dbl) { e.dbl = true; e.cd = 0.25; } else { e.dbl = false; e.cd = 2.6; } } }
           else if (e.cd <= 0) { e.st = 1; e.stT = e.dbl ? 0.4 : 0.65; e.ax = dx; e.ay = dy; this.ev.push(["charge", Math.round(e.x), Math.round(e.y)]); }
           break;
-        case "linda": spd *= this.linda(e, dx, dy, dt, dmgScale); break;
+        case "linda": spd *= this.linda(e, dx, dy, dt, dmgScale * DIFF.lindaDmg); break;
         // historia: tipos nuevos (js/historia.js)
         case "guantes": case "luz2": case "canicheBoss": [dx, dy, spd] = this.storyEnemy(e, tgt, dx, dy, m, spd, dt, dmgScale); break;
+        case "sparring": // dinámica 3: jab doble (se frena con aviso y tira dos embestidas cortas de unos 40 px)
+          if (e.st === 1) { spd = 0; if ((e.stT -= dt) <= 0) { e.st = 2; e.stT = 0.13; e.jab = 1; } }
+          else if (e.st === 2) { spd = 320; dx = e.ax; dy = e.ay; if ((e.stT -= dt) <= 0) { if (e.jab < 2) { e.st = 4; e.stT = 0.2; } else { e.st = 0; e.cd = this.rr(1.6, 2.4); } } }
+          else if (e.st === 4) { spd = 0; if ((e.stT -= dt) <= 0) { e.st = 2; e.stT = 0.13; e.jab = 2; e.ax = dx; e.ay = dy; } }
+          else if ((e.cd -= dt) <= 0 && m < 60) { e.st = 1; e.stT = 0.45; e.ax = dx; e.ay = dy; }
+          break;
+        case "ladron": { // dinámica 3: va a la gema suelta más cercana, se la lleva y escapa; lejos de todos, se va con lo robado
+          if ((e.bag || 0) < 10) {
+            let g = null, gd = 260 * 260;
+            for (const q of this.gems) { if (q.got || q.pull) continue; const d = d2(q, e); if (d < gd) { gd = d; g = q; } }
+            if (g) { const gx = g.x - e.x, gy = g.y - e.y, gm = Math.hypot(gx, gy) || 1; dx = gx / gm; dy = gy / gm; spd *= 1.25; if (gm < 6) { g.got = true; e.bag = (e.bag || 0) + g.v; } break; }
+            if (!e.bag) break;
+          }
+          dx = -dx; dy = -dy; spd *= 1.15;
+          if (bd > 300 * 300 && !this.onScreen(e.x, e.y, 10)) { e.hp = 0; e.gone = true; this.ev.push(["steal", Math.round(e.x), Math.round(e.y), Math.round(e.bag)]); }
+          break;
+        }
       }
       // separación entre gatos para que no se amontonen en un punto
       let sx = 0, sy = 0;
@@ -552,6 +744,43 @@ export class Sim {
       if (this.allies.length) for (const a of this.allies) { if (a.down || a.cfg.inv || a.inv > 0) continue; const rr = e.r + a.r; if (d2(a, e) < rr * rr) this.hurtAlly(a, dmg); }
       if (this.lures.length) for (const L of this.lures) { if (!L.tgt || L.down || L.inv > 0) continue; const rr = e.r + L.r; if (d2(L, e) < rr * rr) { L.hp = Math.max(0, L.hp - dmg); L.inv = 0.25; L.flash = 0.12; this.ev.push(["goalhit", Math.round(L.x), Math.round(L.y)]); } }
     }
+  }
+  /* dinámica 2: carga de pareja. Devuelve el multiplicador de velocidad del cuadro (0 quieta, 4,4 cargando).
+     st 1: marca a un jugador (alterna entre los dos) y la línea lo sigue; st 2: carga en línea recta; a los o.half s
+     de carga, si la pareja del marcado está a menos de o.near px (o, jugando solo, si el marcado esquivó hace menos de
+     o.dodge s), se frena y pasa a st 3: aturdida o.stun s, recibe o.stunMul de daño. Con menos de la mitad de vida
+     carga dos veces seguidas. Evento ["lmark", lado] al marcar (el mismo que luz2 de la historia) y ["stun", x, y] al frenarse. */
+  // la pareja del marcado está pegada a él (lo comparten Luz del arcade, luzPar, y luz2 de la historia, js/historia.js).
+  // null si no hay otro jugador en pie (jugando solo cada una tiene su variante: esquivar o la cucha y Corbata)
+  mateHolds(P, near) { const mate = this.alive().find(q => q !== P); return mate ? d2(P, mate) < near * near : null; }
+  luzPar(e, dt, o) {
+    e.cd -= dt;
+    if (e.st === 3) { if ((e.stT -= dt) <= 0) { e.st = 0; e.stun = 0; e.cd = 1.2; } return 0; }
+    if (e.st === 1) {
+      const m = e.mark && this.players[e.mark.side] === e.mark && !e.mark.downed ? e.mark : this.alive()[0];
+      if (m) { e.mark = m; const ux = m.x - e.x, uy = m.y - e.y, d = Math.hypot(ux, uy) || 1; e.ax = ux / d; e.ay = uy / d; }
+      if ((e.stT -= dt) <= 0) { e.st = 2; e.stT = 0.7; e.chk = false; }
+      return 0;
+    }
+    if (e.st === 2) {
+      e.stT -= dt;
+      if (!e.chk && e.stT <= 0.7 - o.half) {
+        e.chk = true;
+        const m = e.mark, solo = Object.keys(this.players).length === 1, h = m ? this.mateHolds(m, o.near) : null;
+        const held = m && !m.downed && (h !== null ? h : solo && this.t - (m.lastDash || -9) < o.dodge);
+        if (held) { e.st = 3; e.stT = o.stun; e.stun = o.stunMul; e.dbl = false; e.kx = e.ky = 0; this.ev.push(["stun", Math.round(e.x), Math.round(e.y)]); return 0; }
+      }
+      if (e.stT <= 0) { e.st = 0; if (e.hp < e.maxHp * 0.5 && !e.dbl) { e.dbl = true; e.cd = 0.25; } else { e.dbl = false; e.cd = o.cd; } }
+      return 4.4;
+    }
+    const al = this.alive();
+    if (e.cd <= 0 && al.length) {
+      e.markI = (e.markI || 0) + 1; e.mark = e.dbl && e.mark && !e.mark.downed ? e.mark : al[e.markI % al.length];
+      e.st = 1; e.stT = e.dbl ? o.markDbl : o.mark;
+      this.ev.push(["charge", Math.round(e.x), Math.round(e.y)], ["lmark", e.mark.side]);
+      return 0;
+    }
+    return 1;
   }
   // Linda cambia de táctica a medida que pierde vida
   linda(e, dx, dy, dt, dmgScale) {
@@ -594,13 +823,14 @@ export class Sim {
     if (p.downed || (p.inv > 0 && !force)) return;
     p.hp -= dmg * p.armor; p.inv = 0.6;
     this.ev.push(["hurt", Math.round(p.x), Math.round(p.y), p.side]);
-    if (p.hp <= 0) { p.hp = 0; p.downed = true; p.reviveT = 0; p.dashT = 0; this.ev.push(["down", Math.round(p.x), Math.round(p.y), p.side]); }
+    if (p.hp <= 0) { p.hp = 0; p.downed = true; p.reviveT = 0; p.dashT = 0; if (this.mid) this.mid.fall = 1; this.stats.downs++; this.ev.push(["down", Math.round(p.x), Math.round(p.y), p.side]); }
   }
 
   damage(e, dmg, p, kx = 0, ky = 0, raw) {
     if (e.hp <= 0) return;
     const crit = !raw && this.rnd() < 0.08;
-    const d = Math.round((raw ? dmg : dmg * (p ? p.dmgMul * (p.bond ? 1.2 : 1) : 1) * (crit ? 2 : 1)) * (e.dmgIn || 1)); // dmgIn: historia
+    // dmgIn: historia (marca de Amanda, Luz aturdida del capítulo 5) · stun: dinámica 2 (Luz del arcade aturdida)
+    const d = Math.round((raw ? dmg : dmg * (p ? p.dmgMul * (p.bond ? 1.2 : 1) : 1) * (crit ? 2 : 1)) * (e.dmgIn || 1) * (e.stun || 1));
     e.hp -= d; e.flash = 0.12;
     const kb = ENEMY[e.type].boss ? 0.15 : ENEMY[e.type].obj ? 0 : e.elite ? 0.35 : 1;
     e.kx += kx * kb; e.ky += ky * kb;
@@ -612,10 +842,16 @@ export class Sim {
     if (e.surrender || e.type === "premio") return this.storyKill(e, p); // historia: jefas que se rinden, premios
     const B = ENEMY[e.type];
     this.ev.push(["die", Math.round(e.x), Math.round(e.y), ENEMY_ID[e.type]]);
-    if (B.obj) { this.dropCrate(e); return; }
+    if (B.obj) { this.dropCrate(e); if (e.liq) { this.stats.mid++; this.drop("moneda", e.x - 6, e.y + 4); } return; } // dinámica 3: cajón de la liquidación
     this.kills++;
+    if (this.mid && ((this.mid.k === "corbata" && this._by === "ally") || (this.mid.k === "salida" && this._by === "hz") || this.mid.k === "promo")) this.stats.mid++; // dinámica 3
+    if (e.bag) this.gems.push({ x: e.x, y: e.y, v: e.bag, pull: 0 });                     // dinámica 3: el ladrón suelta lo robado
     if (p) { p.kills++; p.ult = Math.min(1, p.ult + (B.boss ? 0.5 : e.elite ? 0.25 : 1 / 55)); }
-    if (e.type === this.G.win.kill) { this.win(); return; }
+    if (e.type === this.G.win.kill) {
+      if (!this.endless) { this.win(); return; }
+      // dinámica 9, sin fin: cuenta como victoria y la partida sigue con hordas cada 50 s
+      if (!this.stats.won) { this.stats.won = 1; this.endNext = this.t + 40; this.ev.push(["endless"]); }
+    }
     if (B.boss) { for (let i = 0; i < 16; i++) this.gems.push({ x: e.x + this.rr(-24, 24), y: e.y + this.rr(-24, 24), v: 5, pull: 0 }); this.drop("alfajor", e.x - 8, e.y); this.drop("caja", e.x + 8, e.y); this.bossRef = null; this.calm = 8; this.ev.push(["bossdown", e.type]); return; }
     if (e.type === "madre") for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2; const k = this.spawnAt("gatito", e.x + Math.cos(a) * 8, e.y + Math.sin(a) * 8); k.kx = Math.cos(a) * 90; k.ky = Math.sin(a) * 90; }
     if (e.elite) { this.drop("caja", e.x, e.y); for (let i = 0; i < 4; i++) this.gems.push({ x: e.x + this.rr(-14, 14), y: e.y + this.rr(-14, 14), v: 5, pull: 0 }); return; }
@@ -648,6 +884,18 @@ export class Sim {
     if (p.cds[id] > 0) return false;
     p.cds[id] = base * p.cdMul; return true;
   }
+  // dinámica 5: gato arañado hace poco por la Juli de la pareja, el más cercano al perro
+  markedFor(p, dog, R) {
+    let best = null, bd = R * R;
+    for (const e of this.enemies) { if (!this.foe(e) || !(e.juli > this.t - COMBO.mark) || e.juliBy === p.side) continue; const d = d2(dog, e); if (d < bd) { bd = d; best = e; } }
+    return best;
+  }
+  // dinámica 5: anota el combo y avisa (como mucho un aviso cada 0,6 s por combo, para no llenar la red)
+  combo(k, x, y) {
+    this.stats.cb[k]++;
+    if ((this.comboAt[k] || -9) > this.t - 0.6) return;
+    this.comboAt[k] = this.t; this.ev.push(["combo", k, Math.round(x), Math.round(y)]);
+  }
   targets(p, R, n) { return this.enemies.filter(e => this.foe(e) && d2(p, e) < R * R).sort((a, b) => d2(p, a) - d2(p, b)).slice(0, n); }
   weapons(p, dt) {
     this.dt = dt;
@@ -655,10 +903,11 @@ export class Sim {
     if (W.patada && this.cd(p, "patada", (1.05 - W.patada * 0.07) * (X.patada ? 0.8 : 1))) {
       const lv = W.patada, r = (30 + lv * 3) * A * (X.patada ? 1.35 : 1), both = lv >= 3 || X.patada, dmg = (13 + lv * 6) * (X.patada ? 1.6 : 1), kb = X.patada ? 220 : 120;
       this.ev.push(["slash", Math.round(p.x), Math.round(p.y), p.face, Math.round(r), X.patada ? 2 : both ? 1 : 0]);
-      this.near(p.x, p.y, r, e => { const dx = e.x - p.x, dy = e.y - p.y; if (dx * dx + dy * dy > r * r) return; if (!both && dx * p.face < -6) return; const m = Math.hypot(dx, dy) || 1; this.damage(e, dmg, p, X.patada ? dx / m * kb : Math.sign(dx || p.face) * kb, X.patada ? dy / m * kb : dy * 2); });
+      this.near(p.x, p.y, r, e => { const dx = e.x - p.x, dy = e.y - p.y; if (dx * dx + dy * dy > r * r) return; if (!both && dx * p.face < -6) return; const m = Math.hypot(dx, dy) || 1; e.kick = this.t; e.kickBy = p.side; this.damage(e, dmg, p, X.patada ? dx / m * kb : Math.sign(dx || p.face) * kb, X.patada ? dy / m * kb : dy * 2); });
     }
-    if (W.medialuna && this.cd(p, "medialuna", X.medialuna ? 0.75 : 0.95 - W.medialuna * 0.07)) {
-      const lv = W.medialuna, dmg = 10 + lv * 4;
+    // dinámica 7: medialunas un poco más lentas y flojas (eran el doble de la mediana en weapons_bench)
+    if (W.medialuna && this.cd(p, "medialuna", X.medialuna ? 0.75 : 1 - W.medialuna * 0.06)) {
+      const lv = W.medialuna, dmg = 10 + lv * 3.5;
       if (X.medialuna) {
         const t = this.nearest(p, 190);
         const base = t ? Math.atan2(t.y - p.y, t.x - p.x) : (p.face > 0 ? 0 : Math.PI);
@@ -672,18 +921,20 @@ export class Sim {
     }
     if (W.juli) {
       p.orbA += dt * 3.2;
-      const lv = W.juli, n = X.juli ? 4 : Math.min(3, 1 + Math.floor(lv / 2)), r = (26 + lv * 3) * A * (X.juli ? 1.2 : 1), dmg = (5 + lv * 3) * (X.juli ? 1.5 : 1);
+      // dinámica 7: Juli pega más (8 + 5 por nivel), gira más abierta, re-araña cada 0,25 s y Juli Mimosa gira 1,5 veces más lejos
+      const lv = W.juli, n = X.juli ? 4 : Math.min(3, 1 + Math.floor(lv / 2)), r = (28 + lv * 5) * A * (X.juli ? 1.5 : 1), dmg = (8 + lv * 5) * (X.juli ? 1.5 : 1);
       p.orbs = [];
       for (let i = 0; i < n; i++) {
         const a = p.orbA + i * Math.PI * 2 / n, ox = p.x + Math.cos(a) * r, oy = p.y + Math.sin(a) * r * 0.7;
         p.orbs.push([Math.round(ox), Math.round(oy)]);
-        this.near(ox, oy, 10, e => { if (d2({ x: ox, y: oy }, e) > (e.r + 6) ** 2) return; if ((e.hits.juli || 0) > this.t) return; e.hits.juli = this.t + 0.35; this.damage(e, dmg, p, Math.cos(a) * 80, Math.sin(a) * 80); if (X.juli) p.hp = Math.min(p.maxHp, p.hp + 0.35); });
+        this.near(ox, oy, 10, e => { if (d2({ x: ox, y: oy }, e) > (e.r + 6) ** 2) return; if ((e.hits.juli || 0) > this.t) return; e.hits.juli = this.t + 0.25; e.juli = this.t; e.juliBy = p.side; this.damage(e, dmg, p, Math.cos(a) * 80, Math.sin(a) * 80); if (X.juli) p.hp = Math.min(p.maxHp, p.hp + 0.35); });
       }
     } else p.orbs = null;
     if (W.romero) {
       if (!p.dog) p.dog = { x: p.x, y: p.y, bite: 0 };
       const lv = W.romero, dog = p.dog, spd = (110 + lv * 12) * (X.romero ? 1.4 : 1);
-      const tgt = this.nearest(dog, 140);
+      // dinámica 5: con el hilo, Romero va primero al gato que arañó la Juli de la pareja
+      const marked = p.bond ? this.markedFor(p, dog, 140) : null, tgt = marked || this.nearest(dog, 140);
       const gx = tgt ? tgt.x : p.x + 16, gy = tgt ? tgt.y : p.y + 8;
       const dx = gx - dog.x, dy = gy - dog.y, m = Math.hypot(dx, dy) || 1;
       if (m > 4) { dog.x += dx / m * spd * dt; dog.y += dy / m * spd * dt; dog.face = Math.sign(dx) || 1; }
@@ -691,7 +942,8 @@ export class Sim {
       dog.bite -= dt;
       if (tgt && m < tgt.r + 6 && dog.bite <= 0) {
         dog.bite = (0.55 - lv * 0.04) * (X.romero ? 0.7 : 1);
-        const dmg = 14 + lv * 7;
+        let dmg = 14 + lv * 7;
+        if (p.bond && tgt.juli > this.t - COMBO.mark && tgt.juliBy !== p.side) { dmg *= COMBO.juli; this.combo("juli", tgt.x, tgt.y); } // dinámica 5
         if (X.romero) { this.near(tgt.x, tgt.y, 22, e => { if (d2(e, tgt) < 22 * 22) this.damage(e, dmg, p, dx / m * 90, dy / m * 90); }); this.ev.push(["boom", Math.round(tgt.x), Math.round(tgt.y), 14]); }
         else this.damage(tgt, dmg, p, dx / m * 60, dy / m * 60);
         this.ev.push(["bite", tgt.x, tgt.y]);
@@ -705,14 +957,15 @@ export class Sim {
         this.pools.push({ x, y, r: Math.round((17 + lv * 3) * A * (X.mate ? 1.4 : 1)), life: X.mate ? 4.5 : 3, tick: 0, dmg: (5 + lv * 3) * (X.mate ? 1.3 : 1), own: p.side, slow: !!X.mate });
       }
     }
-    if (W.bondi && this.cd(p, "bondi", (9.5 - W.bondi * 1.2) * (X.bondi ? 0.75 : 1))) {
+    if (W.bondi && this.cd(p, "bondi", (9.5 - W.bondi * 1.1) * (X.bondi ? 0.75 : 1))) { // dinámica 7: antes 1,2 por nivel
       const lv = W.bondi, dirs = X.bondi ? [1, -1] : [this.rnd() < 0.5 ? 1 : -1];
       dirs.forEach((dir, i) => this.buses.push({ x: p.x - dir * 220, y: p.y + (X.bondi ? (i ? 20 : -20) : this.rr(-18, 18)), dir, life: 1.8, dmg: (40 + lv * 20) * (X.bondi ? 1.4 : 1), own: p.side, hit: new Set(), h: 14 + lv * 2 }));
       this.ev.push(["bus", p.x, p.y]);
     }
     if (W.rodillo && this.cd(p, "rodillo", 1.7 - W.rodillo * 0.15)) {
-      const lv = W.rodillo, dmg = (12 + lv * 5) * (X.rodillo ? 1.5 : 1);
-      const dirs = X.rodillo ? [[1, 0], [-1, 0], [0, 1], [0, -1]] : [[p.face, 0]];
+      const lv = W.rodillo, dmg = (14 + lv * 5) * (X.rodillo ? 1.5 : 1); // dinámica 7: antes 12 + 5 por nivel
+      // dinámica 7: desde nivel 3 salen dos palos, adelante y atrás
+      const dirs = X.rodillo ? [[1, 0], [-1, 0], [0, 1], [0, -1]] : lv >= 3 ? [[p.face, 0], [-p.face, 0]] : [[p.face, 0]];
       for (const [ux, uy] of dirs) this.proj.push({ k: 1, x: p.x, y: p.y - 4, vx: ux * 190 + (uy ? 0 : 0), vy: uy * 170 + (ux ? this.rr(-20, 20) : 0), dmg, pierce: 999, life: 1.6, own: p.side, back: true, t: 0, hit: new Set() });
     }
     if (W.torta && this.cd(p, "torta", 2.9 - W.torta * 0.3)) {
@@ -744,12 +997,14 @@ export class Sim {
   updateProjectiles(dt) {
     const byside = s => this.players[s];
     for (const b of this.proj) {
+      // dinámica 5: medialuna que cruza un charco de mate de la pareja, con el hilo, sale mojada
+      if (b.k === 0 && !b.wet && this.bond) for (const pl of this.pools) if (pl.own !== b.own && d2(b, pl) < pl.r * pl.r) { b.wet = true; b.dmg *= COMBO.mate; this.combo("mate", b.x, b.y); break; }
       b.life -= dt;
       if (b.back) { b.t += dt; const p = byside(b.own); if (b.t > 0.55 && p) { const dx = p.x - b.x, dy = p.y - b.y, m = Math.hypot(dx, dy) || 1; b.vx += dx / m * 900 * dt; b.vy += dy / m * 900 * dt; const sp = Math.hypot(b.vx, b.vy); if (sp > 230) { b.vx *= 230 / sp; b.vy *= 230 / sp; } if (m < 10) b.life = 0; if (!b.cleared) { b.hit.clear(); b.cleared = true; } } else { b.vx *= Math.pow(0.35, dt); b.vy *= Math.pow(0.35, dt); } }
       b.x += b.vx * dt; b.y += b.vy * dt;
       this.near(b.x, b.y, 12, e => {
         if (b.pierce <= 0 || b.hit.has(e.id)) return;
-        if (d2(b, e) < (e.r + 4) ** 2) { b.hit.add(e.id); b.pierce--; this.damage(e, b.dmg, byside(b.own), b.vx * 0.4, b.vy * 0.4); }
+        if (d2(b, e) < (e.r + 4) ** 2) { b.hit.add(e.id); b.pierce--; if (b.wet) e.slow = Math.max(e.slow, 1.5); this.damage(e, b.dmg, byside(b.own), b.vx * 0.4, b.vy * 0.4); }
       });
       if (b.pierce <= 0) b.life = 0;
     }
@@ -762,7 +1017,12 @@ export class Sim {
       bm.t += dt;
       if (bm.t >= bm.dur && !bm.done) {
         bm.done = true; this.ev.push(["boom", Math.round(bm.x), Math.round(bm.y), bm.r]);
-        this.near(bm.x, bm.y, bm.r, e => { const dx = e.x - bm.x, dy = e.y - bm.y, m = Math.hypot(dx, dy) || 1; if (m < bm.r) this.damage(e, bm.dmg, byside(bm.own), dx / m * 150, dy / m * 150); });
+        this.near(bm.x, bm.y, bm.r, e => {
+          const dx = e.x - bm.x, dy = e.y - bm.y, m = Math.hypot(dx, dy) || 1; if (m >= bm.r) return;
+          // dinámica 5: gato pateado por la pareja que cae en la explosión
+          const kicked = this.bond && e.kick > this.t - COMBO.win && e.kickBy !== bm.own; if (kicked) this.combo("torta", e.x, e.y);
+          this.damage(e, bm.dmg * (kicked ? COMBO.torta : 1), byside(bm.own), dx / m * 150, dy / m * 150);
+        });
         if (bm.cl) for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2 + this.rr(0, 1); extra.push({ x0: bm.x, y0: bm.y, x: bm.x + Math.cos(a) * bm.r * 1.2, y: bm.y + Math.sin(a) * bm.r * 1.2, t: 0, dur: 0.4, r: Math.round(bm.r * 0.7), dmg: bm.dmg * 0.6, own: bm.own }); }
       }
     }
@@ -778,7 +1038,12 @@ export class Sim {
     for (const z of this.zones) {
       z.t += dt;
       if (z.t >= z.dur && !z.done) {
-        z.done = true; this.ev.push(["zone", Math.round(z.x), Math.round(z.y), z.r]);
+        z.done = true;
+        if (z.crate) { // dinámica 3: cajón de la liquidación que cae
+          this.ev.push(["boom", Math.round(z.x), Math.round(z.y), z.r]);
+          this.near(z.x, z.y, z.r + 8, e => { if (this.foe(e) && d2(e, z) < (z.r + e.r) ** 2) this.damage(e, 60, null, 0, 0, true); });
+          const c = this.spawnAt("caja", z.x, z.y); c.liq = true;
+        } else this.ev.push(["zone", Math.round(z.x), Math.round(z.y), z.r]);
         for (const p of this.alive()) if (d2(p, z) < z.r * z.r) this.hurt(p, z.dmg);
       }
     }
@@ -787,6 +1052,7 @@ export class Sim {
   updateGems(dt) {
     const alive = this.alive();
     for (const g of this.gems) {
+      if (g.got) continue; // dinámica 3: robada por un ladrón en este cuadro
       let tgt = null, bd = Infinity;
       for (const p of alive) { const d = d2(p, g); if (d < bd) { bd = d; tgt = p; } }
       if (!tgt) continue;
@@ -842,7 +1108,15 @@ export class Sim {
   rollOffers(p) {
     const pool = [];
     const nW = Object.keys(p.weapons).length, nP = Object.keys(p.passives).length;
-    for (const [id, w] of Object.entries(WEAPONS)) { const lv = p.weapons[id] || 0; if (lv < w.max && (lv > 0 || nW < SLOTS)) pool.push({ kind: "w", id, lv: lv + 1, weight: lv ? 3 : 2 }); }
+    // dinámica 6: roles suaves. Un arma nueva que tu pareja ya tiene pesa la mitad; una que combina con las suyas
+    // (COMBO_OF) pesa x1,6 y la tarjeta lo dice (cb: arma de la pareja, who: quién es).
+    const mate = Object.values(this.players).find(q => q !== p);
+    for (const [id, w] of Object.entries(WEAPONS)) {
+      const lv = p.weapons[id] || 0; if (lv >= w.max || (!lv && nW >= SLOTS)) continue;
+      const o = { kind: "w", id, lv: lv + 1, weight: lv ? 3 : 2 };
+      if (mate) { const c = COMBO_OF[id]; if (c && mate.weapons[c]) { o.cb = c; o.who = mate.char; if (!lv) o.weight *= 1.6; } if (!lv && mate.weapons[id]) o.weight *= 0.5; }
+      pool.push(o);
+    }
     for (const [id, w] of Object.entries(PASSIVES)) {
       const lv = p.passives[id] || 0; if (lv >= w.max || (!lv && nP >= SLOTS)) continue;
       const pair = EVO_OF[id], wants = pair && p.weapons[pair] && !p.passives[id];
@@ -855,7 +1129,7 @@ export class Sim {
       out.push(pool.splice(i, 1)[0]);
     }
     if (!out.length) out.push({ kind: "heal", id: "alfajor", lv: 1 });
-    return out.map(({ kind, id, lv }) => ({ kind, id, lv }));
+    return out.map(({ kind, id, lv, cb, who }) => cb ? { kind, id, lv, cb, who } : { kind, id, lv });
   }
   pick(side, idx) {
     const o = this.offers[side]; if (!o || o.pick !== null) return;
@@ -924,6 +1198,7 @@ export class Sim {
   begin() {
     this.begun = true;
     const G = this.G;
+    if (this.fast) { this.ev.push(["fast"]); for (let i = 0; i < (G.fast.levels || 0); i++) this.gainXp(this.xpNext - this.xp); } // dinámica 4: sube de nivel y elige
     for (const a of G.allies || []) this.addAlly(typeof a === "string" ? a : a.id || a.type, typeof a === "string" ? {} : a);
     if (G.goal && G.goal.kind && G.goal.kind !== "none") this.initGoal(G.goal);
     for (const e of this.atEvents) if (e.at === "start") { e.fired = true; this.doEvent(e); }
@@ -1080,8 +1355,8 @@ export class Sim {
   snapshot() {
     const E = [];
     for (const e of this.enemies) {
-      const tele = (e.st === 1 && (e.type === "saltarin" || e.type === "escupidor" || e.type === "luz"));
-      const f = (e.flash > 0 ? F_FLASH : 0) | (tele ? F_TELE : 0) | (e.elite ? F_ELITE : 0) | (e.st === 2 ? F_RUSH : 0) | (e.slow > 0 ? F_WET : 0);
+      const tele = (e.st === 1 && (e.type === "saltarin" || e.type === "escupidor" || e.type === "luz" || e.type === "sparring"));
+      const f = (e.flash > 0 ? F_FLASH : 0) | (tele ? F_TELE : 0) | (e.elite ? F_ELITE : 0) | (e.st === 2 ? F_RUSH : 0) | (e.slow > 0 ? F_WET : 0) | (e.stun ? F_STUN : 0) | (e.bag ? F_BAG : 0);
       E.push(e.id, ENEMY_ID[e.type], Math.round(e.x), Math.round(e.y), f, tele || e.st === 2 ? Math.round(Math.atan2(e.ay, e.ax) * 10) : 0);
     }
     const B = []; for (const b of this.proj) B.push(b.k, Math.round(b.x), Math.round(b.y), Math.round(Math.atan2(b.vy, b.vx) * 10));
@@ -1117,10 +1392,13 @@ export class Sim {
       to: g.to || null, a: g.ally ? g.ally.id : null, pts: g.pts ? g.pts.slice() : null, ok: g.done ? 1 : 0
     } : null;
     const ev = this.ev; this.ev = [];
-    return { t: Math.round(this.t * 100) / 100, st: this.state, lv: this.level, xp: Math.round(this.xp * 100) / 100, xn: this.xpNext, kl: this.kills, co: this.coins, E, B, H, G, K, U, M, Bu, Z, Hz, ob, tg: this.bond ? 1 : 0, P, boss, of: this.offers, ev, map: this.map, A, dlg, goal, cam: this.camPos(), cap: this.G.chapter || null };
+    return { t: Math.round(this.t * 100) / 100, st: this.state, lv: this.level, xp: Math.round(this.xp * 100) / 100, xn: this.xpNext, kl: this.kills, co: this.coins, E, B, H, G, K, U, M, Bu, Z, Hz, ob, tg: this.bond ? 1 : 0, P, boss, of: this.offers, ev, map: this.map, A, dlg, goal, cam: this.camPos(), cap: this.G.chapter || null,
+      md: this.mid ? [MID_IDS.indexOf(this.mid.k), Math.max(0, Math.ceil(this.mid.end - this.t)), this.stats.mid] : null, // dinámica 3
+      // dinámica 9: al terminar, metas, segunda chance usada, victoria del sin fin y picante (para las monedas de los dos celus)
+      ...(this.state === "over" || this.state === "win" ? { mt: this.G.chapter ? null : this.metas(), sc: this.stats.second, won: this.stats.won, hot: this.hot ? 1 : 0 } : {}) };
   }
 }
 
 // modo historia: el runtime vive en js/historia.js y se instala sobre Sim (pisa begin, initGoal, updateGoal, aliados,
 // diálogo y foto). En el arcade sin aliados ni objetivo no corre nada de eso y no consume azar.
-installStory(Sim, { MAP, MAPS, HAZ, ENEMY, ENEMY_ID, ALLY, WEAPONS, ARCADE, F_FLASH, F_TELE, F_RUSH, F_LEFT, F_DOWN });
+installStory(Sim, { MAP, MAPS, HAZ, ENEMY, ENEMY_ID, ALLY, WEAPONS, ARCADE, MAITENA, F_FLASH, F_TELE, F_RUSH, F_LEFT, F_DOWN, F_STUN });

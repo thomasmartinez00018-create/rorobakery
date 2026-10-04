@@ -1,7 +1,9 @@
 // Render 2D pixel art: mapa pregenerado, entidades ordenadas por altura, luces nocturnas y efectos.
 import { SPR } from "./sprites.js";
-import { MAP, ENEMY_NAME, HAZ_ID, PICKS, ALLY, F_FLASH, F_TELE, F_ELITE, F_RUSH, F_WET, F_LEFT, F_DOWN } from "./engine.js";
+import { MAP, ENEMY_NAME, HAZ_ID, PICKS, ALLY, F_FLASH, F_TELE, F_ELITE, F_RUSH, F_WET, F_LEFT, F_DOWN, F_STUN, F_BAG } from "./engine.js";
 import { THEMES, AMBIENCE, buildMap } from "./maps.js";
+// dinámica 3: tipos del arcade sin sprite propio todavía (se dibujan con el de otro gato más un detalle)
+const ENEMY_ALIAS = { sparring: "negro", ladron: "gato" };
 export { THEMES };
 
 /* ---------- números en pixel ---------- */
@@ -176,12 +178,13 @@ const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 const INK = "#0b0d1c";
 const hexRgb = h => { const n = parseInt(h.slice(1, 7), 16); return [n >> 16, n >> 8 & 255, n & 255]; };
 const FUR = { 0: "#8d8f98", 1: "#2b2833", 2: "#8f96a3", 3: "#e08a3a", 4: "#8d8170", 5: "#8a7a66", 6: "#e0822e", 7: "#efe0c4", 8: "#f4f1ea", 9: "#b7b9c2", 10: "#b07a42",
-  17: "#2b2833", 18: "#8d8170", 19: "#efe5d3", 20: "#2e5fa8" }; // historia: guantes, luz2, canicheBoss, premio
+  17: "#2b2833", 18: "#8d8170", 19: "#efe5d3", 20: "#2e5fa8", // historia: guantes, luz2, canicheBoss, premio
+  30: "#2b2833", 31: "#8d8f98" }; // dinámica: sparring (como el negro), ladrón (como el gato)
 const PICK_SPR = { alfajor: "alfajor", moneda: "moneda", caja: "regalo", iman: "iman", manguera: "manguera" };
 // historia: sprite de cada aliado y de los tipos nuevos (el resto se dibuja con el nombre del motor)
 const ALLY_SPR = { gatalinda: "gataLinda" };
 const STORY_SPR = { guantes: "negro", luz2: "luz" };
-const F_MARK = 128, F_BUFF = 256, F_STUN = 512, F_SURR = 1024, F_CRY = 128, F_RUN = 256, F_KICK = 512; // ver js/historia.js
+const F_MARK = 128, F_BUFF = 256, F_SURR = 1024, F_CRY = 128, F_RUN = 256, F_KICK = 512; // ver js/historia.js (F_STUN y F_BAG vienen de engine.js)
 
 // historia: efectos de los eventos nuevos (devuelven el sonido, si hay)
 const STORY_EV = {
@@ -237,7 +240,10 @@ export class Renderer {
   }
   resize() {
     const W = innerWidth, H = innerHeight, dpr = Math.min(devicePixelRatio || 1, 2);
-    this.s = Math.max(2, Math.round(Math.min(W, H) / 230));
+    // dinámica 10: "ver más" usa una escala basada en 260 en vez de 230; con pantalla de alta densidad admite 1,5
+    // (3 píxeles del celu por píxel del juego: sigue nítido). Sin la opción queda exactamente como antes.
+    if (this.zoomOut) { const k = Math.min(W, H) / 260; this.s = dpr >= 2 ? Math.max(1.5, Math.round(k * 2) / 2) : Math.max(1, Math.round(k)); }
+    else this.s = Math.max(2, Math.round(Math.min(W, H) / 230));
     this.bw = Math.ceil(W / this.s); this.bh = Math.ceil(H / this.s);
     this.buf.width = this.bw; this.buf.height = this.bh; this.lc.width = this.bw; this.lc.height = this.bh;
     this.cv.width = Math.round(W * dpr); this.cv.height = Math.round(H * dpr);
@@ -384,6 +390,7 @@ export class Renderer {
       if (k === "warn") snd.push(e[1] === "tren" ? "horn" : "warn");
       if (k === "pass") { this.shake = Math.max(this.shake, e[1] === "tren" ? 4 : 1); snd.push(e[1] === "tren" ? "train" : "whoosh"); }
       if (k === "obj") snd.push(["objfail", "objok", "obj"][e[1]]);
+      if (k === "combo") { this.rings.push({ x: e[2], y: e[3], r: 26, life: 0.4, c: "#ff8ad8" }); for (let i = 0; i < 6; i++) this.part(e[2], e[3], "#ff8ad8", 50, 0.5); } // dinámica 5
       if (k === "summon") this.rings.push({ x: e[1], y: e[2], r: 40, life: 0.5, c: "#b36aff" });
       if (STORY_EV[k]) { const o = STORY_EV[k].call(this, e); if (o) snd.push(o); }
       if (k === "boss" || k === "bossdown") this.hitStop(3);
@@ -561,6 +568,8 @@ export class Renderer {
     }
     if (V.obj) this.edgeArrow(g, X(V.obj[0]), Y(V.obj[1]) - 6, "#ff5fb0");
     if (V.goal) this.goalArrows(g, V, X, Y);
+    // dinámica 1: un gato que avisa un ataque (!) fuera de cámara y cerca tuyo deja una flecha roja en el borde
+    if (me) for (const e of V.enemies) if ((e.f & F_TELE) && Math.abs(e.x - me.x) + Math.abs(e.y - me.y) < 260) this.edgeArrow(g, X(e.x), Y(e.y) - 8, "#ff4a5a");
     // indicador de la pareja fuera de cámara: insignia con su inicial y una flecha hacia donde está
     for (const side in V.players) { if (side !== V.local) this.mateBadge(g, V.players[side], X, Y); }
     // poca vida: viñeta roja que late como un corazón (más fuerte cuanto menos vida queda)
@@ -603,10 +612,11 @@ export class Renderer {
     g.globalAlpha = 1;
   }
   drawEnemy(g, o, X, Y) {
+    // historia: STORY_SPR (luz2 con el sprite de Luz, guantes con el del negro); dinámica: ENEMY_ALIAS (sparring, ladrón)
     const name0 = ENEMY_NAME[o.type], name = STORY_SPR[name0] || name0, f = o.f, elite = f & F_ELITE;
     if (name0 === "premio") return this.drawPremio(g, o, X, Y);
-    const s = (elite && SPR[name + "E"]) || SPR[name]; if (!s) return;
-    if (name0 !== name || name0 === "canicheBoss" || (f & (F_BUFF | F_MARK | F_STUN | F_SURR))) return this.drawStoryEnemy(g, o, s, name0, X, Y);
+    const al = ENEMY_ALIAS[name], s = (elite && (SPR[name + "E"] || (al && SPR[al + "E"]))) || SPR[name] || (al && SPR[al]); if (!s) return;
+    if (name0 !== name || name0 === "canicheBoss" || (f & (F_BUFF | F_MARK | F_SURR))) return this.drawStoryEnemy(g, o, s, name0, X, Y);
     const x = X(o.x), y = Y(o.y);
     if (name === "caja") { g.fillStyle = "rgba(0,0,0,.3)"; g.fillRect(x - 6, y, 12, 2); g.drawImage(f & F_FLASH ? s.wh[0] : s.f[0], x - (s.w >> 1), y - s.ay); return; }
     const tele = f & F_TELE, rush = f & F_RUSH;
@@ -625,6 +635,12 @@ export class Renderer {
     if (rush) { const a = o.a / 10; g.fillStyle = "rgba(255,255,255,.5)"; for (let i = 1; i < 4; i++) g.fillRect(Math.round(x - Math.cos(a) * i * 5), Math.round(y - 5 - Math.sin(a) * i * 5), 2, 1); }
     g.drawImage(img, x - (s.w >> 1), y - s.ay + (o.type === 2 ? -6 : 0) - (rush && name === "saltarin" ? 4 : 0));
     if (tele) { const hy = y - s.h - 6; g.fillStyle = "#16121c"; g.fillRect(x - 2, hy - 1, 4, 9); g.fillStyle = Math.floor(this.t * 10) % 2 ? "#ff4a5a" : "#ffd24a"; g.fillRect(x - 1, hy, 2, 5); g.fillRect(x - 1, hy + 6, 2, 1); }
+    // dinámica 2: aturdida (Luz frenada por la pareja): estrellitas girando arriba de la cabeza
+    if (f & F_STUN) { g.fillStyle = "#ffd24a"; for (let i = 0; i < 3; i++) { const a = this.t * 6 + i * 2.1; g.fillRect(Math.round(x + Math.cos(a) * 7), Math.round(y - s.h - 2 + Math.sin(a) * 2), 2, 2); } }
+    if (al) { // dinámica 3: guantes rojos del sparring; antifaz del ladrón y la bolsita de gemas
+      if (name === "sparring") { const k = elite ? 2 : 1; g.fillStyle = "#d8283a"; g.fillRect(x - 4 * k, y - 4 * k, 2 * k, 2 * k); g.fillRect(x + 2 * k, y - 4 * k, 2 * k, 2 * k); }
+      else { g.fillStyle = "#16121c"; g.fillRect(x - (s.w >> 1) + 1, y - s.ay + 3, s.w - 2, 1); if (f & F_BAG) { g.fillStyle = "#7ff0ff"; g.fillRect(x - 1, y - s.h - 3, 3, 3); } }
+    }
     if (f & F_WET) { g.fillStyle = "#7fd0ff"; const k = Math.floor(this.t * 6 + o.id) % 3; g.fillRect(x - 3 + k * 2, y - s.h + k, 1, 2); }
   }
   // aliados de la historia con su sprite real (antes un sprite parecido con un rombito verde)
@@ -897,6 +913,8 @@ export class Renderer {
     // "copy" reemplaza el cuadro anterior entero: noche + tinte + viñeta en un solo drawImage
     lg.globalCompositeOperation = "copy"; lg.globalAlpha = 1;
     lg.drawImage(this.nightLayer(), 0, 0);
+    // dinámica 3: apagón, la noche se cierra (alfa 0,9) encima de la capa del mapa
+    if (V.dark) { const a0 = THEMES[this.theme].night[3]; if (a0 < 0.9) { lg.globalCompositeOperation = "source-over"; lg.fillStyle = `rgba(4,4,12,${((0.9 - a0) / (1 - a0)).toFixed(3)})`; lg.fillRect(0, 0, bw, bh); } }
     lg.globalCompositeOperation = "destination-out";
     const hole = (x, y, rad, k = 1) => {
       const X = x - cx, Y = y - cy; if (X < -rad || X > bw + rad || Y < -rad || Y > bh + rad || k <= 0) return;

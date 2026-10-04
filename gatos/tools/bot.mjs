@@ -3,7 +3,10 @@
 // Uso: import { runGame } from "./bot.mjs".
 import { pathToFileURL } from "url";
 import { build } from "./make_inst.mjs";
-const { Sim, MAPS, WEAPONS, PASSIVES, EVO_OF } = await import(pathToFileURL(build()).href);
+const ENG = await import(pathToFileURL(build()).href);
+const { Sim, MAPS, WEAPONS, PASSIVES, EVO_OF } = ENG;
+// calibración: DIFF='{"hp":1.1,"tierHp":0.05}' pisa la curva de dificultad del motor (si la tiene)
+if (process.env.DIFF && ENG.DIFF) Object.assign(ENG.DIFF, JSON.parse(process.env.DIFF));
 export { Sim, MAPS };
 
 // misma lógica de movimiento que bot_new.mjs: huye ponderado de gatos y proyectiles, junta gemas, va al pedido y a la pareja
@@ -30,28 +33,38 @@ export function brain(sim, p, other) {
   if (other) { const d = Math.hypot(other.x - p.x, other.y - p.y) || 1; const w = other.downed ? 3 : d > 60 ? 0.8 : 0; fx += (other.x - p.x) / d * w; fy += (other.y - p.y) / d * w; }
   const b = sim.cfg.b, cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2; const dc = Math.hypot(cx - p.x, cy - p.y) || 1; fx += (cx - p.x) / dc * 0.25 * (dc / 300); fy += (cy - p.y) / dc * 0.25 * (dc / 300);
   const m = Math.hypot(fx, fy); const dir = m > 0.05 ? { x: fx / m, y: fy / m } : { x: 0, y: 0 };
+  // Luz marcando: los que leyeron el cartel se juntan (el hilo de corazón la frena)
+  if (other && !other.downed) for (const e of sim.enemies) if (e.type === "luz" && e.st === 1) { const d = Math.hypot(other.x - p.x, other.y - p.y) || 1; if (d > 30) { fx += (other.x - p.x) / d * 3; fy += (other.y - p.y) / d * 3; } }
   let danger = false; for (const e of sim.enemies) if ((e.st === 1 || e.st === 2) && Math.hypot(e.x - p.x, e.y - p.y) < 40) danger = true;
   return { dir, dash: danger, ult: p.ult >= 1 };
 }
 
-// cómo elige mejoras: "builder" busca evoluciones, "greedy" es la de bot_new.mjs, "random" simula a quien toca sin leer
+// cómo elige mejoras: "builder" busca evoluciones, "greedy" es la de bot_new.mjs, "random" simula a quien toca sin leer,
+// "casual" elige al azar ponderado por el puntaje del builder (lee rápido: casi siempre algo razonable, no siempre lo mejor)
 export function choose(policy, p, opts) {
   if (policy === "random") return Math.floor(Math.random() * opts.length);
   if (policy === "greedy") { let i = opts.findIndex(x => x.kind === "w" && p.weapons[x.id]); if (i < 0) i = opts.findIndex(x => x.kind === "p" && x.id in { guantes: 1, amargo: 1, abrazo: 1, zapatillas: 1 }); return i < 0 ? 0 : i; }
   const nW = Object.keys(p.weapons).length;
   const score = o => {
-    if (o.kind === "w") { if (p.weapons[o.id]) return 10 + (p.passives[WEAPONS[o.id].evo.p] ? 2 : 0); return nW < 4 ? 8 : 3; }
+    // o.cb: la tarjeta dice "Combina con ... de tu pareja" (ofertas con roles); quien lee la tarjeta la prefiere un poco
+    if (o.kind === "w") { if (p.weapons[o.id]) return 10 + (p.passives[WEAPONS[o.id].evo.p] ? 2 : 0); return (nW < 4 ? 8 : 3) + (o.cb ? 2 : 0); }
     if (o.kind === "p") { const pair = EVO_OF[o.id]; if (pair && p.weapons[pair] && !p.passives[o.id]) return 9; if (pair && p.weapons[pair]) return 4; return ["guantes", "abrazo", "vendas"].includes(o.id) ? 3 : 2; }
     return 0;
   };
+  if (policy === "casual") {
+    const w = opts.map(o => Math.max(1, score(o))), tot = w.reduce((a, b) => a + b, 0);
+    let r = Math.random() * tot; for (let i = 0; i < w.length; i++) if ((r -= w[i]) <= 0) return i;
+    return w.length - 1;
+  }
   let bi = 0, bs = -1; opts.forEach((o, i) => { const s = score(o) + Math.random() * 0.1; if (s > bs) { bs = s; bi = i; } });
   return bi;
 }
 
 // exact: usa Math.random como azar del motor (para comparar bit a bit con un motor sin RNG propio)
 // guion: un guion del motor (por ejemplo chapterGuion(capítulo)); en los diálogos el bot toca enseguida
-export function runGame({ map = "plaza", duo = true, policy = "builder", meta = {}, dt = 1 / 30, react = 0, maxT = 600, chars, seed, exact = false, guion } = {}) {
-  const sim = new Sim(map, guion, seed !== undefined ? { seed } : undefined);
+// fast: arranque rápido de revancha (dinámica 4)
+export function runGame({ map = "plaza", duo = true, policy = "builder", meta = {}, dt = 1 / 30, react = 0, maxT = 600, chars, seed, exact = false, guion, fast = false } = {}) {
+  const sim = new Sim(map, guion, seed !== undefined ? { seed, fast } : fast ? { fast } : undefined);
   if (exact && "rnd" in sim) sim.rnd = Math.random;
   const cs = chars || (duo ? ["thomas", "rocio"] : ["thomas"]);
   sim.addPlayer("host", cs[0], meta); if (duo) sim.addPlayer("guest", cs[1], meta);
@@ -94,6 +107,9 @@ export function runGame({ map = "plaza", duo = true, policy = "builder", meta = 
       else if (k === "sync") S.sync++;
       else if (k === "revive") S.revives++;
       else if (k === "warn") S.hz++;
+      else if (k === "lmark") S.marks = (S.marks || 0) + 1;      // dinámica 2: cargas de Luz
+      else if (k === "stun") S.stuns = (S.stuns || 0) + 1;      // dinámica 2: Luz frenada por la pareja
+      else if (k === "second") S.second = Math.round(sim.t);   // dinámica 8
     }
     sim.ev = [];
     // muestreo por ventana
@@ -106,10 +122,14 @@ export function runGame({ map = "plaza", duo = true, policy = "builder", meta = 
   }
   const ps = Object.values(sim.players);
   const tier = MAPS[map].tier;
-  const earned = Math.round((sim.coins + Math.floor(sim.kills / 12) + Math.floor(sim.t / 20) + (sim.state === "win" ? 60 : 0)) * (1 + tier * 0.12));
+  // monedas: con la fórmula del motor si la tiene (dinámica 9), si no la de antes
+  const S2 = sim.stats || {};
+  const earned = ENG.coinsFor ? ENG.coinsFor({ co: sim.coins, kl: sim.kills, t: sim.t, win: sim.state === "win" || !!S2.won, tier, second: !!S2.second, hot: !!sim.hot })
+    : Math.round((sim.coins + Math.floor(sim.kills / 12) + Math.floor(sim.t / 20) + (sim.state === "win" ? 60 : 0)) * (1 + tier * 0.12));
   return {
     map, duo, policy, state: sim.state, t: Math.round(sim.t), lv: sim.level, kills: sim.kills, coinsRun: sim.coins, earned,
     downs, dmgBy, dmgBySide, taken, picks, evos, S, ults: sim._ults || 0, tele: sim._tl || {},
+    stats: sim.stats || null, metas: sim.metas ? sim.metas() : null,
     build: ps.map(p => ({ c: p.char, w: { ...p.weapons }, pa: { ...p.passives }, evo: Object.keys(p.evo) }))
   };
 }

@@ -10,7 +10,17 @@ const int = (v, lo = 0, hi = 1e9) => { v = Math.floor(+v); return Number.isFinit
 const num = (v, lo = 0, hi = 1e9) => { v = +v; return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : lo; };
 
 export function freshProfile() {
-  return { v: PROFILE_V, who: null, coins: 0, up: { hp: 0, dmg: 0, spd: 0, mag: 0 }, maps: { plaza: true }, best: { t: 0, k: 0, lv: 0 }, wins: 0, runs: 0, story: { cap: 0, done: {} }, unlock: {} };
+  return { v: PROFILE_V, who: null, coins: 0, up: { hp: 0, dmg: 0, spd: 0, mag: 0 }, maps: { plaza: true }, best: { t: 0, k: 0, lv: 0 }, wins: 0, runs: 0, story: { cap: 0, done: {} }, unlock: {}, arcade: freshArcade() };
+}
+// dinámica del arcade (claves propias, aparte de los desbloqueos de la historia en `unlock`):
+// alc = alcancía de la pareja (monedas de partidas a dúo, no se gastan); metas[mapa] = [0|1, 0|1, 0|1];
+// win1[mapa] = 1 si ya ganaron ahí (bonus de primera victoria); opt = opciones de la alcancía prendidas en la sala
+export function freshArcade() { return { alc: 0, metas: {}, win1: {}, opt: {} }; }
+function normArcade(a) {
+  const f = freshArcade(); if (!a || typeof a !== "object") return f;
+  const metas = {}; if (a.metas && typeof a.metas === "object") for (const [k, v] of Object.entries(a.metas)) if (Array.isArray(v)) metas[k] = [0, 1, 2].map(i => v[i] ? 1 : 0);
+  const flags = o => { const r = {}; if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) if (v) r[k] = 1; return r; };
+  return { ...f, ...a, alc: int(a.alc), metas, win1: flags(a.win1), opt: flags(a.opt) };
 }
 
 // deja cualquier perfil (v1 o v2) en forma v2 válida, sin perder campos que no conoce
@@ -30,7 +40,8 @@ function normalize(p) {
     best: { t: num(b.t), k: int(b.k), lv: int(b.lv) },
     wins: int(p.wins), runs: int(p.runs),
     story: { ...st, cap: int(st.cap, 0, 99), done },
-    unlock
+    unlock,
+    arcade: normArcade(p.arcade)
   };
 }
 
