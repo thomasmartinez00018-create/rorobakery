@@ -1012,7 +1012,15 @@ export class Sim {
   rollOffers(p) {
     const pool = [];
     const nW = Object.keys(p.weapons).length, nP = Object.keys(p.passives).length;
-    for (const [id, w] of Object.entries(WEAPONS)) { const lv = p.weapons[id] || 0; if (lv < w.max && (lv > 0 || nW < SLOTS)) pool.push({ kind: "w", id, lv: lv + 1, weight: lv ? 3 : 2 }); }
+    // dinámica 6: roles suaves. Un arma nueva que tu pareja ya tiene pesa la mitad; una que combina con las suyas
+    // (COMBO_OF) pesa x1,6 y la tarjeta lo dice (cb: arma de la pareja, who: quién es).
+    const mate = Object.values(this.players).find(q => q !== p);
+    for (const [id, w] of Object.entries(WEAPONS)) {
+      const lv = p.weapons[id] || 0; if (lv >= w.max || (!lv && nW >= SLOTS)) continue;
+      const o = { kind: "w", id, lv: lv + 1, weight: lv ? 3 : 2 };
+      if (mate) { const c = COMBO_OF[id]; if (c && mate.weapons[c]) { o.cb = c; o.who = mate.char; if (!lv) o.weight *= 1.6; } if (!lv && mate.weapons[id]) o.weight *= 0.5; }
+      pool.push(o);
+    }
     for (const [id, w] of Object.entries(PASSIVES)) {
       const lv = p.passives[id] || 0; if (lv >= w.max || (!lv && nP >= SLOTS)) continue;
       const pair = EVO_OF[id], wants = pair && p.weapons[pair] && !p.passives[id];
@@ -1025,7 +1033,7 @@ export class Sim {
       out.push(pool.splice(i, 1)[0]);
     }
     if (!out.length) out.push({ kind: "heal", id: "alfajor", lv: 1 });
-    return out.map(({ kind, id, lv }) => ({ kind, id, lv }));
+    return out.map(({ kind, id, lv, cb, who }) => cb ? { kind, id, lv, cb, who } : { kind, id, lv });
   }
   pick(side, idx) {
     const o = this.offers[side]; if (!o || o.pick !== null) return;

@@ -463,9 +463,11 @@ function renderLevelUp(s, of) {
       const def = o.kind === "w" ? WEAPONS[o.id] : o.kind === "p" ? PASSIVES[o.id] : { name: "Alfajor", desc: "Te recuperás entero." };
       const isNew = o.kind === "w" && !(mine && mine.w && mine.w[o.id]);
       const hint = o.kind === "w" ? `Evoluciona con ${PASSIVES[WEAPONS[o.id].evo.p].name}` : o.kind === "p" && EVO_OF[o.id] ? `Evoluciona ${WEAPONS[EVO_OF[o.id]].name}` : "";
+      // dinámica 6: el arma combina con una de tu pareja
+      const cbHint = o.cb && WEAPONS[o.cb] ? `Combina con ${WEAPONS[o.cb].name} de ${NAME[o.who] || "tu pareja"}` : "";
       return `<button class="opt" data-act="pick" data-i="${i}">
         <img src="${portrait(ICON[o.id] || "gem1", 4)}" alt="">
-        <span class="on"><b>${esc(def.name)}</b>${isNew ? `<em>NUEVA</em>` : `<small>Nivel ${o.lv}</small>`}<span>${esc(def.desc)}</span>${hint ? `<i class="evo">${esc(hint)}</i>` : ""}</span>
+        <span class="on"><b>${esc(def.name)}</b>${isNew ? `<em>NUEVA</em>` : `<small>Nivel ${o.lv}</small>`}<span>${esc(def.desc)}</span>${hint ? `<i class="evo">${esc(hint)}</i>` : ""}${cbHint ? `<i class="evo combo">${esc(cbHint)}</i>` : ""}</span>
         <span class="stars">${"■".repeat(o.lv)}${"□".repeat(Math.max(0, (def.max || 1) - o.lv))}</span></button>`;
     }).join("")}</div></div>`;
   sfx.play("levelup");
