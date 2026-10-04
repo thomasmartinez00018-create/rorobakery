@@ -30,13 +30,13 @@ function view(s, local) {
 }
 buildSprites();
 const cv = document.getElementById("game");
-const R = new Renderer(cv);
+const R = new Renderer(cv); window.__rend = R;
 const orig = { lighting: R.lighting.bind(R) };
-window.bench = async ({ map = "plaza", warmT = 300, frames = 300, abl = "full", stress = false, q = "alta" }) => {
+window.bench = async ({ map = "plaza", warmT = 300, frames = 300, abl = "full", stress = false, quality = "alta" }) => {
   R.setMap(map); if (R.clearFx) R.clearFx(); else { R.parts = []; R.nums = []; R.rings = []; R.slashes = []; }
   // partículas: en render.js nuevo van en un pool fijo (R.fx); en el viejo, en el array R.parts
   const clearParts = () => { if (R.fx) R.fx.clear(); else R.parts.length = 0; }, nParts = () => R.fxCount ? R.fxCount() : R.parts.length;
-  if (R.setQuality) R.setQuality(q);
+  if (R.setQuality) R.setQuality(quality);
   R.lighting = abl === "nolight" ? () => {} : orig.lighting;
   const sim = new Sim(map); sim.addPlayer("host", "thomas"); sim.addPlayer("guest", "rocio");
   for (const s of Object.keys(sim.players)) sim.setView(s, R.bw, R.bh);

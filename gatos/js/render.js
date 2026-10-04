@@ -293,7 +293,7 @@ export class Renderer {
         const col = FUR[e[3]] || "#888", name = ENEMY_NAME[e[3]], big = e[3] === 4 || e[3] === 5;
         // "pop": la silueta se infla y se apaga, y vuela pelo del color del gato
         if (name !== "caja") this.pop(e[1], e[2], SPR[name], big);
-        for (let i = 0; i < (big ? 30 : 12); i++) this.part(e[1], e[2] - 4, col, big ? 110 : 75, 0.5, i % 3 ? 1 : 2, 160);
+        for (let i = 0; i < (big ? 30 : 10); i++) this.part(e[1], e[2] - 4, col, big ? 110 : 75, 0.5, i % 4 ? 1 : 2, 160);
         this.part(e[1], e[2] - 4, "#ffffff", 20, 0.3); snd.push("die");
       }
       if (k === "slash") { this.slashes.push({ x: e[1], y: e[2], f: e[3], r: e[4], both: e[5], life: 0.16 }); this.actAt(e[1], e[2], "slash", e[3]); }
@@ -538,7 +538,9 @@ export class Renderer {
     const fr = tele ? 0 : cyc ? cyc[step] : step;
     const img = (f & F_FLASH) || (tele && Math.floor(this.t * 16) % 2) ? s.wh[fr] : o.fx < 0 ? s.fl[fr] : s.f[fr];
     if (elite) { const k = 1 + Math.sin(this.t * 6 + o.id) * 0.15; g.fillStyle = "rgba(255,210,74,.35)"; g.beginPath(); g.ellipse(x, y, s.w * 0.4 * k, 5 * k, 0, 0, Math.PI * 2); g.fill(); }
-    this.shadow(g, x, y, Math.round(s.w * 0.62), 0.28);
+    // sombra suave solo para jefas y élites (con 200 gatos en pantalla, el rectángulo de siempre es bastante más barato)
+    if (elite || o.type === 4 || o.type === 5) this.shadow(g, x, y, Math.round(s.w * 0.62), 0.28);
+    else { g.fillStyle = "rgba(0,0,0,.28)"; g.fillRect(x - (s.w >> 2), y, s.w >> 1, 2); }
     // la carga de Luz: línea roja que marca por dónde va a pasar
     if (tele && name === "luz") {
       const a = o.a / 10; g.strokeStyle = Math.floor(this.t * 12) % 2 ? "rgba(255,74,90,.8)" : "rgba(255,210,210,.6)"; g.lineWidth = 2; g.setLineDash([4, 3]);
