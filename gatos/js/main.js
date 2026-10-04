@@ -2,7 +2,7 @@
 import { Sim, WEAPONS, PASSIVES, MAPS, EVO_OF } from "./engine.js";
 import { buildSprites, SPR, portrait as portraitPng } from "./sprites.js";
 import { Renderer, THEMES } from "./render.js";
-import { Net, makeCode, cleanCode } from "./net.js";
+import { Net, makeCode, cleanCode, PROTO } from "./net.js";
 import { sfx } from "./sfx.js";
 import { music } from "./music.js";
 import { Input } from "./input.js";
@@ -38,7 +38,8 @@ const input = new Input($("#touch"), $("#joy-base"), $("#joy-knob"));
 const ui = $("#ui"), hud = $("#hud");
 let screen = "title";
 let map = "plaza";
-const me = { side: "host", net: null, code: null, partner: null, partnerMeta: null, connected: false };
+const me = { side: "host", net: null, code: null, partner: null, partnerMeta: null, connected: false, protoBad: false };
+const PROTO_MSG = "Actualizá la página: tu pareja tiene otra versión del juego. Que la actualice también y vuelvan a entrar.";
 let sim = null, snap = null, runId = 0, runOn = false, paused = false, endShown = false, earned = 0;
 let pendingEv = [], sendAcc = 0, lastSeen = 0;
 let guestPos = null, guestInput = { pos: null, face: 1, moving: 0, ult: false, dash: false };
@@ -55,7 +56,7 @@ function netHandlers() {
   return {
     status(st) {
       me.connected = st === "connected";
-      if (st === "connected") { sfx.join(); if (me.side === "guest") me.net.send({ t: "hello", who: prof.who, meta: prof.up }); else sendLobby(); }
+      if (st === "connected") { sfx.join(); me.protoBad = false; if (me.side === "guest") me.net.send({ t: "hello", who: prof.who, meta: prof.up, proto: PROTO }); else sendLobby(); }
       if (st === "busy") { errMsg = "Esa sala ya está llena."; leave(); }
       if (st === "closed") onPartnerLost();
       draw();
@@ -64,13 +65,13 @@ function netHandlers() {
       if (!d || typeof d !== "object") return;
       if (me.side === "host") {
         lastGuestMsg = performance.now(); guestAway = false;
-        if (d.t === "hello") { me.partner = d.who === "rocio" ? "rocio" : "thomas"; me.partnerMeta = cleanMeta(d.meta); sendLobby(); draw(); }
+        if (d.t === "hello") { me.partner = d.who === "rocio" ? "rocio" : "thomas"; me.partnerMeta = cleanMeta(d.meta); me.protoBad = d.proto !== PROTO; sendLobby(); draw(); }
         if (d.t === "in" && sim && isFinite(d.vw) && isFinite(d.vh)) sim.setView("guest", +d.vw, +d.vh);
         if (d.t === "in" && d.pos && isFinite(d.pos.x) && isFinite(d.pos.y)) { guestInput.pos = { x: +d.pos.x, y: +d.pos.y }; guestInput.face = d.face < 0 ? -1 : 1; guestInput.moving = d.moving ? 1 : 0; if (d.ult) guestInput.ult = true; if (d.dash) guestInput.dash = true; }
         if (d.t === "pick" && sim) sim.pick("guest", d.i | 0);
       } else {
-        if (d.t === "lobby") { me.partner = d.who; map = THEMES[d.map] ? d.map : "plaza"; draw(); }
-        if (d.t === "start") startRun(d.map, d.chars);
+        if (d.t === "lobby") { me.partner = d.who; map = THEMES[d.map] ? d.map : "plaza"; me.protoBad = d.proto !== PROTO; draw(); }
+        if (d.t === "start" && !me.protoBad) startRun(d.map, d.chars);
         if (d.t === "s" && d.s) { snap = d.s; lastSeen = performance.now(); onEvents(snap.ev || []); }
         if (d.t === "menu") { endRun(); toMenu(); }
       }
@@ -78,7 +79,7 @@ function netHandlers() {
   };
 }
 const cleanMeta = m => { const o = {}; for (const k of ["hp", "dmg", "spd", "mag"]) o[k] = Math.max(0, Math.min(5, (m && m[k]) | 0)); return o; };
-function sendLobby() { if (me.net && me.net.connected) me.net.send({ t: "lobby", who: prof.who, map }); }
+function sendLobby() { if (me.net && me.net.connected) me.net.send({ t: "lobby", who: prof.who, map, proto: PROTO }); }
 
 async function createRoom() {
   busyMsg = "Creando sala"; errMsg = null; draw();
@@ -95,9 +96,9 @@ async function joinRoom(code) {
   busyMsg = "Entrando a la sala " + code; errMsg = null; draw();
   me.side = "guest"; me.net = new Net(netHandlers());
   try { await me.net.join(code); me.code = code; busyMsg = null; screen = "room"; draw(); }
-  catch (e) { busyMsg = null; me.side = "host"; errMsg = e && e.type === "peer-unavailable" ? `No existe la sala ${code}.` : "No se pudo conectar."; draw(); }
+  catch (e) { busyMsg = null; me.side = "host"; errMsg = e && e.type === "peer-unavailable" ? `No existe la sala ${code}. Si tu pareja la creó con otra versión, actualicen la página los dos.` : "No se pudo conectar."; draw(); }
 }
-function leave() { if (me.net) me.net.close(); me.net = null; me.connected = false; me.side = "host"; me.partner = null; }
+function leave() { if (me.net) me.net.close(); me.net = null; me.connected = false; me.side = "host"; me.partner = null; me.protoBad = false; }
 // se cortó la conexión: el anfitrión sigue solo; el invitado vuelve al menú
 function onPartnerLost() {
   const who = (me.partner && NAME[me.partner]) || "tu pareja";
@@ -113,6 +114,7 @@ function onPartnerLost() {
 
 /* ---------------- partida ---------------- */
 function hostStart() {
+  if (me.protoBad && me.net && me.net.connected) { draw(); return; }
   const chars = { host: prof.who, guest: me.connected ? me.partner : null };
   if (me.net && me.net.connected) me.net.send({ t: "start", map, chars });
   startRun(map, chars);
@@ -424,10 +426,11 @@ function draw(result) {
       ${solo ? `<p class="label">Jugás solo como ${NAME[prof.who]}</p>` : `
       <p class="label">Sala</p><div class="code">${esc(me.code || "")}</div>
       ${me.side === "host" ? `<button class="mid ghost" data-act="share">Compartir link</button>` : ""}
-      <p class="status ${me.connected ? "on" : ""}">${me.connected ? `Conectados: ${NAME[prof.who]} y ${partner || "…"}` : "Esperando que entre tu pareja…"}</p>`}
+      <p class="status ${me.connected ? "on" : ""}">${me.connected ? `Conectados: ${NAME[prof.who]} y ${partner || "…"}` : "Esperando que entre tu pareja…"}</p>
+      ${me.connected && me.protoBad ? `<p class="err">${esc(PROTO_MSG)}</p>` : ""}`}
       <p class="label">Mapa</p>
       ${me.side === "host" ? mapCards() : `<p class="mapname">${THEMES[map].name}</p>`}
-      ${me.side === "host" ? `<button class="big" data-act="go" ${solo || me.connected ? "" : "disabled"}>¡A jugar!</button>` : `<p class="busy">Esperando que arranque ${partner || "tu pareja"}</p>`}
+      ${me.side === "host" ? `<button class="big" data-act="go" ${solo || (me.connected && !me.protoBad) ? "" : "disabled"}>¡A jugar!</button>` : me.protoBad ? "" : `<p class="busy">Esperando que arranque ${partner || "tu pareja"}</p>`}
       <button class="link" data-act="back">Volver</button>
     </section>`;
     return;
