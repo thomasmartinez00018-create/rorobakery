@@ -1,5 +1,5 @@
 // Gatos de Linda — menús, salas, bucle de juego y sincronización entre los dos celus.
-import { Sim, WEAPONS, PASSIVES, MAPS, EVO_OF } from "./engine.js";
+import { Sim, WEAPONS, PASSIVES, MAPS, EVO_OF, chapterGuion } from "./engine.js";
 import { buildSprites, SPR, portrait as portraitPng } from "./sprites.js";
 import { Renderer, THEMES } from "./render.js";
 import { Net, makeCode, cleanCode, PROTO } from "./net.js";
@@ -44,6 +44,25 @@ let guestPos = null, guestInput = { pos: null, face: 1, moving: 0, ult: false, d
 const smooth = new Map();
 let bannerT = 0, errMsg = null, busyMsg = null, joinDraft = cleanCode(new URLSearchParams(location.search).get("sala") || "");
 
+/* ---------------- modo historia (js/story.js, si existe; si no, nada cambia) ---------------- */
+const QS = new URLSearchParams(location.search);
+let STORY = null, capSel = null, curCap = null;
+import("./story.js").then(m => {
+  // el story.js de ejemplo solo aparece con ?debug o ?historia, así no se ve en el juego publicado
+  if (m.EXAMPLE && !QS.has("debug") && !QS.has("historia")) return;
+  if (Array.isArray(m.CHAPTERS) && m.CHAPTERS.length) { STORY = m; if (screen !== "run") draw(); }
+}).catch(() => {});
+const chapter = id => (STORY && id && STORY.CHAPTERS.find(c => c.id === id)) || null;
+const speaker = who => (STORY && STORY.SPEAKERS && STORY.SPEAKERS[who] && STORY.SPEAKERS[who].name) || NAME[who] || who || "";
+// capítulo terminado: lo guardan los dos celus (el anfitrión además le avisa al invitado con {t:"cap"})
+function saveChapter(id, n) {
+  if (!id) return;
+  const ch = chapter(id), num = ch ? ch.n | 0 : n | 0;
+  prof.story.done[id] = true; prof.story.cap = Math.max(prof.story.cap | 0, num + 1);
+  for (const u of (ch && ch.unlock) || []) prof.unlock[u] = true;
+  save();
+}
+
 /* ---------------- demo de fondo en el menú ---------------- */
 let demo = null;
 function newDemo() { demo = new Sim(map); demo.addPlayer("host", prof.who || "thomas"); demo.t = 40; }
@@ -67,9 +86,11 @@ function netHandlers() {
         if (d.t === "in" && sim && isFinite(d.vw) && isFinite(d.vh)) sim.setView("guest", +d.vw, +d.vh);
         if (d.t === "in" && d.pos && isFinite(d.pos.x) && isFinite(d.pos.y)) { guestInput.pos = { x: +d.pos.x, y: +d.pos.y }; guestInput.face = d.face < 0 ? -1 : 1; guestInput.moving = d.moving ? 1 : 0; if (d.ult) guestInput.ult = true; if (d.dash) guestInput.dash = true; }
         if (d.t === "pick" && sim) sim.pick("guest", d.i | 0);
+        if (d.t === "adv" && sim) sim.adv("guest", !!d.skip);
       } else {
-        if (d.t === "lobby") { me.partner = d.who; map = THEMES[d.map] ? d.map : "plaza"; me.protoBad = d.proto !== PROTO; draw(); }
-        if (d.t === "start" && !me.protoBad) startRun(d.map, d.chars);
+        if (d.t === "lobby") { me.partner = d.who; map = THEMES[d.map] ? d.map : "plaza"; capSel = d.cap || null; me.protoBad = d.proto !== PROTO; draw(); }
+        if (d.t === "start" && !me.protoBad) startRun(d.map, d.chars, d.cap);
+        if (d.t === "cap") saveChapter(d.id, d.n);
         if (d.t === "s" && d.s) { snap = d.s; lastSeen = performance.now(); onEvents(snap.ev || []); }
         if (d.t === "menu") { endRun(); toMenu(); }
       }
@@ -77,7 +98,7 @@ function netHandlers() {
   };
 }
 const cleanMeta = m => { const o = {}; for (const k of ["hp", "dmg", "spd", "mag"]) o[k] = Math.max(0, Math.min(5, (m && m[k]) | 0)); return o; };
-function sendLobby() { if (me.net && me.net.connected) me.net.send({ t: "lobby", who: prof.who, map, proto: PROTO }); }
+function sendLobby() { if (me.net && me.net.connected) me.net.send({ t: "lobby", who: prof.who, map, cap: capSel, proto: PROTO }); }
 
 async function createRoom() {
   busyMsg = "Creando sala"; errMsg = null; draw();
@@ -114,21 +135,23 @@ function onPartnerLost() {
 function hostStart() {
   if (me.protoBad && me.net && me.net.connected) { draw(); return; }
   const chars = { host: prof.who, guest: me.connected ? me.partner : null };
-  if (me.net && me.net.connected) me.net.send({ t: "start", map, chars });
-  startRun(map, chars);
+  if (me.net && me.net.connected) me.net.send({ t: "start", map, chars, cap: capSel });
+  startRun(map, chars, capSel);
 }
-function startRun(m, chars) {
+function startRun(m, chars, cap) {
   map = THEMES[m] ? m : "plaza"; R.setMap(map);
+  curCap = chapter(cap); if (cap && !curCap) curCap = { id: cap, n: 0, title: "Capítulo", sub: "" };
   runId++; runOn = true; paused = false; lastGuestMsg = lastSeen = performance.now(); guestAway = false; endShown = false; earned = 0; smooth.clear(); pendingEv = [];
   if (me.side === "host") {
-    sim = new Sim(map);
+    sim = new Sim(map, chapter(cap) ? chapterGuion(curCap) : undefined);
     sim.addPlayer("host", chars.host || "thomas", prof.up);
     if (chars.guest) sim.addPlayer("guest", chars.guest, me.partnerMeta || {});
     snap = sim.snapshot();
   } else { sim = null; snap = null; guestPos = null; }
   screen = "run"; music.set("run"); sfx.play("levelup");
   hintT = prof.runs < 3 ? 9 : 0; keepAwake(true); setPaused(false);
-  banner(THEMES[map].name, map === "bielli" && (chars.host === "thomas" || chars.guest === "thomas") ? "Thomas juega de local: +15% de daño" : "Aguanten hasta que aparezca Linda");
+  if (curCap) banner(curCap.title || THEMES[map].name, curCap.sub || "");
+  else banner(THEMES[map].name, map === "bielli" && (chars.host === "thomas" || chars.guest === "thomas") ? "Thomas juega de local: +15% de daño" : "Aguanten hasta que aparezca Linda");
   draw();
 }
 function endRun() { runOn = false; sim = null; keepAwake(false); setPaused(false); }
@@ -236,6 +259,7 @@ function heartbeat(now) {
   if (quiet < 4000) return;
   if (!guestAway) { guestAway = true; banner(`${(me.partner && NAME[me.partner]) || "Tu pareja"} no responde`, "Si tarda, sus mejoras se eligen solas"); }
   const of = sim.offers.guest; if (sim.state === "levelup" && of && of.pick === null) sim.pick("guest", 0);
+  if (sim.state === "dialog" && sim.dlg && !sim.dlg.ready.guest) sim.adv("guest");
   if (quiet > 25000 && me.net) { me.net.dropConn(); me.connected = false; onPartnerLost(); }
 }
 
@@ -253,8 +277,15 @@ function view(s, local, override) {
     let fx = 1, bd = Infinity; for (const p of pl) { const d = Math.abs(p.x - x) + Math.abs(p.y - y); if (d < bd) { bd = d; fx = p.x < x ? -1 : 1; } }
     enemies.push({ id, type: E[i + 1], x, y, f: E[i + 4], a: E[i + 5], fx });
   }
+  // aliados (modo historia): mismo formato plano que los gatos
+  const allies = [], A = s.A || [];
+  for (let i = 0; i < A.length; i += 6) {
+    const id = A[i], tx = A[i + 2], ty = A[i + 3]; let x = tx, y = ty;
+    if (guest) { const o = smooth.get(id); if (o) { o.x += (tx - o.x) * 0.35; o.y += (ty - o.y) * 0.35; x = o.x; y = o.y; } else smooth.set(id, { x, y }); seen.add(id); }
+    allies.push({ id, type: A[i + 1], x, y, f: A[i + 4], a: A[i + 5] });
+  }
   if (guest && smooth.size > seen.size + 50) for (const k of smooth.keys()) if (!seen.has(k)) smooth.delete(k);
-  return { local, players, enemies, proj: s.B, eproj: s.H, gems: s.G, pickups: s.K, pools: s.U, bombs: s.M, buses: s.Bu, zones: s.Z || [], hz: s.Hz || [], obj: s.ob, bond: s.tg };
+  return { local, players, enemies, allies, proj: s.B, eproj: s.H, gems: s.G, pickups: s.K, pools: s.U, bombs: s.M, buses: s.Bu, zones: s.Z || [], hz: s.Hz || [], obj: s.ob, bond: s.tg, goal: s.goal || null, cam: s.cam || null };
 }
 
 /* ---------------- HUD ---------------- */
@@ -272,6 +303,7 @@ function buildHud() {
     <button class="pausebtn" data-act="pause" aria-label="Pausa">II</button>
     <button class="ultbtn" id="ultbtn" data-act="ult"><span id="ultlabel">COMBO</span></button>
     <button class="dashbtn" id="dashbtn" data-act="dash"><span>ESQUIVE</span></button>
+    <div class="goalhud" id="goalhud" hidden></div>
     <div class="objhud" id="objhud" hidden><img src="${portrait("regalo", 3)}" alt=""><span id="objtxt"></span></div>
     <div class="build" id="build"></div>
     <div class="movehint" id="movehint" hidden>${TOUCH ? "Apoyá el dedo en cualquier lado y arrastrá para moverte.<br>Las armas atacan solas." : "Movete con WASD o las flechas.<br>Shift esquiva · Espacio tira el combo."}</div>
@@ -318,6 +350,9 @@ function updateHud(dt) {
   if (hintT > 0) { hintT -= dt; const v = input.vec; if (v.x || v.y) hintT = Math.min(hintT, 0.6); show("movehint", !(hintT <= 0 || s.st !== "run")); } else show("movehint", false);
   show("objhud", !!s.ob);
   if (s.ob) put("objtxt", "objtxt", `Pedido de Roro's ${s.ob[2]}% · ${s.ob[3]}s`, (e, v) => { e.textContent = v; });
+  show("goalhud", !!s.goal);
+  if (s.goal) put("goaltxt", "goalhud", goalText(s.goal), (e, v) => { e.textContent = v; });
+  renderDialog(s.st === "dialog" ? s.dlg : null);
   show("bossbar", !!s.boss);
   if (s.boss) {
     put("bossname", "bossname", s.boss.n === "luz" ? "LUZ" : "LINDA, LA JEFA", (e, v) => { e.textContent = v; });
@@ -334,6 +369,46 @@ function updateHud(dt) {
     resultTimer += dt;
     if (resultTimer > 1.6) { endShown = true; resultTimer = 0; finish(s); }
   }
+}
+// texto del objetivo para el HUD (en infinitivo: sirve jugando solo o de a dos)
+function goalText(g) {
+  const lb = g.lb ? " " + g.lb : "", l = g.l !== null && g.l !== undefined ? ` · ${g.l} s` : "", hp = g.hp !== null && g.hp !== undefined ? ` · ${g.hp}%` : "";
+  switch (g.k) {
+    case "survive": return `Aguantar${lb}${l}`;
+    case "defend": return `Defender${lb || " el lugar"}${hp}${l}`;
+    case "protect": return `Proteger${lb}${hp}${l}`;
+    case "escort": return `Llevar${lb} · ${g.p}%${hp}`;
+    case "trains": return `Trenes: ${g.n} de ${g.of}`;
+    case "track": return `Rastros: ${g.n} de ${g.of}${l}`;
+    case "boss": return `Derrotar${lb || " a la jefa"}`;
+    case "reach": return `Llegar${lb} · ${g.p}%`;
+    default: return g.lb || "";
+  }
+}
+// caja de diálogo: retrato, nombre y texto que se escribe solo. Tocar completa el texto y después avanza.
+let dlgKey = "", dlgShown = 0, dlgFull = false;
+function renderDialog(d) {
+  const box = $("#dialog"); if (!box) return;
+  if (!d) { if (dlgKey) { dlgKey = ""; box.hidden = true; box.innerHTML = ""; } return; }
+  const key = d.id + ":" + d.i;
+  if (key !== dlgKey) {
+    for (const k of [...hudVals.keys()]) if (k.startsWith("dlg")) hudVals.delete(k);
+    dlgKey = key; dlgShown = performance.now(); dlgFull = false;
+    const img = portrait(d.who, 4);
+    box.hidden = false;
+    box.innerHTML = `<div class="dlgbox" data-act="adv">${img ? `<img src="${img}" alt="">` : ""}<div class="dlgtxt"><b>${esc(speaker(d.who))}</b><p id="dlgtext"></p><div class="dlgfoot"><span id="dlgwait"></span><button class="skip" data-act="advskip">Saltar</button></div></div></div>`;
+  }
+  const n = dlgFull ? d.text.length : Math.min(d.text.length, Math.floor((performance.now() - dlgShown) / 28));
+  if (n >= d.text.length) dlgFull = true;
+  put("dlgtext", "dlgtext", n, (e, v) => { e.textContent = d.text.slice(0, v); });
+  const mine = d.r && d.r[me.side];
+  put("dlgwait", "dlgwait", mine ? "Esperando a tu pareja…" : `${d.i + 1} de ${d.n} · tocá para seguir`, (e, v) => { e.className = mine ? "wait" : ""; e.textContent = v; });
+}
+function advDialog(skip) {
+  if (!snap || snap.st !== "dialog" || performance.now() - dlgShown < 300) return;
+  if (!skip && !dlgFull) { dlgFull = true; return; }
+  if (me.side === "host") { if (sim) sim.adv("host", skip); }
+  else if (me.net) me.net.send({ t: "adv", skip: skip ? 1 : 0 });
 }
 function buildIcons(p) {
   const pip = (lv, max) => `<i>${"▮".repeat(lv)}${"▯".repeat(Math.max(0, max - lv))}</i>`;
@@ -363,16 +438,17 @@ function renderLevelUp(s, of) {
 }
 function finish(s) {
   const win = s.st === "win";
+  if (win && s.cap) { saveChapter(s.cap); if (me.side === "host" && me.net && me.net.connected) me.net.send({ t: "cap", id: s.cap, n: curCap ? curCap.n | 0 : 0 }); }
   earned = Math.round((s.co + Math.floor(s.kl / 12) + Math.floor(s.t / 20) + (win ? 60 : 0)) * (1 + (MAPS[s.map] || MAPS.plaza).tier * 0.12));
   prof.coins += earned; prof.runs++;
-  if (win) prof.wins++;
-  const newBest = s.t > prof.best.t;
-  prof.best = { t: Math.max(prof.best.t, s.t), k: Math.max(prof.best.k, s.kl), lv: Math.max(prof.best.lv, s.lv) };
+  // los récords y las victorias son del arcade; un capítulo solo guarda su progreso
+  const newBest = !s.cap && s.t > prof.best.t;
+  if (!s.cap) { if (win) prof.wins++; prof.best = { t: Math.max(prof.best.t, s.t), k: Math.max(prof.best.k, s.kl), lv: Math.max(prof.best.lv, s.lv) }; }
   save();
   hud.hidden = true; $("#levelup").hidden = true; keepAwake(false); setPaused(false);
   screen = "results"; music.set("menu");
   const duel = Object.values(s.P).map(p => ({ c: p.c, k: p.k })).sort((a, b) => b.k - a.k);
-  draw({ win, t: s.t, k: s.kl, lv: s.lv, newBest, duel });
+  draw({ win, t: s.t, k: s.kl, lv: s.lv, newBest, duel, cap: curCap });
 }
 
 /* ---------------- pantallas ---------------- */
@@ -386,6 +462,11 @@ function mapCards() {
     const tier = MAPS[k].tier;
     return `<button class="mapc ${map === k ? "on" : ""} ${owned ? "" : "locked"}" data-act="${owned ? "map" : "buymap"}" data-v="${k}"><div><b>${t.name}</b><small>${"★".repeat(tier + 1)}${"☆".repeat(5 - tier)} · ${esc(t.sub)}${tier ? ` · +${tier * 12}%${COIN()}` : ""}</small></div><span>${owned ? (map === k ? "Elegido" : "Elegir") : `${MAP_COST[k]}${COIN()}`}</span></button>`;
   }).join("")}</div>`;
+}
+// capítulos de la historia (por ahora una lista simple; la pantalla de la historia es de la fase siguiente)
+function capCards() {
+  const list = [{ id: "", title: "Arcade", sub: "Aguantar hasta que aparezca Linda" }, ...STORY.CHAPTERS];
+  return `<p class="label">Historia</p><div class="maps caps">${list.map(c => { const on = (capSel || "") === c.id; return `<button class="mapc ${on ? "on" : ""}" data-act="cap" data-v="${esc(c.id)}"><div><b>${esc(c.title || c.id)}</b><small>${esc(c.sub || "")}${prof.story.done[c.id] ? " · hecho" : ""}</small></div><span>${on ? "Elegido" : "Elegir"}</span></button>`; }).join("")}</div>`;
 }
 let lastResult = null;
 function draw(result) {
@@ -427,7 +508,8 @@ function draw(result) {
       <p class="status ${me.connected ? "on" : ""}">${me.connected ? `Conectados: ${NAME[prof.who]} y ${partner || "…"}` : "Esperando que entre tu pareja…"}</p>
       ${me.connected && me.protoBad ? `<p class="err">${esc(PROTO_MSG)}</p>` : ""}`}
       <p class="label">Mapa</p>
-      ${me.side === "host" ? mapCards() : `<p class="mapname">${THEMES[map].name}</p>`}
+      ${me.side === "host" && !capSel ? mapCards() : `<p class="mapname">${THEMES[map].name}${capSel ? " · " + esc((chapter(capSel) || { title: "Capítulo" }).title) : ""}</p>`}
+      ${me.side === "host" && STORY ? capCards() : ""}
       ${me.side === "host" ? `<button class="big" data-act="go" ${solo || (me.connected && !me.protoBad) ? "" : "disabled"}>¡A jugar!</button>` : me.protoBad ? "" : `<p class="busy">Esperando que arranque ${partner || "tu pareja"}</p>`}
       <button class="link" data-act="back">Volver</button>
     </section>`;
@@ -436,8 +518,9 @@ function draw(result) {
   if (screen === "results") {
     const r = lastResult;
     ui.innerHTML = `<section class="panel results">
-      <h2 class="${r.win ? "win" : "lose"}">${r.win ? "¡Derrotaron a Linda!" : "Los gatos ganaron"}</h2>
-      <p>${r.win ? "El barrio está a salvo. Por esta noche." : "Linda se quedó con el barrio. Revancha."}</p>
+      ${r.cap ? `<h2 class="${r.win ? "win" : "lose"}">${r.win ? "¡Capítulo superado!" : "No salió"}</h2>
+      <p>${esc(r.cap.title || "")}${r.win ? "" : ". Prueben de nuevo."}</p>` : `<h2 class="${r.win ? "win" : "lose"}">${r.win ? "¡Derrotaron a Linda!" : "Los gatos ganaron"}</h2>
+      <p>${r.win ? "El barrio está a salvo. Por esta noche." : "Linda se quedó con el barrio. Revancha."}</p>`}
       ${r.duel && r.duel.length > 1 ? `<div class="duel">${r.duel.map((d, i) => `<div class="${i === 0 ? "mvp" : ""}"><img src="${portrait(d.c, 3)}" alt=""><b>${NAME[d.c]}</b><span>${d.k} gatos</span>${i === 0 ? "<em>MVP</em>" : ""}</div>`).join("")}</div>` : ""}
       <div class="stats"><div><b>${fmt(r.t)}</b><span>tiempo${r.newBest ? " · ¡récord!" : ""}</span></div><div><b>${r.k}</b><span>gatos</span></div><div><b>${r.lv}</b><span>nivel</span></div><div><b>+${earned}</b><span>monedas</span></div></div>
       ${me.side === "host" ? `<button class="big" data-act="again">Revancha</button>` : `<p class="busy">Esperando la revancha</p>`}
@@ -535,6 +618,9 @@ document.addEventListener("click", e => {
     case "share": { const url = location.origin + location.pathname + "?sala=" + me.code; if (navigator.share) navigator.share({ title: "Gatos de Linda", text: "Entrá a mi sala", url }).catch(() => {}); else navigator.clipboard && navigator.clipboard.writeText(url).then(() => banner("Link copiado", "")).catch(() => {}); break; }
     case "pick": { if (performance.now() - lvShownAt < 350) break; const i = +b.dataset.i; if (me.side === "host") sim && sim.pick("host", i); else me.net && me.net.send({ t: "pick", i }); sfx.play("coin"); break; }
 
+    case "cap": { capSel = v || null; const ch = chapter(capSel); if (ch && THEMES[ch.map]) { map = ch.map; R.setMap(map); newDemo(); } sendLobby(); draw(); break; }
+    case "adv": advDialog(false); break;
+    case "advskip": advDialog(true); break;
     case "pause": setPaused(true); break;
     case "resume": setPaused(false); break;
     case "snd": sfx.toggle(); if (screen === "run") paintToggles(); else draw(); break;
@@ -555,7 +641,11 @@ document.addEventListener("pointerdown", e => {
   if (b.dataset.act === "ult") { if (me.side === "host") input.ultPressed = true; else guestUlt = true; }
   else { if (me.side === "host") hostDash = true; else guestDash = true; }
 });
-addEventListener("keydown", e => { if (screen === "run" && (e.key === "Escape" || e.key === "p" || e.key === "P")) { const pm = $("#pausemenu"); setPaused(!!(pm && pm.hidden)); } });
+addEventListener("keydown", e => {
+  if (screen === "run" && (e.key === "Escape" || e.key === "p" || e.key === "P")) { const pm = $("#pausemenu"); setPaused(!!(pm && pm.hidden)); }
+  // en un diálogo, Espacio o Enter avanzan (y no se gasta el combo)
+  if (screen === "run" && snap && snap.st === "dialog" && (e.key === " " || e.key === "Enter")) { input.ultPressed = false; advDialog(false); e.preventDefault(); }
+});
 document.addEventListener("input", e => { if (e.target.id === "code") { joinDraft = cleanCode(e.target.value); e.target.value = joinDraft; } if (e.target.id === "bkin") { backupIn = e.target.value; backupPending = null; } });
 
 if (new URLSearchParams(location.search).has("debug")) window.__g = () => ({ sim, snap, me, R, prof, input });

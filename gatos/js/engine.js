@@ -36,11 +36,25 @@ export const ENEMY = {
   gatito:    { hp: 4, spd: 50, dmg: 3, r: 4, xp: 1 },
   caja:      { hp: 24, spd: 0, dmg: 0, r: 7, xp: 0, obj: true }
 };
-export const ENEMY_ID = { gato: 0, negro: 1, paloma: 2, gordo: 3, luz: 4, linda: 5, saltarin: 6, escupidor: 7, madre: 8, gatito: 9, caja: 10 };
+// el número de cada tipo viaja en la foto: los nuevos (enemigos o aliados) van SIEMPRE al final, nunca se reordena
+export const ENEMY_ID = { gato: 0, negro: 1, paloma: 2, gordo: 3, luz: 4, linda: 5, saltarin: 6, escupidor: 7, madre: 8, gatito: 9, caja: 10,
+  carmelo: 11, corbata: 12, gatalinda: 13, maitena: 14, chema: 15, amanda: 16 };
 export const ENEMY_NAME = Object.keys(ENEMY_ID);
 export const PICKS = ["alfajor", "moneda", "caja", "iman", "manguera"];
+// aliados del modo historia. kind: cómo se dibujan mientras no tengan sprite propio (humano, perro, gato).
+// act: follow (sigue al jugador más cercano o escolta y pega pataditas), ram (embiste en línea con aviso), area (golpe en área con aviso).
+// Valores iniciales: los ajusta la fase del modo historia. Un capítulo puede pisar cualquiera ({ id, hp, dmg, ... }).
+export const ALLY = {
+  carmelo:   { kind: "humano", act: "follow", hp: 60, spd: 46, r: 5, dmg: 8, cd: 0.9, reach: 16, kb: 140 },
+  corbata:   { kind: "perro", act: "ram", hp: 140, spd: 64, r: 7, dmg: 40, cd: 2.4, reach: 150, kb: 220 },
+  gatalinda: { kind: "gato", act: "area", hp: 400, spd: 40, r: 9, dmg: 26, cd: 2.6, reach: 48, kb: 160 },
+  maitena:   { kind: "humano", act: "area", hp: 200, spd: 70, r: 6, dmg: 60, cd: 1.6, reach: 56, kb: 260, inv: true },
+  chema:     { kind: "gato", act: "follow", hp: 40, spd: 60, r: 4, dmg: 0, cd: 9, reach: 0, kb: 0 },
+  amanda:    { kind: "gato", act: "follow", hp: 40, spd: 60, r: 4, dmg: 0, cd: 9, reach: 0, kb: 0 }
+};
 // banderas de cada gato en la foto del estado
-export const F_FLASH = 1, F_TELE = 2, F_ELITE = 4, F_RUSH = 8, F_WET = 16;
+export const F_FLASH = 1, F_TELE = 2, F_ELITE = 4, F_RUSH = 8, F_WET = 16, F_LEFT = 32, F_DOWN = 64; // LEFT y DOWN: solo aliados
+export const GOALS = ["none", "survive", "defend", "escort", "trains", "track", "boss", "reach", "protect"];
 
 export const WEAPONS = {
   patada:    { name: "Patada Bielli", desc: "Patada en arco hacia donde mirás. Nivel 3: a los dos lados.", max: 5, evo: { p: "guantes", name: "Patada Voladora", desc: "Patada giratoria enorme que tira a todos para atrás." } },
@@ -116,6 +130,20 @@ export function makeGuion(g) {
   return out;
 }
 
+// capítulo de js/story.js → guion. Lo que el capítulo no dice queda como en el arcade, salvo jefes, hordas,
+// pedidos y élites, que en la historia arrancan apagados (cada capítulo pone los suyos).
+export function chapterGuion(ch) {
+  const pick = (k, dflt) => ch[k] !== undefined ? ch[k] : dflt;
+  return makeGuion({
+    id: ch.id, chapter: ch.id,
+    bosses: pick("bosses", []), hordes: pick("hordes", []), orders: pick("orders", []), elites: pick("elites", null),
+    crates: pick("crates", ARCADE.crates), pigeons: pick("pigeons", ARCADE.pigeons), hazards: pick("hazards", true),
+    rate: pick("rate", ARCADE.rate), mix: pick("mix", ARCADE.mix), events: pick("events", []),
+    goal: ch.goal || { kind: "none" }, dur: ch.dur, allies: ch.allies || [], intro: ch.intro || [], outro: ch.outro || [],
+    win: pick("win", {}), lose: pick("lose", { allDown: true })
+  });
+}
+
 export class Sim {
   constructor(map = "plaza", guion, opts = {}) {
     this.map = MAPS[map] ? map : "plaza"; this.cfg = MAPS[this.map];
@@ -131,7 +159,11 @@ export class Sim {
     this.hordes = G.hordes.slice().sort((a, b) => a.t - b.t); this.calm = 0;
     this.eliteNext = G.elites ? G.elites.first : 9e9; this.crateNext = G.crates ? G.crates.first : 9e9; this.hzNext = (G.hazards && this.cfg.hzFirst) || 9e9;
     this.objTimes = G.orders.slice().sort((a, b) => a - b); this.obj = null;
-    this.events = G.events.filter(e => e.t !== undefined).sort((a, b) => a.t - b.t); this.evIdx = 0;
+    // copias: el mismo capítulo se puede jugar de nuevo (revancha) sin arrastrar qué eventos ya pasaron
+    this.events = G.events.filter(e => e.t !== undefined).map(e => ({ ...e })).sort((a, b) => a.t - b.t); this.evIdx = 0;
+    this.atEvents = G.events.filter(e => e.at !== undefined && e.t === undefined).map(e => ({ ...e }));
+    // modo historia: diálogo, objetivo, aliados y cámara (en el arcade quedan vacíos y no tocan el azar)
+    this.dlg = null; this.dlgQueue = []; this.dlgN = 0; this.goal = null; this.allies = []; this.lures = []; this.cam = null; this.begun = false;
     this.bond = false;
     this.view = {};                 // medio ancho y medio alto de lo que ve cada jugador, para que los gatos aparezcan fuera de cámara
     this.grid = new Map();
@@ -160,6 +192,7 @@ export class Sim {
       delete this.offers[side];
       if (this.state === "levelup" && Object.values(this.offers).every(x => x.pick !== null)) { this.offers = {}; this.state = "run"; if (this.pendingLevels) this.openLevelUp(); }
     }
+    if (this.dlg) { delete this.dlg.ready[side]; this.checkDialog(); }
     if (this.alive().length === 0 && this.state !== "win") { this.state = "over"; this.ev.push(["over"]); }
   }
   setView(side, w, h) { this.view[side] = { hw: clamp(w / 2, 60, 400), hh: clamp(h / 2, 60, 400) }; }
@@ -172,6 +205,8 @@ export class Sim {
 
   /* ---------- paso de simulación ---------- */
   step(dt, input) {
+    if (!this.begun) this.begin();
+    if (this.state === "dialog") { this.dialogTick(dt); return; }
     if (this.state !== "run") return;
     this.t += dt;
     const ps = Object.values(this.players), [bx0, by0, bx1, by1] = this.cfg.b;
@@ -210,12 +245,19 @@ export class Sim {
     this.updateProjectiles(dt);
     this.updateHazards(dt);
     this.updateObjective(dt);
+    if (this.allies.length) this.updateAllies(dt);
+    if (this.goal) this.updateGoal(dt);
     this.updateGems(dt);
     this.cleanup();
     if (this.G.lose.allDown !== false && this.alive().length === 0) { this.state = "over"; this.ev.push(["over"]); }
     else if (this.G.win.t && this.t >= this.G.win.t && this.state === "run") this.win();
   }
-  win() { if (this.state === "win" || this.state === "over") return; this.state = "win"; this.ev.push(["win"]); }
+  // ganar: si el guion tiene epílogo (outro), primero se muestra y la victoria llega al cerrarlo
+  win() {
+    if (this.state === "win" || this.state === "over") return;
+    if (this.G.outro && this.G.outro.length && !this.outroShown) { this.outroShown = true; this.openDialog(this.G.outro, { id: "outro", then: "win", force: true }); return; }
+    this.state = "win"; this.ev.push(["win"]);
+  }
   lose() { if (this.state === "win" || this.state === "over") return; this.state = "over"; this.ev.push(["over"]); }
 
   // eventos con hora del guion: { t, do: "elite" | "horde" | "boss" | "order" | "spawn" | "calm" | "win" | "lose", ... }
@@ -232,6 +274,11 @@ export class Sim {
       case "calm": this.calm = e.s || 4; break;
       case "win": this.win(); break;
       case "lose": this.lose(); break;
+      case "dialog": this.openDialog(e.lines, { id: e.id, auto: e.auto }); break;
+      case "ally": this.addAlly(e.type, e); break;
+      case "allyout": this.allies = this.allies.filter(a => a.type !== e.type); break;
+      case "cam": this.cam = e.off ? null : { x: e.x, y: e.y, ally: e.ally, until: e.s ? this.t + e.s : null }; break;
+      case "goal": this.initGoal(e.goal || e); break;
       default: if (this.onEvent) this.onEvent(e);
     }
   }
@@ -408,7 +455,7 @@ export class Sim {
       if (z.warn > 0) { z.warn -= dt; if (z.warn <= 0) this.ev.push(["pass", z.k]); continue; }
       z.x += z.dir * z.spd * dt;
       const a = z.dir > 0 ? z.x - z.len : z.x, b = z.dir > 0 ? z.x : z.x + z.len;
-      if ((z.dir > 0 && a > MAP + 20) || (z.dir < 0 && b < -20)) { z.done = true; continue; }
+      if ((z.dir > 0 && a > MAP + 20) || (z.dir < 0 && b < -20)) { z.done = true; if (this.goal && this.goal.k === "trains") this.goal.n++; continue; }
       for (const p of this.alive()) if (!z.ph.has(p.side) && p.x > a && p.x < b && Math.abs(p.y - z.y) < z.h + 4) { z.ph.add(p.side); p.inv = 0; this.hurt(p, z.dmg, true); }
       this.near((a + b) / 2, z.y, Math.max(z.len / 2, z.h) + 8, e => {
         if (z.hit.has(e.id) || e.x < a || e.x > b || Math.abs(e.y - z.y) > z.h + e.r) return;
@@ -448,6 +495,8 @@ export class Sim {
       if (ENEMY[e.type].obj) continue;
       let tgt = null, bd = Infinity;
       for (const p of alive) { const d = d2(p, e); if (d < bd) { bd = d; tgt = p; } }
+      // lo que hay que defender o proteger atrae a los gatos (pesa como si estuviera más cerca)
+      for (const L of this.lures) { if (L.down) continue; const d = d2(L, e) * 0.5; if (d < bd) { bd = d; tgt = L; } }
       if (!tgt) continue;
       let dx = tgt.x - e.x, dy = tgt.y - e.y; const m = Math.hypot(dx, dy) || 1; dx /= m; dy /= m;
       let spd = e.spd * (e.slow > 0 ? 0.5 : 1);
@@ -486,6 +535,8 @@ export class Sim {
         const rr = e.r + 5;
         if (p.inv <= 0 && d2(p, e) < rr * rr) this.hurt(p, dmg);
       }
+      if (this.allies.length) for (const a of this.allies) { if (a.down || a.cfg.inv || a.inv > 0) continue; const rr = e.r + a.r; if (d2(a, e) < rr * rr) this.hurtAlly(a, dmg); }
+      if (this.lures.length) for (const L of this.lures) { if (!L.tgt || L.down || L.inv > 0) continue; const rr = e.r + L.r; if (d2(L, e) < rr * rr) { L.hp = Math.max(0, L.hp - dmg); L.inv = 0.25; L.flash = 0.12; this.ev.push(["goalhit", Math.round(L.x), Math.round(L.y)]); } }
     }
   }
   // Linda cambia de táctica a medida que pierde vida
@@ -804,6 +855,7 @@ export class Sim {
       this.offers = {};
       this.state = "run";
       if (this.pendingLevels) this.openLevelUp();
+      else if (this.dlgQueue.length) this.openDialog(null);
     }
   }
   applyPassive(p, id) {
@@ -852,6 +904,163 @@ export class Sim {
     if (xp) this.gainXp(xp);
   }
 
+  /* ---------- modo historia: arranque, diálogos, aliados, objetivos y cámara ---------- */
+  // se llama en el primer step (ya con los jugadores): aliados, objetivo, eventos "start" e intro
+  begin() {
+    this.begun = true;
+    const G = this.G;
+    for (const a of G.allies || []) this.addAlly(typeof a === "string" ? a : a.id || a.type, typeof a === "string" ? {} : a);
+    if (G.goal && G.goal.kind && G.goal.kind !== "none") this.initGoal(G.goal);
+    for (const e of this.atEvents) if (e.at === "start") { e.fired = true; this.doEvent(e); }
+    if (G.intro && G.intro.length) this.openDialog(G.intro, { id: "intro" });
+  }
+
+  /* diálogo: congela la partida como la subida de nivel. Avanza cuando tocan los dos (adv) o solo a los `auto`
+     segundos por línea; si los dos tocan "Saltar" se cierra entero. lines: [{ who, text, cam: [x, y] }] */
+  openDialog(lines, opts = {}) {
+    if (lines && lines.length) this.dlgQueue.push({ id: opts.id || "d" + ++this.dlgN, lines, i: 0, t: 0, auto: opts.auto || 6, ready: {}, then: opts.then || null });
+    if (this.dlg || !this.dlgQueue.length) return;
+    if (this.state !== "run" && !(opts.force && this.state !== "over")) return; // si están eligiendo mejora, espera
+    this.dlg = this.dlgQueue.shift(); this.state = "dialog";
+    this.ev.push(["dialog", this.dlg.id]);
+  }
+  adv(side, skip = false) {
+    const d = this.dlg; if (this.state !== "dialog" || !d || !this.players[side]) return;
+    d.ready[side] = skip ? 2 : 1;
+    this.checkDialog();
+  }
+  checkDialog() {
+    const d = this.dlg; if (!d) return;
+    const sides = Object.keys(this.players);
+    if (!sides.every(s => d.ready[s])) return;
+    if (sides.every(s => d.ready[s] === 2)) this.closeDialog(); else this.nextLine();
+  }
+  nextLine() { const d = this.dlg; d.i++; d.t = 0; d.ready = {}; if (d.i >= d.lines.length) this.closeDialog(); }
+  closeDialog() {
+    const d = this.dlg; this.dlg = null; this.state = "run";
+    this.ev.push(["dialogend", d.id]);
+    if (d.then === "win") { this.state = "win"; this.ev.push(["win"]); return; }
+    if (this.pendingLevels) this.openLevelUp();
+    else if (this.dlgQueue.length) this.openDialog(null);
+  }
+  dialogTick(dt) { const d = this.dlg; if (!d) { this.state = "run"; return; } d.t += dt; if (d.t >= d.auto) this.nextLine(); }
+
+  /* aliados: lista A de la foto, mismo formato plano que E */
+  addAlly(type, o = {}) {
+    const base = ALLY[type]; if (!base) return null;
+    const cfg = { ...base, ...o };
+    const ps = this.alive(), lead = ps[0] || Object.values(this.players)[0];
+    const x = o.x !== undefined ? o.x : lead ? lead.x + this.rr(-20, 20) : MAP / 2, y = o.y !== undefined ? o.y : lead ? lead.y + this.rr(10, 24) : MAP / 2;
+    const a = { id: this.nextId++, type, cfg, x, y, hp: cfg.hp, maxHp: cfg.hp, r: cfg.r, inv: 1, flash: 0, cd: 1, st: 0, stT: 0, ax: 0, ay: 0, face: 1, down: false, downT: 0, hit: new Set() };
+    this.allies.push(a);
+    this.ev.push(["ally", a.id, type]);
+    return a;
+  }
+  hurtAlly(a, dmg) {
+    a.hp -= dmg; a.inv = 0.6; a.flash = 0.12;
+    if (a.hp <= 0) { a.hp = 0; a.down = true; a.downT = 10; a.st = 0; this.ev.push(["allydown", a.id, Math.round(a.x), Math.round(a.y)]); }
+  }
+  updateAllies(dt) {
+    const alive = this.alive(), [bx0, by0, bx1, by1] = this.cfg.b, g = this.goal;
+    for (const a of this.allies) {
+      const C = a.cfg;
+      a.inv = Math.max(0, a.inv - dt); a.flash = Math.max(0, a.flash - dt); a.cd -= dt;
+      if (a.down) {
+        // los que no son el objetivo se levantan solos a los 10 s
+        const key = g && (g.k === "escort" || g.k === "protect") && g.ally === a;
+        if (!key && (a.downT -= dt) <= 0) { a.down = false; a.hp = a.maxHp * 0.5; a.inv = 2; this.ev.push(["allyup", a.id, Math.round(a.x), Math.round(a.y)]); }
+        continue;
+      }
+      let lead = null, ld = Infinity; for (const p of alive) { const d = d2(p, a); if (d < ld) { ld = d; lead = p; } }
+      // hacia dónde camina: escolta (si hay alguien cerca va al destino), si no sigue al jugador más cercano
+      let gx = a.x, gy = a.y, spd = C.spd;
+      if (g && g.k === "escort" && g.ally === a) {
+        if (lead && ld < 70 * 70) { gx = g.to[0]; gy = g.to[1]; } else if (lead) { gx = lead.x; gy = lead.y; spd *= 0.6; }
+      } else if (lead && ld > 28 * 28) { gx = lead.x; gy = lead.y; }
+      if (C.act === "ram") {
+        if (a.st === 1) { spd = 0; if ((a.stT -= dt) <= 0) { a.st = 2; a.stT = 0.45; a.hit.clear(); } }
+        else if (a.st === 2) {
+          a.x += a.ax * 260 * dt; a.y += a.ay * 260 * dt; spd = 0;
+          this.near(a.x, a.y, 16, e => { if (a.hit.has(e.id) || !this.foe(e) || d2(a, e) > (e.r + a.r + 4) ** 2) return; a.hit.add(e.id); this.damage(e, C.dmg, null, a.ax * C.kb, a.ay * C.kb); });
+          if ((a.stT -= dt) <= 0) { a.st = 0; a.cd = C.cd; }
+        } else if (a.cd <= 0) { const t = this.nearest(a, C.reach); if (t) { const m = Math.hypot(t.x - a.x, t.y - a.y) || 1; a.ax = (t.x - a.x) / m; a.ay = (t.y - a.y) / m; a.st = 1; a.stT = 0.4; this.ev.push(["charge", Math.round(a.x), Math.round(a.y)]); } }
+      } else if (C.act === "area") {
+        if (a.st === 1) { spd = 0; if ((a.stT -= dt) <= 0) { a.st = 0; a.cd = C.cd; this.ev.push(["boom", Math.round(a.x), Math.round(a.y), C.reach]); this.near(a.x, a.y, C.reach, e => { const dx = e.x - a.x, dy = e.y - a.y, m = Math.hypot(dx, dy) || 1; if (m < C.reach) this.damage(e, C.dmg, null, dx / m * C.kb, dy / m * C.kb); }); } }
+        else if (a.cd <= 0 && this.nearest(a, C.reach * 0.8)) { a.st = 1; a.stT = 0.5; }
+      } else if (C.dmg > 0 && a.cd <= 0) {
+        // pataditas a lo que se acerca
+        const t = this.nearest(a, C.reach + 10);
+        if (t && d2(a, t) < (C.reach + t.r) ** 2) { a.cd = C.cd; const dx = t.x - a.x, dy = t.y - a.y, m = Math.hypot(dx, dy) || 1; this.damage(t, C.dmg, null, dx / m * C.kb, dy / m * C.kb); this.ev.push(["slash", Math.round(a.x), Math.round(a.y), dx < 0 ? -1 : 1, C.reach, 0]); }
+      }
+      const dx = gx - a.x, dy = gy - a.y, m = Math.hypot(dx, dy);
+      if (spd > 0 && m > 2) { const k = Math.min(m, spd * dt) / m; a.x += dx * k; a.y += dy * k; if (Math.abs(dx) > 1) a.face = Math.sign(dx); }
+      a.x = clamp(a.x, bx0, bx1); a.y = clamp(a.y, by0, by1);
+    }
+  }
+
+  /* objetivos genéricos (GOALS). Su estado viaja en la foto como `goal`. Al cumplirse se gana (con epílogo si hay);
+     defend/protect/escort se pierden si cae lo que se cuida; track con dur se pierde si se acaba el tiempo. */
+  initGoal(def) {
+    const k = def.kind || "none", b = this.cfg.b, cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2;
+    const g = this.goal = { k, def, p: 0, n: 0, of: def.n || 0, t0: this.t, dur: def.dur || this.G.dur || 0, lb: def.label || "" };
+    if (k === "defend") { const T = { x: def.x !== undefined ? def.x : cx, y: def.y !== undefined ? def.y : cy, r: def.r || 22, hp: def.hp || 300, maxHp: def.hp || 300, inv: 0, flash: 0, tgt: true }; g.target = T; this.lures.push(T); }
+    if (k === "protect" || k === "escort") {
+      g.ally = (def.ally && this.allies.find(a => a.type === def.ally)) || (def.ally ? this.addAlly(def.ally, def.allyOpts || {}) : this.allies[0]) || null;
+      if (k === "protect" && g.ally) this.lures.push(g.ally);
+    }
+    if (k === "escort" || k === "reach") { g.to = def.to || [cx, b[1] + 60]; g.r = def.r || 24; g.d0 = Math.max(1, this.goalDist()); }
+    if (k === "trains") g.of = def.n || 3;
+    if (k === "track") {
+      g.of = def.n || (def.pts ? def.pts.length : 3);
+      g.pts = def.pts ? def.pts.map(q => q.slice()) : Array.from({ length: g.of }, () => { const q = this.ringPos(this.rr(220, 380)); return [Math.round(clamp(q.x, b[0] + 30, b[2] - 30)), Math.round(clamp(q.y, b[1] + 30, b[3] - 30))]; });
+    }
+    if (k === "boss") { this.G = { ...this.G, win: { kill: def.type } }; this.bosses.splice(this.bossIdx, 0, { t: this.t + (def.t || 3), type: def.type, dist: def.dist || 160, calm: 3, phase: def.phase }); }
+    this.ev.push(["goal", k]);
+  }
+  goalDist() {
+    const g = this.goal;
+    if (g.k === "escort") return g.ally ? Math.hypot(g.ally.x - g.to[0], g.ally.y - g.to[1]) : 0;
+    let m = Infinity; for (const p of this.alive()) m = Math.min(m, Math.hypot(p.x - g.to[0], p.y - g.to[1]));
+    return m === Infinity ? g.d0 || 0 : m;
+  }
+  updateGoal(dt) {
+    const g = this.goal; if (g.done) return;
+    const el = this.t - g.t0, T = g.target;
+    if (T) { T.inv = Math.max(0, T.inv - dt); T.flash = Math.max(0, T.flash - dt); }
+    switch (g.k) {
+      case "survive": g.p = g.dur ? el / g.dur : 0; if (g.dur && el >= g.dur) return this.goalDone(); break;
+      case "defend": g.p = g.dur ? el / g.dur : 0; if (T.hp <= 0) return this.goalFail(); if (g.dur && el >= g.dur) return this.goalDone(); break;
+      case "protect": g.p = g.dur ? el / g.dur : 0; if (!g.ally || g.ally.down) return this.goalFail(); if (g.dur && el >= g.dur) return this.goalDone(); break;
+      case "escort": case "reach": {
+        if (g.k === "escort" && (!g.ally || g.ally.down)) return this.goalFail();
+        const d = this.goalDist(); g.p = Math.max(g.p, 1 - d / g.d0);
+        if (d < g.r) return this.goalDone();
+        break;
+      }
+      case "trains": g.p = g.n / g.of; if (g.n >= g.of) return this.goalDone(); break;
+      case "track":
+        for (const p of this.alive()) for (let i = g.pts.length - 1; i >= 0; i--) { const q = g.pts[i]; if ((p.x - q[0]) ** 2 + (p.y - q[1]) ** 2 < 16 * 16) { g.pts.splice(i, 1); g.n++; this.ev.push(["track", q[0], q[1], p.side]); } }
+        g.p = g.n / g.of;
+        if (g.n >= g.of) return this.goalDone();
+        if (g.dur && el >= g.dur) return this.goalFail();
+        break;
+      case "boss": { const B = this.bossRef && this.bossRef.type === g.def.type ? this.bossRef : null; if (B) g.p = Math.max(g.p, 1 - B.hp / B.maxHp); break; }
+    }
+    // hitos del objetivo: eventos { at: "goal50", ... } cuando el progreso pasa ese porcentaje
+    for (const e of this.atEvents) if (!e.fired && /^goal\d+$/.test(e.at) && g.p * 100 >= +e.at.slice(4)) { e.fired = true; this.doEvent(e); }
+  }
+  goalDone() { const g = this.goal; g.done = true; g.p = 1; this.ev.push(["goaldone", g.k]); this.win(); }
+  goalFail() { const g = this.goal; g.done = true; this.ev.push(["goalfail", g.k]); this.lose(); }
+  // a dónde mira la cámara: línea de diálogo con cam, evento cam (punto o aliado) o null (sigue al jugador)
+  camPos() {
+    const line = this.dlg && this.dlg.lines[this.dlg.i];
+    if (line && line.cam) return [Math.round(line.cam[0]), Math.round(line.cam[1])];
+    const c = this.cam; if (!c) return null;
+    if (c.until !== null && c.until !== undefined && this.t > c.until) { this.cam = null; return null; }
+    if (c.ally) { const a = this.allies.find(q => q.type === c.ally); return a ? [Math.round(a.x), Math.round(a.y)] : null; }
+    return [Math.round(c.x), Math.round(c.y)];
+  }
+
   /* ---------- foto del estado para dibujar (local o por red) ---------- */
   snapshot() {
     const E = [];
@@ -876,7 +1085,23 @@ export class Sim {
       o: p.orbs || null, dg: p.dog ? [Math.round(p.dog.x), Math.round(p.dog.y), p.dog.face || 1] : null, w: p.weapons, pa: p.passives, e: p.evo, k: p.kills, dc: Math.round(p.dashCd * 10) / 10
     };
     const boss = this.bossRef && this.bossRef.hp > 0 ? { n: this.bossRef.type, hp: this.bossRef.hp / this.bossRef.maxHp } : null;
+    // modo historia (en el arcade van vacíos o null: un invitado viejo los ignora)
+    const A = [];
+    for (const a of this.allies) {
+      const tele = a.st === 1, f = (a.flash > 0 ? F_FLASH : 0) | (tele ? F_TELE : 0) | (a.st === 2 ? F_RUSH : 0) | (a.face < 0 ? F_LEFT : 0) | (a.down ? F_DOWN : 0);
+      A.push(a.id, ENEMY_ID[a.type], Math.round(a.x), Math.round(a.y), f, tele || a.st === 2 ? Math.round(Math.atan2(a.ay, a.ax) * 10) : 0);
+    }
+    const d = this.dlg, line = d && d.lines[d.i];
+    const dlg = d ? { id: d.id, i: d.i, n: d.lines.length, who: line.who || "", text: line.text || "", r: d.ready, t: Math.round(d.t * 10) / 10, a: d.auto } : null;
+    const g = this.goal;
+    const goal = g && g.k !== "none" ? {
+      k: g.k, p: Math.round(Math.min(1, g.p) * 100), lb: g.lb, n: g.n, of: g.of,
+      l: g.dur && (g.k === "survive" || g.k === "defend" || g.k === "protect" || g.k === "track") ? Math.max(0, Math.ceil(g.dur - (this.t - g.t0))) : null,
+      hp: g.target ? Math.round(g.target.hp / g.target.maxHp * 100) : g.ally ? Math.round(g.ally.hp / g.ally.maxHp * 100) : null,
+      x: g.target ? Math.round(g.target.x) : null, y: g.target ? Math.round(g.target.y) : null, r: g.target ? g.target.r : g.r || null, fl: g.target && g.target.flash > 0 ? 1 : 0,
+      to: g.to || null, a: g.ally ? g.ally.id : null, pts: g.pts ? g.pts.slice() : null, ok: g.done ? 1 : 0
+    } : null;
     const ev = this.ev; this.ev = [];
-    return { t: Math.round(this.t * 100) / 100, st: this.state, lv: this.level, xp: Math.round(this.xp * 100) / 100, xn: this.xpNext, kl: this.kills, co: this.coins, E, B, H, G, K, U, M, Bu, Z, Hz, ob, tg: this.bond ? 1 : 0, P, boss, of: this.offers, ev, map: this.map };
+    return { t: Math.round(this.t * 100) / 100, st: this.state, lv: this.level, xp: Math.round(this.xp * 100) / 100, xn: this.xpNext, kl: this.kills, co: this.coins, E, B, H, G, K, U, M, Bu, Z, Hz, ob, tg: this.bond ? 1 : 0, P, boss, of: this.offers, ev, map: this.map, A, dlg, goal, cam: this.camPos(), cap: this.G.chapter || null };
   }
 }

@@ -179,4 +179,20 @@ body[data-screen="run"] #ui{display:none}
 /* en celu parado, la barra del jefe va debajo de las dos barras de vida */
 @media (max-width:560px){.bossbar{top:calc(126px + env(safe-area-inset-top,0px));width:min(300px,80vw)}}
 @media (prefers-reduced-motion:reduce){.panel,.lvbox,.press,.ultbtn.ready,.banner.on{animation:none}.banner.on{opacity:1}}
-.backup textarea{width:100%;box-sizing:border-box;resize:none;font:13px/1.3 ui-monospace,Menlo,monospace;word-break:break-all;background:#0e1126;border:3px solid var(--line);clip-path:var(--notch);color:var(--amber);padding:8px}
+.backup textarea{user-select:text;-webkit-user-select:text;width:100%;box-sizing:border-box;resize:none;font:13px/1.3 ui-monospace,Menlo,monospace;word-break:break-all;background:#0e1126;border:3px solid var(--line);clip-path:var(--notch);color:var(--amber);padding:8px}
+/* ---------- modo historia: diálogo y objetivo ---------- */
+#dialog{position:fixed;left:0;right:0;bottom:0;z-index:7;display:flex;justify-content:center;padding:12px 12px calc(16px + env(safe-area-inset-bottom,0px));background:linear-gradient(transparent,rgba(6,7,18,.7))}
+#dialog[hidden]{display:none}
+.dlgbox{width:min(520px,100%);display:flex;gap:10px;align-items:flex-start;background:var(--panel);border:4px solid var(--line);clip-path:var(--notch);padding:10px 12px;cursor:pointer;animation:rise .2s steps(4) both}
+.dlgbox img{width:64px;height:64px;image-rendering:pixelated;background:#161a36;clip-path:var(--notch);flex:none}
+.dlgbox .dlgtxt{flex:1;min-width:0}
+.dlgbox b{display:block;font:26px/1 var(--display);color:var(--amber)}
+.dlgbox p{margin:4px 0 0;font-size:16px;min-height:3.9em}
+.dlgfoot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:4px;font:18px var(--data);color:var(--muted)}
+.dlgfoot .wait{color:var(--amber)}
+.dlgfoot .skip{font:18px var(--data);color:var(--muted);text-decoration:underline;padding:2px 6px}
+.goalhud{position:absolute;left:50%;transform:translateX(-50%);top:calc(96px + env(safe-area-inset-top,0px));background:rgba(11,13,28,.78);border:3px solid var(--green);clip-path:var(--notch);padding:4px 10px;font:20px/1 var(--data);color:var(--text);white-space:nowrap}
+.goalhud[hidden]{display:none}
+.caps .mapc small{display:block}
+@media (max-width:560px){.goalhud{top:calc(160px + env(safe-area-inset-top,0px))}}
+@media (prefers-reduced-motion:reduce){.dlgbox{animation:none}}

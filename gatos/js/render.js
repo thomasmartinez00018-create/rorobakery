@@ -1,6 +1,6 @@
 // Render 2D pixel art: mapa pregenerado, entidades ordenadas por altura, luces nocturnas y efectos.
 import { SPR } from "./sprites.js";
-import { MAP, ENEMY_NAME, HAZ_ID, PICKS, F_FLASH, F_TELE, F_ELITE, F_RUSH, F_WET } from "./engine.js";
+import { MAP, ENEMY_NAME, HAZ_ID, PICKS, ALLY, F_FLASH, F_TELE, F_ELITE, F_RUSH, F_WET, F_LEFT, F_DOWN } from "./engine.js";
 import { THEMES, buildMap } from "./maps.js";
 export { THEMES };
 
@@ -56,6 +56,8 @@ function tintSprite(col, r) {
 
 const FUR = { 0: "#8d8f98", 1: "#2b2833", 2: "#8f96a3", 3: "#e08a3a", 4: "#8d8170", 5: "#8a7a66", 6: "#e0822e", 7: "#efe0c4", 8: "#f4f1ea", 9: "#b7b9c2", 10: "#b07a42" };
 const PICK_SPR = { alfajor: "alfajor", moneda: "moneda", caja: "regalo", iman: "iman", manguera: "manguera" };
+// aliados sin sprite propio todavía: se dibujan con uno parecido (y una marca verde arriba)
+const ALLY_FALLBACK = { humano: "alumno", perro: "romero", gato: "gato" };
 
 export class Renderer {
   constructor(canvas) {
@@ -126,7 +128,9 @@ export class Renderer {
     this.t += dt;
     const g = this.bg, bw = this.bw, bh = this.bh;
     const me = V.players[V.local] || Object.values(V.players)[0];
-    if (me) { this.cam.x += (me.x - this.cam.x) * Math.min(1, dt * 8); this.cam.y += (me.y - 8 - this.cam.y) * Math.min(1, dt * 8); }
+    // V.cam (opcional, lo manda el anfitrión): la cámara va a ese punto más despacio; si no viene, sigue al jugador
+    const focus = V.cam ? { x: V.cam[0], y: V.cam[1] } : me, ck = Math.min(1, dt * (V.cam ? 4 : 8));
+    if (focus) { this.cam.x += (focus.x - this.cam.x) * ck; this.cam.y += (focus.y - 8 - this.cam.y) * ck; }
     this.shake = Math.max(0, this.shake - dt * 14);
     let cx = Math.round(Math.max(bw / 2, Math.min(MAP - bw / 2, this.cam.x)) - bw / 2 + (Math.random() - 0.5) * this.shake);
     let cy = Math.round(Math.max(bh / 2, Math.min(MAP - bh / 2, this.cam.y)) - bh / 2 + (Math.random() - 0.5) * this.shake);
@@ -168,6 +172,8 @@ export class Renderer {
       const s = SPR.regalo; g.drawImage(s.f[0], X(x) - (s.w >> 1), Y(y) - s.h - Math.round(Math.abs(Math.sin(this.t * 3)) * 3));
       drawNum(g, left, X(x), Y(y) - 22, left <= 8 ? "#ff4a5a" : "#ffffff");
     }
+    // objetivo del modo historia
+    if (V.goal) this.drawGoalFloor(g, V, X, Y, vis);
     // marca donde cae la torta
     for (const [x0, y0, x, y, pct, done, r] of V.bombs) if (!done) { g.strokeStyle = "rgba(255,80,80,.7)"; g.lineWidth = 1; g.beginPath(); g.ellipse(X(x) + 0.5, Y(y) + 0.5, r * 0.5, r * 0.3, 0, 0, Math.PI * 2); g.stroke(); }
 
@@ -176,6 +182,7 @@ export class Renderer {
     for (const p of this.map.props) if (vis(p.x, p.y, 50)) list.push([p.y, 0, p]);
     for (const z of V.hz) if (!z[5]) list.push([z[1] + z[2], 6, z]);
     for (const e of V.enemies) if (vis(e.x, e.y)) list.push([e.y, 1, e]);
+    if (V.allies) for (const a of V.allies) if (vis(a.x, a.y)) list.push([a.y, 7, a]);
     for (const [side, p] of Object.entries(V.players)) { list.push([p.y, 2, p, side]); if (p.dg) list.push([p.dg[1], 3, p.dg]); if (p.o) for (const o of p.o) list.push([o[1], 4, o]); }
     for (const b of V.buses) list.push([b[1], 5, b]);
     list.sort((a, b) => a[0] - b[0]);
@@ -183,6 +190,7 @@ export class Renderer {
       if (kind === 0) { const s = SPR[o.s]; g.drawImage(o.fl ? s.fl[0] : s.f[0], X(o.x) - (s.w >> 1), Y(o.y) - s.ay); continue; }
       if (kind === 1) { this.drawEnemy(g, o, X, Y); continue; }
       if (kind === 6) { this.drawHazard(g, o, X, Y); continue; }
+      if (kind === 7) { this.drawAlly(g, o, X, Y); continue; }
       if (kind === 2) this.drawPlayer(g, o, side === V.local, X, Y);
       if (kind === 3) { const s = SPR.romero, fr = Math.floor(this.t * 10) % 2; g.drawImage(o[2] < 0 ? s.fl[fr] : s.f[fr], X(o[0]) - (s.w >> 1), Y(o[1]) - s.ay); }
       if (kind === 4) { const s = SPR.juli, fr = Math.floor(this.t * 8) % 2; g.drawImage(s.f[fr], X(o[0]) - (s.w >> 1), Y(o[1]) - s.ay); }
@@ -232,6 +240,7 @@ export class Renderer {
       }
     }
     if (V.obj) this.edgeArrow(g, X(V.obj[0]), Y(V.obj[1]) - 6, "#ff5fb0");
+    if (V.goal) this.goalArrows(g, V, X, Y);
     // indicadores de la pareja
     for (const [side, p] of Object.entries(V.players)) {
       if (side === V.local) continue;
@@ -267,6 +276,56 @@ export class Renderer {
     g.drawImage(img, x - (s.w >> 1), y - s.ay + (o.type === 2 ? -6 : 0) - (rush && name === "saltarin" ? 4 : 0));
     if (tele) { const hy = y - s.h - 6; g.fillStyle = "#16121c"; g.fillRect(x - 2, hy - 1, 4, 9); g.fillStyle = Math.floor(this.t * 10) % 2 ? "#ff4a5a" : "#ffd24a"; g.fillRect(x - 1, hy, 2, 5); g.fillRect(x - 1, hy + 6, 2, 1); }
     if (f & F_WET) { g.fillStyle = "#7fd0ff"; const k = Math.floor(this.t * 6 + o.id) % 3; g.fillRect(x - 3 + k * 2, y - s.h + k, 1, 2); }
+  }
+  drawAlly(g, o, X, Y) {
+    const name = ENEMY_NAME[o.type], cfg = ALLY[name], f = o.f;
+    const s = SPR[name] || SPR[ALLY_FALLBACK[cfg ? cfg.kind : "gato"]]; if (!s) return;
+    const x = X(o.x), y = Y(o.y), n = s.f.length;
+    g.fillStyle = "rgba(0,0,0,.28)"; g.fillRect(x - (s.w >> 2), y, s.w >> 1, 2);
+    if (f & F_DOWN) {
+      g.save(); g.globalAlpha = 0.6; g.translate(x, y - 4); g.rotate(-Math.PI / 2); g.drawImage(s.f[0], -(s.w >> 1), -(s.h >> 1)); g.restore();
+      return;
+    }
+    const tele = f & F_TELE, rush = f & F_RUSH;
+    const fr = tele ? 0 : Math.floor(this.t * (rush ? 14 : 8) + o.id) % n;
+    const img = (f & F_FLASH) || (tele && Math.floor(this.t * 16) % 2) ? s.wh[fr] : f & F_LEFT ? s.fl[fr] : s.f[fr];
+    if (rush) { const a = o.a / 10; g.fillStyle = "rgba(127,255,170,.6)"; for (let i = 1; i < 4; i++) g.fillRect(Math.round(x - Math.cos(a) * i * 5), Math.round(y - 5 - Math.sin(a) * i * 5), 2, 1); }
+    g.drawImage(img, x - (s.w >> 1), y - s.ay);
+    // marca de aliado: rombito verde arriba de la cabeza
+    const hy = y - s.h - 4 - Math.round(Math.abs(Math.sin(this.t * 3 + o.id)) * 1);
+    g.fillStyle = "#16121c"; g.fillRect(x - 2, hy - 1, 5, 4); g.fillStyle = tele ? (Math.floor(this.t * 10) % 2 ? "#ff4a5a" : "#ffd24a") : "#57e3a0"; g.fillRect(x - 1, hy, 3, 2); g.fillRect(x, hy - 1, 1, 4);
+  }
+  // lo que se defiende, a dónde hay que llegar y los rastros, dibujado en el piso
+  drawGoalFloor(g, V, X, Y, vis) {
+    const G = V.goal, pulse = 1 + Math.sin(this.t * 5) * 0.08;
+    if (G.x !== null && G.r) {
+      const x = X(G.x), y = Y(G.y), r = G.r;
+      g.fillStyle = G.fl ? "rgba(255,74,90,.35)" : "rgba(87,227,160,.16)"; g.beginPath(); g.ellipse(x, y, r * pulse, r * 0.6 * pulse, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#16121c"; g.lineWidth = 3; g.beginPath(); g.ellipse(x, y, r + 3, (r + 3) * 0.6, 0, 0, Math.PI * 2); g.stroke();
+      g.strokeStyle = G.hp > 50 ? "#57e3a0" : G.hp > 25 ? "#ffcf3a" : "#ff4a5a"; g.lineWidth = 2; g.beginPath(); g.ellipse(x, y, r + 3, (r + 3) * 0.6, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (G.hp || 0) / 100); g.stroke();
+    }
+    if (G.a !== null && G.k === "protect" && V.allies) { const a = V.allies.find(q => q.id === G.a); if (a) { g.strokeStyle = "rgba(87,227,160,.8)"; g.lineWidth = 1; g.beginPath(); g.ellipse(X(a.x) + 0.5, Y(a.y) + 0.5, 12 * pulse, 7 * pulse, 0, 0, Math.PI * 2); g.stroke(); } }
+    if (G.to) {
+      const x = X(G.to[0]), y = Y(G.to[1]), r = G.r || 24;
+      g.strokeStyle = Math.floor(this.t * 4) % 2 ? "#57e3a0" : "#ffffff"; g.lineWidth = 1; g.setLineDash([3, 3]); g.beginPath(); g.ellipse(x + 0.5, y + 0.5, r * pulse, r * 0.6 * pulse, 0, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
+      g.fillStyle = "#16121c"; g.fillRect(x - 1, y - 18, 3, 18); g.fillStyle = "#57e3a0"; g.fillRect(x + 2, y - 18, 7, 5);
+    }
+    if (G.pts) for (const [px, py] of G.pts) {
+      if (!vis(px, py)) continue; const x = X(px), y = Y(py), b = Math.floor(this.t * 6 + px) % 3;
+      g.fillStyle = "rgba(255,210,74,.3)"; g.beginPath(); g.ellipse(x, y, 7 + b, 4, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#ffd24a"; g.fillRect(x - 3, y - 1, 2, 2); g.fillRect(x + 1, y - 1, 2, 2); g.fillRect(x - 1, y + 1, 2, 2); g.fillRect(x - 1, y - 4 - b, 1, 1);
+    }
+  }
+  goalArrows(g, V, X, Y) {
+    const G = V.goal;
+    if (G.x !== null && G.r) this.edgeArrow(g, X(G.x), Y(G.y) - 6, "#57e3a0");
+    if (G.to) this.edgeArrow(g, X(G.to[0]), Y(G.to[1]) - 6, "#57e3a0");
+    if (G.a !== null && V.allies) { const a = V.allies.find(q => q.id === G.a); if (a) this.edgeArrow(g, X(a.x), Y(a.y) - 6, "#7fffaa"); }
+    if (G.pts && G.pts.length) {
+      const me = V.players[V.local] || Object.values(V.players)[0]; let best = G.pts[0], bd = Infinity;
+      if (me) for (const q of G.pts) { const d = (q[0] - me.x) ** 2 + (q[1] - me.y) ** 2; if (d < bd) { bd = d; best = q; } }
+      this.edgeArrow(g, X(best[0]), Y(best[1]) - 4, "#ffd24a");
+    }
   }
   drawHazard(g, z, X, Y) {
     const [k, y, h, x, dir, , len] = z, name = HAZ_ID[k], by = Y(y + h);
@@ -333,6 +392,8 @@ export class Renderer {
     if (V.obj) hole(V.obj[0], V.obj[1] - 6, 40, 0.9);
     for (const z of V.hz) { if (z[5]) continue; const cx0 = z[4] > 0 ? z[3] + 30 : z[3] - 30; hole(cx0, z[1], 60, 0.9); }
     for (let i = 0; i < V.enemies.length; i++) { const e = V.enemies[i]; if (e.f & (F_TELE | F_ELITE)) hole(e.x, e.y - 6, 22, 0.6); }
+    if (V.allies) for (const a of V.allies) hole(a.x, a.y - 6, 30, 0.8);
+    if (V.goal) { const G = V.goal; if (G.x !== null && G.r) hole(G.x, G.y, G.r * 2.2, 0.9); if (G.to) hole(G.to[0], G.to[1] - 8, 34, 0.8); if (G.pts) for (const [x, y] of G.pts) hole(x, y, 18, 0.7); }
     lg.globalAlpha = 1;
     this.bg.drawImage(this.lc, 0, 0);
     // tinte cálido de los faroles
