@@ -73,7 +73,10 @@ export class Renderer {
   }
   resize() {
     const W = innerWidth, H = innerHeight, dpr = Math.min(devicePixelRatio || 1, 2);
-    this.s = Math.max(2, Math.round(Math.min(W, H) / 230));
+    // dinámica 10: "ver más" usa una escala basada en 260 en vez de 230; con pantalla de alta densidad admite 1,5
+    // (3 píxeles del celu por píxel del juego: sigue nítido). Sin la opción queda exactamente como antes.
+    if (this.zoomOut) { const k = Math.min(W, H) / 260; this.s = dpr >= 2 ? Math.max(1.5, Math.round(k * 2) / 2) : Math.max(1, Math.round(k)); }
+    else this.s = Math.max(2, Math.round(Math.min(W, H) / 230));
     this.bw = Math.ceil(W / this.s); this.bh = Math.ceil(H / this.s);
     this.buf.width = this.bw; this.buf.height = this.bh; this.lc.width = this.bw; this.lc.height = this.bh;
     this.cv.width = Math.round(W * dpr); this.cv.height = Math.round(H * dpr);

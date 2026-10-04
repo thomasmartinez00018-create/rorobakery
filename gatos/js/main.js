@@ -47,6 +47,23 @@ let backupIn = "", backupMsg = null, backupPending = null;
 /* ---------------- estado general ---------------- */
 buildSprites();
 const R = new Renderer($("#game"));
+/* dinámica 10: accesibilidad. "Ver más" (zoom), botones grandes y lado de los botones (zurdos), guardados en el celu.
+   Los estilos van acá para no tocar css/app.css (el integrador los puede pasar a ese archivo). */
+const pref = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v === "1"; } catch (e) { return d; } };
+const setPref = (k, v) => { try { localStorage.setItem(k, v ? "1" : "0"); } catch (e) {} };
+let zoomOn = pref("gdl-zoom", false), bigBtn = pref("gdl-bigbtn", false), leftBtn = pref("gdl-zurdo", false);
+R.zoomOut = zoomOn; R.resize();
+document.head.insertAdjacentHTML("beforeend", `<style id="a11y-dinamica">
+#hud.zurdo .ultbtn{right:auto;left:calc(18px + env(safe-area-inset-left,0px))}
+#hud.zurdo .dashbtn{right:auto;left:calc(116px + env(safe-area-inset-left,0px))}
+#hud.grandes .ultbtn{width:112px;height:112px}#hud.grandes .ultbtn span{width:88px;height:88px;font-size:26px}
+#hud.grandes .dashbtn{width:84px;height:84px;bottom:calc(26px + env(safe-area-inset-bottom,0px));right:calc(142px + env(safe-area-inset-right,0px))}
+#hud.grandes.zurdo .dashbtn{right:auto;left:calc(142px + env(safe-area-inset-left,0px))}#hud.grandes .dashbtn span{width:64px;height:64px;font-size:18px}
+.pairult{position:absolute;right:calc(14px + env(safe-area-inset-right,0px));bottom:calc(128px + env(safe-area-inset-bottom,0px));max-width:52vw;background:rgba(58,31,0,.88);border:3px solid var(--amber);clip-path:var(--notch);padding:3px 8px;font-size:18px;color:var(--amber);text-align:center;animation:pulse .6s steps(2) infinite}
+#hud.zurdo .pairult{right:auto;left:calc(14px + env(safe-area-inset-left,0px))}#hud.grandes .pairult{bottom:calc(156px + env(safe-area-inset-bottom,0px))}
+.pairult[hidden]{display:none}.ultbtn.pair{box-shadow:0 0 0 4px var(--pink),0 4px 0 #000}
+</style>`);
+function applyA11y() { hud.classList.toggle("zurdo", leftBtn); hud.classList.toggle("grandes", bigBtn); }
 const input = new Input($("#touch"), $("#joy-base"), $("#joy-knob"));
 const ui = $("#ui"), hud = $("#hud");
 let screen = "title";
@@ -342,6 +359,7 @@ function buildHud() {
     <button class="pausebtn" data-act="pause" aria-label="Pausa">II</button>
     <button class="ultbtn" id="ultbtn" data-act="ult"><span id="ultlabel">COMBO</span></button>
     <button class="dashbtn" id="dashbtn" data-act="dash"><span>ESQUIVE</span></button>
+    <div class="pairult" id="pairult" hidden></div>
     <div class="goalhud" id="goalhud" hidden></div>
     <div class="objhud" id="objhud" hidden><img src="${portrait("regalo", 3)}" alt=""><span id="objtxt"></span></div>
     <div class="build" id="build"></div>
@@ -350,10 +368,11 @@ function buildHud() {
     <div class="pausemenu" id="pausemenu" hidden><div class="panel">
       <h2>Pausa</h2><p class="hint" id="pausenote"></p>
       <button class="big" data-act="resume">Seguir</button>
-      <div class="toggles"><button class="mid" data-act="snd" id="tsnd"></button><button class="mid" data-act="mus" id="tmus"></button><button class="mid" data-act="vib" id="tvib"></button></div>
+      <div class="toggles"><button class="mid" data-act="snd" id="tsnd"></button><button class="mid" data-act="mus" id="tmus"></button><button class="mid" data-act="vib" id="tvib"></button>
+        <button class="mid" data-act="zoom" id="tzoom"></button><button class="mid" data-act="bigbtn" id="tbig"></button><button class="mid" data-act="zurdo" id="tzurdo"></button></div>
       <button class="mid ghost" data-act="quit">Salir al menú</button>
     </div></div>`;
-  hudBuilt = true;
+  hudBuilt = true; applyA11y();
 }
 function banner(title, sub) { bannerT = 2.6; const b = $("#banner"); if (!b) return; $("#btitle").textContent = title; $("#bsub").textContent = sub || ""; b.classList.remove("on"); void b.offsetWidth; b.classList.add("on"); }
 let lastOffersKey = "", resultTimer = 0;
@@ -381,6 +400,11 @@ function updateHud(dt) {
   if (mine) {
     put("ultk", "ultbtn", Math.round(mine.u * 20) * 5, (e, v) => e.style.setProperty("--k", v + "%"));
     put("ultready", "ultbtn", mine.u >= 1, (e, v) => e.classList.toggle("ready", v));
+    // dinámica 10: aviso de que tu pareja tiene el especial listo (para buscar el combo de pareja)
+    const mate = Object.entries(s.P).find(([side]) => side !== me.side), mp = mate && mate[1];
+    const pairTxt = mp && !mp.d && mp.u >= 1 ? `${NAME[mp.c] || "Tu pareja"} tiene ${mp.c === "thomas" ? "el COMBO" : "las TORTAS"} listo: ${mine.u >= 1 ? "¡tírenlo juntos!" : "cargá el tuyo"}` : "";
+    put("pairult", "pairult", pairTxt, (e, v) => { e.hidden = !v; e.textContent = v; });
+    put("ultpair", "ultbtn", !!pairTxt && mine.u >= 1, (e, v) => e.classList.toggle("pair", v));
     put("ultlabel", "ultlabel", mine.c === "thomas" ? "COMBO" : "TORTAS", (e, v) => { e.textContent = v; });
     const dk = 1 - Math.min(1, (me.side === "guest" && guestPos ? Math.max(guestPos.dcd, mine.dc) : mine.dc) / 2.4);
     put("dashk", "dashbtn", Math.round(dk * 20) * 5, (e, v) => e.style.setProperty("--k", v + "%"));
@@ -565,6 +589,9 @@ function draw(result) {
       <p class="rec">Récord: ${fmt(prof.best.t)} · ${prof.best.k} gatos · ${prof.wins} victorias</p>
       <p class="rec">${alcText()}</p>
       <button class="link" data-act="snd">${sfx.muted ? "Sonido: apagado" : "Sonido: prendido"}</button>
+      <button class="link" data-act="zoom">Ver más: ${zoomOn ? "sí" : "no"}</button>
+      <button class="link" data-act="bigbtn">Botones grandes: ${bigBtn ? "sí" : "no"}</button>
+      <button class="link" data-act="zurdo">Botones: ${leftBtn ? "a la izquierda" : "a la derecha"}</button>
     </section>`;
     return;
   }
@@ -652,6 +679,8 @@ function setPaused(on) {
 function paintToggles() {
   const t = (id, label, on) => { const el = $(id); if (el) { el.textContent = `${label}: ${on ? "sí" : "no"}`; el.classList.toggle("off", !on); } };
   t("#tsnd", "Sonido", !sfx.muted); t("#tmus", "Música", music.on); t("#tvib", "Vibrar", vibOn);
+  t("#tzoom", "Ver más", zoomOn); t("#tbig", "Botones grandes", bigBtn);
+  const z = $("#tzurdo"); if (z) { z.textContent = `Botones: ${leftBtn ? "izquierda" : "derecha"}`; z.classList.remove("off"); } // dinámica 10
   const v = $("#tvib"); if (v) v.hidden = !navigator.vibrate;
 }
 let wake = null;
@@ -701,6 +730,9 @@ document.addEventListener("click", e => {
     case "resume": setPaused(false); break;
     case "snd": sfx.toggle(); if (screen === "run") paintToggles(); else draw(); break;
     case "mus": music.toggle(); paintToggles(); break;
+    case "zoom": zoomOn = !zoomOn; setPref("gdl-zoom", zoomOn); R.zoomOut = zoomOn; R.resize(); paintToggles(); if (screen !== "run") draw(); break; // dinámica 10
+    case "bigbtn": bigBtn = !bigBtn; setPref("gdl-bigbtn", bigBtn); applyA11y(); paintToggles(); if (screen !== "run") draw(); break;
+    case "zurdo": leftBtn = !leftBtn; setPref("gdl-zurdo", leftBtn); applyA11y(); paintToggles(); if (screen !== "run") draw(); break;
     case "vib": vibOn = !vibOn; try { localStorage.setItem("gdl-vib", vibOn ? "1" : "0"); } catch (e) {} paintToggles(); buzz(40); break;
     case "quit":
       setPaused(false);
