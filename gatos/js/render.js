@@ -1,6 +1,8 @@
 // Render 2D pixel art: mapa pregenerado, entidades ordenadas por altura, luces nocturnas y efectos.
 import { SPR } from "./sprites.js";
-import { MAP, ENEMY_NAME, HAZ_ID, PICKS, ALLY, F_FLASH, F_TELE, F_ELITE, F_RUSH, F_WET, F_LEFT, F_DOWN, F_STUN } from "./engine.js";
+import { MAP, ENEMY_NAME, HAZ_ID, PICKS, ALLY, F_FLASH, F_TELE, F_ELITE, F_RUSH, F_WET, F_LEFT, F_DOWN, F_STUN, F_BAG } from "./engine.js";
+// dinámica 3: tipos del arcade sin sprite propio todavía (se dibujan con el de otro gato más un detalle)
+const ENEMY_ALIAS = { sparring: "negro", ladron: "gato" };
 import { THEMES, buildMap } from "./maps.js";
 export { THEMES };
 
@@ -261,7 +263,7 @@ export class Renderer {
 
   drawEnemy(g, o, X, Y) {
     const name = ENEMY_NAME[o.type], f = o.f, elite = f & F_ELITE;
-    const s = (elite && SPR[name + "E"]) || SPR[name]; if (!s) return;
+    const al = ENEMY_ALIAS[name], s = (elite && (SPR[name + "E"] || (al && SPR[al + "E"]))) || SPR[name] || (al && SPR[al]); if (!s) return;
     const x = X(o.x), y = Y(o.y);
     if (name === "caja") { g.fillStyle = "rgba(0,0,0,.3)"; g.fillRect(x - 6, y, 12, 2); g.drawImage(f & F_FLASH ? s.wh[0] : s.f[0], x - (s.w >> 1), y - s.ay); return; }
     const tele = f & F_TELE, rush = f & F_RUSH;
@@ -279,6 +281,10 @@ export class Renderer {
     if (tele) { const hy = y - s.h - 6; g.fillStyle = "#16121c"; g.fillRect(x - 2, hy - 1, 4, 9); g.fillStyle = Math.floor(this.t * 10) % 2 ? "#ff4a5a" : "#ffd24a"; g.fillRect(x - 1, hy, 2, 5); g.fillRect(x - 1, hy + 6, 2, 1); }
     // dinámica 2: aturdida (Luz frenada por la pareja): estrellitas girando arriba de la cabeza
     if (f & F_STUN) { g.fillStyle = "#ffd24a"; for (let i = 0; i < 3; i++) { const a = this.t * 6 + i * 2.1; g.fillRect(Math.round(x + Math.cos(a) * 7), Math.round(y - s.h - 2 + Math.sin(a) * 2), 2, 2); } }
+    if (al) { // dinámica 3: guantes rojos del sparring; antifaz del ladrón y la bolsita de gemas
+      if (name === "sparring") { const k = elite ? 2 : 1; g.fillStyle = "#d8283a"; g.fillRect(x - 4 * k, y - 4 * k, 2 * k, 2 * k); g.fillRect(x + 2 * k, y - 4 * k, 2 * k, 2 * k); }
+      else { g.fillStyle = "#16121c"; g.fillRect(x - (s.w >> 1) + 1, y - s.ay + 3, s.w - 2, 1); if (f & F_BAG) { g.fillStyle = "#7ff0ff"; g.fillRect(x - 1, y - s.h - 3, 3, 3); } }
+    }
     if (f & F_WET) { g.fillStyle = "#7fd0ff"; const k = Math.floor(this.t * 6 + o.id) % 3; g.fillRect(x - 3 + k * 2, y - s.h + k, 1, 2); }
   }
   drawAlly(g, o, X, Y) {
@@ -376,7 +382,8 @@ export class Renderer {
   }
 
   lighting(V, cx, cy) {
-    const lg = this.lg, bw = this.bw, bh = this.bh, [r, gC, b, a] = THEMES[this.theme].night;
+    const lg = this.lg, bw = this.bw, bh = this.bh, [r, gC, b, a0] = THEMES[this.theme].night;
+    const a = V.dark ? Math.max(a0, 0.9) : a0; // dinámica 3: apagón
     lg.globalCompositeOperation = "source-over";
     lg.clearRect(0, 0, bw, bh);
     lg.fillStyle = `rgba(${r},${gC},${b},${a})`; lg.fillRect(0, 0, bw, bh);

@@ -1,5 +1,5 @@
 // Gatos de Linda — menús, salas, bucle de juego y sincronización entre los dos celus.
-import { Sim, WEAPONS, PASSIVES, MAPS, EVO_OF, chapterGuion } from "./engine.js";
+import { Sim, WEAPONS, PASSIVES, MAPS, EVO_OF, chapterGuion, MID_IDS } from "./engine.js";
 import { buildSprites, SPR, portrait as portraitPng } from "./sprites.js";
 import { Renderer, THEMES } from "./render.js";
 import { Net, makeCode, cleanCode, PROTO } from "./net.js";
@@ -19,6 +19,17 @@ const ICON = { patada: "thomas", medialuna: "medialuna", juli: "juli", romero: "
 const HZ_BANNER = { tren: ["¡Viene el tren!", "Salgan de las vías"], fletero: ["¡El fletero!", "Pasa la camioneta sin frenar"], cortadora: ["¡La cortadora!", "El canchero no mira"], carritos: ["¡Carritos!", "Se soltó una fila del súper"], autos: ["¡Auto!", "Cuidado en el estacionamiento"], trote: ["¡Entrada en calor!", "Pasa la fila trotando"] };
 const UPG = { hp: ["Vida", "+10 de vida"], dmg: ["Fuerza", "+8% de daño"], spd: ["Velocidad", "+5% de velocidad"], mag: ["Imán", "+15% de alcance"] };
 const UPG_COST = [15, 35, 70, 120, 200];
+// dinámica 3: carteles del evento de mitad de partida (inicio, fin, y fin ganado para el sparring)
+const MID_BANNER = {
+  corbata: [["¡Corbata se escapó!", "El perro de la abuela los ayuda 30 segundos"], ["Corbata volvió a su casa", "Gracias, Corbata"]],
+  apagon: [["¡Apagón en la estación!", "Los gatos negros aprovechan la oscuridad"], ["Volvió la luz", ""]],
+  liquidacion: [["¡Liquidación de cajones!", "Caen cajones: ojo con las sombras rojas"], ["Terminó la liquidación", "Rompan los cajones que quedaron"]],
+  sparring: [["¡Sparring!", "Un gato con guantes: tienen 30 segundos para ganarle"], ["Terminó el round", "El sparring se fue a las duchas"], ["¡Le ganaron al sparring!", "Caja de Roro's y monedas extra"]],
+  riego: [["¡Se prendió el riego!", "Los gatos mojados van más lento"], ["Se apagó el riego", ""]],
+  promo: [["¡Promo 2x1!", "Salen el doble de gatos, pero más flojitos"], ["Terminó la promo", ""]],
+  salida: [["¡Salida del cine!", "Los autos pasan sin parar: llévenles los gatos"], ["Se vació el estacionamiento", ""]]
+};
+const MID_HUD = { corbata: "Corbata", apagon: "Apagón", liquidacion: "Liquidación", sparring: "Sparring", riego: "Riego", promo: "Promo 2x1", salida: "Salida del cine" };
 const MAP_COST = { plaza: 0, estacion: 60, feria: 120, bielli: 150, cancha: 180, tortugas: 260, terrazas: 350 };
 let coinIc = "";
 const COIN = () => coinIc || (coinIc = `<img class="coin-ic" src="${portrait("moneda", 3)}" alt="monedas">`);
@@ -43,6 +54,7 @@ let pendingEv = [], sendAcc = 0, lastSeen = 0;
 let guestPos = null, guestInput = { pos: null, face: 1, moving: 0, ult: false, dash: false };
 const smooth = new Map();
 let luzMsgAt = 0; // dinámica 2: para no repetir el cartel de Luz en cada carga
+let stealAt = 0; // dinámica 3
 let bannerT = 0, errMsg = null, busyMsg = null, joinDraft = cleanCode(new URLSearchParams(location.search).get("sala") || "");
 
 /* ---------------- modo historia (js/story.js, si existe; si no, nada cambia) ---------------- */
@@ -182,6 +194,10 @@ function onEvents(ev) {
       banner(who, solo ? "Esquivá justo cuando arranca y se choca" : "Júntense: pegados la frenan");
     }
     if (e[0] === "stun") { luzMsgAt = performance.now(); banner("¡Luz se frenó!", "Está aturdida: le pegan el doble"); }
+    // dinámica 3: evento de mitad de partida y gato ladrón
+    if (e[0] === "mid") { const b = MID_BANNER[e[1]]; if (b) { const [t, sub] = e[2] ? b[0] : e[3] && b[2] ? b[2] : b[1]; banner(t, sub); } }
+    if (e[0] === "ladron") banner("¡Gato ladrón!", "Se roba la experiencia del piso: agárrenlo antes de que escape");
+    if (e[0] === "steal" && performance.now() - stealAt > 8000) { stealAt = performance.now(); banner("¡Se escapó un ladrón!", `Se llevó ${e[3]} de experiencia`); }
     if (e[0] === "obj") banner(["Se enfrió el pedido", "¡Pedido entregado!", "¡Pedido de Roro's!"][e[1]], ["Otra vez será", "Caja, alfajor y monedas", "Párense encima: juntos carga el doble"][e[1]]);
     if (e[0] === "vacuum" && e[3] === me.side) banner("¡Imán!", "Toda la experiencia para ustedes");
     if (e[0] === "splash" && e[3] === me.side) banner("¡Manguerazo!", "A los gatos no les gusta el agua");
@@ -293,7 +309,8 @@ function view(s, local, override) {
     allies.push({ id, type: A[i + 1], x, y, f: A[i + 4], a: A[i + 5] });
   }
   if (guest && smooth.size > seen.size + 50) for (const k of smooth.keys()) if (!seen.has(k)) smooth.delete(k);
-  return { local, players, enemies, allies, proj: s.B, eproj: s.H, gems: s.G, pickups: s.K, pools: s.U, bombs: s.M, buses: s.Bu, zones: s.Z || [], hz: s.Hz || [], obj: s.ob, bond: s.tg, goal: s.goal || null, cam: s.cam || null };
+  return { local, players, enemies, allies, proj: s.B, eproj: s.H, gems: s.G, pickups: s.K, pools: s.U, bombs: s.M, buses: s.Bu, zones: s.Z || [], hz: s.Hz || [], obj: s.ob, bond: s.tg, goal: s.goal || null, cam: s.cam || null,
+    dark: !!(s.md && MID_IDS[s.md[0]] === "apagon") }; // dinámica 3: apagón
 }
 
 /* ---------------- HUD ---------------- */
@@ -358,8 +375,9 @@ function updateHud(dt) {
   if (hintT > 0) { hintT -= dt; const v = input.vec; if (v.x || v.y) hintT = Math.min(hintT, 0.6); show("movehint", !(hintT <= 0 || s.st !== "run")); } else show("movehint", false);
   show("objhud", !!s.ob);
   if (s.ob) put("objtxt", "objtxt", `Pedido de Roro's ${s.ob[2]}% · ${s.ob[3]}s`, (e, v) => { e.textContent = v; });
-  show("goalhud", !!s.goal);
+  show("goalhud", !!s.goal || !!s.md);
   if (s.goal) put("goaltxt", "goalhud", goalText(s.goal), (e, v) => { e.textContent = v; });
+  else if (s.md) put("goaltxt", "goalhud", `${MID_HUD[MID_IDS[s.md[0]]] || ""} · ${s.md[1]} s`, (e, v) => { e.textContent = v; }); // dinámica 3
   renderDialog(s.st === "dialog" ? s.dlg : null);
   show("bossbar", !!s.boss);
   if (s.boss) {

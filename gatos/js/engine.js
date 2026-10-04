@@ -34,12 +34,18 @@ export const ENEMY = {
   escupidor: { hp: 18, spd: 26, dmg: 5, r: 6, xp: 3 },
   madre:     { hp: 40, spd: 23, dmg: 8, r: 7, xp: 3 },
   gatito:    { hp: 4, spd: 50, dmg: 3, r: 4, xp: 1 },
-  caja:      { hp: 24, spd: 0, dmg: 0, r: 7, xp: 0, obj: true }
+  caja:      { hp: 24, spd: 0, dmg: 0, r: 7, xp: 0, obj: true },
+  // dinámica 3 (ids 30 y 31): el gato con guantes del sparring de Bielli y el gato ladrón que roba gemas desde las 5:00
+  sparring:  { hp: 26, spd: 34, dmg: 10, r: 7, xp: 3 },
+  ladron:    { hp: 14, spd: 40, dmg: 4, r: 6, xp: 1 }
 };
 // el número de cada tipo viaja en la foto: los nuevos (enemigos o aliados) van SIEMPRE al final, nunca se reordena
 export const ENEMY_ID = { gato: 0, negro: 1, paloma: 2, gordo: 3, luz: 4, linda: 5, saltarin: 6, escupidor: 7, madre: 8, gatito: 9, caja: 10,
-  carmelo: 11, corbata: 12, gatalinda: 13, maitena: 14, chema: 15, amanda: 16 };
-export const ENEMY_NAME = Object.keys(ENEMY_ID);
+  carmelo: 11, corbata: 12, gatalinda: 13, maitena: 14, chema: 15, amanda: 16,
+  // dinámica del arcade: ids desde 30 (del 17 al 29 quedan para los tipos nuevos del modo historia)
+  sparring: 30, ladron: 31 };
+// número → nombre (arreglo con huecos: los ids no son contiguos)
+export const ENEMY_NAME = []; for (const [k, v] of Object.entries(ENEMY_ID)) ENEMY_NAME[v] = k;
 export const PICKS = ["alfajor", "moneda", "caja", "iman", "manguera"];
 // aliados del modo historia. kind: cómo se dibujan mientras no tengan sprite propio (humano, perro, gato).
 // act: follow (sigue al jugador más cercano o escolta y pega pataditas), ram (embiste en línea con aviso), area (golpe en área con aviso).
@@ -55,6 +61,17 @@ export const ALLY = {
 // banderas de cada gato en la foto del estado
 export const F_FLASH = 1, F_TELE = 2, F_ELITE = 4, F_RUSH = 8, F_WET = 16, F_LEFT = 32, F_DOWN = 64; // LEFT y DOWN: solo aliados
 export const F_STUN = 128;        // dinámica 2: gato o jefa aturdida (recibe más daño)
+export const F_BAG = 256;         // dinámica 3: gato ladrón que lleva gemas robadas
+
+/* dinámica 3: evento de mitad de partida, uno por mapa. Arranca a los mid.t s (4:40) si no hay un jefe vivo (si lo hay,
+   espera hasta mid.last; después se saltea) y dura mid.dur s, cortado en mid.end para no pisar la horda de las 5:30.
+   corbata: Corbata se escapó de lo de la abuela y embiste gatos 30 s (aliado). apagon: solo quedan los faroles y la luz
+   de los jugadores, y vienen más gatos negros. liquidacion: caen cajones (sombra roja; el que cae pega a gatos y
+   jugadores). sparring: un élite con guantes (jab doble); si le ganan antes del final, monedas extra. riego: aspersores
+   que mojan y frenan gatos. promo: 2x1, salen el doble de gatos con 60% de vida. salida: salida del cine, los autos
+   pasan cada 5 s. stats.mid cuenta lo de cada evento para las metas del mapa. */
+export const MID_IDS = ["corbata", "apagon", "liquidacion", "sparring", "riego", "promo", "salida"];
+export const MID_OF = { plaza: "corbata", estacion: "apagon", feria: "liquidacion", bielli: "sparring", cancha: "riego", tortugas: "promo", terrazas: "salida" };
 export const GOALS = ["none", "survive", "defend", "escort", "trains", "track", "boss", "reach", "protect"];
 
 export const WEAPONS = {
@@ -123,7 +140,9 @@ export const ARCADE = {
   hazards: true,
   rate: { base: 0.9, per: 34, max: 9, cap: 220 },
   mix: [["gato", 10, 0, 300], ["gato", 5, 300], ["saltarin", 3, 45, 200], ["saltarin", 4, 200], ["escupidor", 2, 90, 250, [4, 90]], ["escupidor", 3, 250, null, [4, 90]],
-    ["negro", 4, 110, 300], ["negro", 7, 300], ["madre", 2, 140, null, 7], ["gordo", 2, 180, 300], ["gordo", 3, 300]],
+    ["negro", 4, 110, 300], ["negro", 7, 300], ["madre", 2, 140, null, 7], ["gordo", 2, 180, 300], ["gordo", 3, 300],
+    ["ladron", 2, 300, null, 3]],                               // dinámica 3: gato ladrón desde las 5:00, hasta 3 a la vez
+  mid: { t: 280, dur: 30, last: 300, end: 325 },               // dinámica 3: evento de mitad de partida (MID_OF)
   win: { kill: "linda" },
   lose: { allDown: true },
   goal: null,
@@ -146,7 +165,7 @@ export function chapterGuion(ch) {
     id: ch.id, chapter: ch.id,
     bosses: pick("bosses", []), hordes: pick("hordes", []), orders: pick("orders", []), elites: pick("elites", null),
     crates: pick("crates", ARCADE.crates), pigeons: pick("pigeons", ARCADE.pigeons), hazards: pick("hazards", true),
-    rate: pick("rate", ARCADE.rate), mix: pick("mix", ARCADE.mix), events: pick("events", []),
+    rate: pick("rate", ARCADE.rate), mix: pick("mix", ARCADE.mix), events: pick("events", []), mid: pick("mid", null),
     goal: ch.goal || { kind: "none" }, dur: ch.dur, allies: ch.allies || [], intro: ch.intro || [], outro: ch.outro || [],
     win: pick("win", {}), lose: pick("lose", { allDown: true })
   });
@@ -173,6 +192,7 @@ export class Sim {
     // modo historia: diálogo, objetivo, aliados y cámara (en el arcade quedan vacíos y no tocan el azar)
     this.dlg = null; this.dlgQueue = []; this.dlgN = 0; this.goal = null; this.allies = []; this.lures = []; this.cam = null; this.begun = false;
     this.bond = false;
+    this.mid = null; this.midNext = G.mid ? G.mid.t : 9e9; this.stats = { mid: 0 }; // dinámica 3
     this.view = {};                 // medio ancho y medio alto de lo que ve cada jugador, para que los gatos aparezcan fuera de cámara
     this.grid = new Map();
   }
@@ -261,7 +281,7 @@ export class Sim {
     this.updateProjectiles(dt);
     this.updateHazards(dt);
     this.updateObjective(dt);
-    if (this.allies.length) this.updateAllies(dt);
+    if (this.allies.length) { this._by = "ally"; this.updateAllies(dt); this._by = null; }
     if (this.goal) this.updateGoal(dt);
     this.updateGems(dt);
     this.cleanup();
@@ -318,6 +338,7 @@ export class Sim {
     const [x0, y0, x1, y1] = this.cfg.b;
     const e = { id: this.nextId++, type, x: clamp(x, x0, x1), y: clamp(y, y0, y1), hp, maxHp: hp, spd: b.spd * (b.boss ? 1 : 1 + this.t / 900), dmg: b.dmg, r: b.r, flash: 0, kx: 0, ky: 0, wob: this.rnd() * 9, cd: this.rr(1, 2.5), st: 0, stT: 0, ax: 0, ay: 0, slow: 0, hits: {} };
     if (type === "paloma") { e.x = x; e.y = y; }
+    if (type === "ladron" && !this.stats.lad) { this.stats.lad = 1; this.ev.push(["ladron"]); } // dinámica 3: primer ladrón
     this.enemies.push(e);
     return e;
   }
@@ -398,17 +419,21 @@ export class Sim {
     if (G.hazards && this.cfg.hz && t >= this.hzNext) { this.hzNext = t + this.cfg.hzEvery * this.rr(0.85, 1.15); this.spawnHazard(); }
     // eventos sueltos del guion (modo historia)
     if (this.evIdx < this.events.length) this.runEvents();
+    // dinámica 3: evento de mitad de partida
+    if (t >= this.midNext) { if (!bossAlive) this.startMid(); else if (t > G.mid.last) this.midNext = 9e9; else this.midNext = t + 2; }
+    if (this.mid) this.midTick(dt);
 
     if (this.calm > 0) { this.calm -= dt; }
     if (!G.rate) return;
     const moving = this.enemies.length - this.count("caja");
     if (moving >= G.rate.cap) return;
-    const rate = Math.min(G.rate.max, G.rate.base + t / G.rate.per) * this.pressure() * (1 + tier * 0.04) * (this.calm > 0 ? 0.2 : 1) * (Object.keys(this.players).length === 1 ? 0.72 : 1);
+    const mk = this.mid && this.mid.k, promo = mk === "promo"; // dinámica 3: la promo 2x1 duplica y afloja; el apagón trae negros
+    const rate = Math.min(G.rate.max, G.rate.base + t / G.rate.per) * this.pressure() * (1 + tier * 0.04) * (this.calm > 0 ? 0.2 : 1) * (Object.keys(this.players).length === 1 ? 0.72 : 1) * (promo ? 2 : 1);
     this.spawnAcc += rate * dt;
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
       const q = this.edgePos(150);
-      this.spawnAt(this.pickType(), q.x, q.y);
+      this.spawnAt(mk === "apagon" && this.rnd() < 0.4 ? "negro" : this.pickType(), q.x, q.y, promo ? 0.6 : 1);
     }
   }
   // mezcla de gatos del guion: [tipo, peso, desde t, hasta t, tope]
@@ -431,6 +456,46 @@ export class Sim {
     const e = this.spawnAt(type || pool[Math.floor(this.rnd() * pool.length)], q.x, q.y, 8);
     e.elite = true; e.r = Math.round(e.r * 1.8); e.dmg *= 1.4; e.spd *= 0.85;
     this.ev.push(["elite", Math.round(e.x), Math.round(e.y)]);
+  }
+
+  /* ---------- dinámica 3: evento de mitad de partida (ver MID_OF) ---------- */
+  startMid() {
+    const k = MID_OF[this.map] || "corbata", G = this.G.mid;
+    this.midNext = 9e9;
+    const M = this.mid = { k, t0: this.t, end: this.t + Math.min(G.dur, G.end - this.t), acc: 0.5, fall: 0, win: 0 };
+    if (k === "corbata") { const q = this.edgePos(120); M.ally = this.addAlly("corbata", { x: q.x, y: q.y, hp: 200, cd: 2 }); }
+    if (k === "sparring") {
+      const q = this.edgePos(150), e = M.boss = this.spawnAt("sparring", q.x, q.y, 10);
+      e.elite = true; e.r = Math.round(e.r * 1.8); e.dmg *= 1.4; e.spd *= 0.85;
+    }
+    this.ev.push(["mid", k, 1]);
+  }
+  midTick(dt) {
+    const M = this.mid, k = M.k;
+    if (k === "liquidacion" && (M.acc -= dt) <= 0) {
+      // cae un cajón cerca de alguien: sombra roja 1,2 s, pega al caer y queda para romper
+      M.acc = 2.4; const ps = this.alive(), p = ps[Math.floor(this.rnd() * ps.length)];
+      if (p) { const q = this.ringPos(this.rr(30, 110), p); if (this.inB(q.x, q.y, 16)) this.zones.push({ x: q.x, y: q.y, r: 16, t: 0, dur: 1.2, dmg: 10, crate: true }); }
+    }
+    if (k === "riego" && (M.acc -= dt) <= 0) {
+      M.acc = 4;
+      for (let i = 0; i < 3; i++) {
+        const ps = this.alive(), p = ps[Math.floor(this.rnd() * ps.length)]; if (!p) break;
+        const q = this.ringPos(this.rr(40, 140), p);
+        this.near(q.x, q.y, 55, e => { if (!this.foe(e) || d2(e, q) > 55 * 55) return; const ux = e.x - q.x, uy = e.y - q.y, m = Math.hypot(ux, uy) || 1; e.slow = 3; this.stats.mid++; this.damage(e, 8, null, ux / m * 140, uy / m * 140, true); });
+        this.ev.push(["splash", Math.round(q.x), Math.round(q.y), ""]);
+      }
+    }
+    if (k === "salida" && this.hzNext > this.t + 6.5) this.hzNext = this.t + this.rr(4, 6);
+    if (k === "sparring" && M.boss.hp <= 0 && !M.boss.gone) { M.win = 1; this.stats.mid++; this.coins += 10; this.drop("moneda", M.boss.x + 10, M.boss.y); return this.endMid(); }
+    if (this.t >= M.end) this.endMid();
+  }
+  endMid() {
+    const M = this.mid; this.mid = null;
+    if (M.ally) this.allies = this.allies.filter(a => a !== M.ally);
+    if (M.boss && M.boss.hp > 0) { M.boss.hp = 0; M.boss.gone = true; }
+    if (M.k === "apagon" && !M.fall) this.stats.mid = 1;
+    this.ev.push(["mid", M.k, 0, M.win, this.stats.mid]);
   }
 
   /* ---------- pedido de Roro's: llevarlo juntos carga el doble ---------- */
@@ -475,10 +540,12 @@ export class Sim {
       const a = z.dir > 0 ? z.x - z.len : z.x, b = z.dir > 0 ? z.x : z.x + z.len;
       if ((z.dir > 0 && a > MAP + 20) || (z.dir < 0 && b < -20)) { z.done = true; if (this.goal && this.goal.k === "trains") this.goal.n++; continue; }
       for (const p of this.alive()) if (!z.ph.has(p.side) && p.x > a && p.x < b && Math.abs(p.y - z.y) < z.h + 4) { z.ph.add(p.side); p.inv = 0; this.hurt(p, z.dmg, true); }
+      this._by = "hz"; // dinámica 3: para contar los gatos que se lleva el peligro en la salida del cine
       this.near((a + b) / 2, z.y, Math.max(z.len / 2, z.h) + 8, e => {
         if (z.hit.has(e.id) || e.x < a || e.x > b || Math.abs(e.y - z.y) > z.h + e.r) return;
         z.hit.add(e.id); this.damage(e, ENEMY[e.type].boss ? 220 : z.edmg, null, z.dir * 260, (e.y - z.y) * 10, true);
       });
+      this._by = null;
     }
   }
 
@@ -541,6 +608,23 @@ export class Sim {
           else if (e.cd <= 0) { e.st = 1; e.stT = e.dbl ? 0.4 : 0.65; e.ax = dx; e.ay = dy; this.ev.push(["charge", Math.round(e.x), Math.round(e.y)]); }
           break;
         case "linda": spd *= this.linda(e, dx, dy, dt, dmgScale); break;
+        case "sparring": // dinámica 3: jab doble (se frena con aviso y tira dos embestidas cortas de unos 40 px)
+          if (e.st === 1) { spd = 0; if ((e.stT -= dt) <= 0) { e.st = 2; e.stT = 0.13; e.jab = 1; } }
+          else if (e.st === 2) { spd = 320; dx = e.ax; dy = e.ay; if ((e.stT -= dt) <= 0) { if (e.jab < 2) { e.st = 4; e.stT = 0.2; } else { e.st = 0; e.cd = this.rr(1.6, 2.4); } } }
+          else if (e.st === 4) { spd = 0; if ((e.stT -= dt) <= 0) { e.st = 2; e.stT = 0.13; e.jab = 2; e.ax = dx; e.ay = dy; } }
+          else if ((e.cd -= dt) <= 0 && m < 60) { e.st = 1; e.stT = 0.45; e.ax = dx; e.ay = dy; }
+          break;
+        case "ladron": { // dinámica 3: va a la gema suelta más cercana, se la lleva y escapa; lejos de todos, se va con lo robado
+          if ((e.bag || 0) < 10) {
+            let g = null, gd = 260 * 260;
+            for (const q of this.gems) { if (q.got || q.pull) continue; const d = d2(q, e); if (d < gd) { gd = d; g = q; } }
+            if (g) { const gx = g.x - e.x, gy = g.y - e.y, gm = Math.hypot(gx, gy) || 1; dx = gx / gm; dy = gy / gm; spd *= 1.25; if (gm < 6) { g.got = true; e.bag = (e.bag || 0) + g.v; } break; }
+            if (!e.bag) break;
+          }
+          dx = -dx; dy = -dy; spd *= 1.15;
+          if (bd > 300 * 300 && !this.onScreen(e.x, e.y, 10)) { e.hp = 0; e.gone = true; this.ev.push(["steal", Math.round(e.x), Math.round(e.y), Math.round(e.bag)]); }
+          break;
+        }
       }
       // separación entre gatos para que no se amontonen en un punto
       let sx = 0, sy = 0;
@@ -635,7 +719,7 @@ export class Sim {
     if (p.downed || (p.inv > 0 && !force)) return;
     p.hp -= dmg * p.armor; p.inv = 0.6;
     this.ev.push(["hurt", Math.round(p.x), Math.round(p.y), p.side]);
-    if (p.hp <= 0) { p.hp = 0; p.downed = true; p.reviveT = 0; p.dashT = 0; this.ev.push(["down", Math.round(p.x), Math.round(p.y), p.side]); }
+    if (p.hp <= 0) { p.hp = 0; p.downed = true; p.reviveT = 0; p.dashT = 0; if (this.mid) this.mid.fall = 1; this.ev.push(["down", Math.round(p.x), Math.round(p.y), p.side]); }
   }
 
   damage(e, dmg, p, kx = 0, ky = 0, raw) {
@@ -652,8 +736,10 @@ export class Sim {
   kill(e, p) {
     const B = ENEMY[e.type];
     this.ev.push(["die", Math.round(e.x), Math.round(e.y), ENEMY_ID[e.type]]);
-    if (B.obj) { this.dropCrate(e); return; }
+    if (B.obj) { this.dropCrate(e); if (e.liq) { this.stats.mid++; this.drop("moneda", e.x - 6, e.y + 4); } return; } // dinámica 3: cajón de la liquidación
     this.kills++;
+    if (this.mid && ((this.mid.k === "corbata" && this._by === "ally") || (this.mid.k === "salida" && this._by === "hz") || this.mid.k === "promo")) this.stats.mid++; // dinámica 3
+    if (e.bag) this.gems.push({ x: e.x, y: e.y, v: e.bag, pull: 0 });                     // dinámica 3: el ladrón suelta lo robado
     if (p) { p.kills++; p.ult = Math.min(1, p.ult + (B.boss ? 0.5 : e.elite ? 0.25 : 1 / 55)); }
     if (e.type === this.G.win.kill) { this.win(); return; }
     if (B.boss) { for (let i = 0; i < 16; i++) this.gems.push({ x: e.x + this.rr(-24, 24), y: e.y + this.rr(-24, 24), v: 5, pull: 0 }); this.drop("alfajor", e.x - 8, e.y); this.drop("caja", e.x + 8, e.y); this.bossRef = null; this.calm = 8; this.ev.push(["bossdown", e.type]); return; }
@@ -818,7 +904,12 @@ export class Sim {
     for (const z of this.zones) {
       z.t += dt;
       if (z.t >= z.dur && !z.done) {
-        z.done = true; this.ev.push(["zone", Math.round(z.x), Math.round(z.y), z.r]);
+        z.done = true;
+        if (z.crate) { // dinámica 3: cajón de la liquidación que cae
+          this.ev.push(["boom", Math.round(z.x), Math.round(z.y), z.r]);
+          this.near(z.x, z.y, z.r + 8, e => { if (this.foe(e) && d2(e, z) < (z.r + e.r) ** 2) this.damage(e, 60, null, 0, 0, true); });
+          const c = this.spawnAt("caja", z.x, z.y); c.liq = true;
+        } else this.ev.push(["zone", Math.round(z.x), Math.round(z.y), z.r]);
         for (const p of this.alive()) if (d2(p, z) < z.r * z.r) this.hurt(p, z.dmg);
       }
     }
@@ -827,6 +918,7 @@ export class Sim {
   updateGems(dt) {
     const alive = this.alive();
     for (const g of this.gems) {
+      if (g.got) continue; // dinámica 3: robada por un ladrón en este cuadro
       let tgt = null, bd = Infinity;
       for (const p of alive) { const d = d2(p, g); if (d < bd) { bd = d; tgt = p; } }
       if (!tgt) continue;
@@ -1120,8 +1212,8 @@ export class Sim {
   snapshot() {
     const E = [];
     for (const e of this.enemies) {
-      const tele = (e.st === 1 && (e.type === "saltarin" || e.type === "escupidor" || e.type === "luz"));
-      const f = (e.flash > 0 ? F_FLASH : 0) | (tele ? F_TELE : 0) | (e.elite ? F_ELITE : 0) | (e.st === 2 ? F_RUSH : 0) | (e.slow > 0 ? F_WET : 0) | (e.stun ? F_STUN : 0);
+      const tele = (e.st === 1 && (e.type === "saltarin" || e.type === "escupidor" || e.type === "luz" || e.type === "sparring"));
+      const f = (e.flash > 0 ? F_FLASH : 0) | (tele ? F_TELE : 0) | (e.elite ? F_ELITE : 0) | (e.st === 2 ? F_RUSH : 0) | (e.slow > 0 ? F_WET : 0) | (e.stun ? F_STUN : 0) | (e.bag ? F_BAG : 0);
       E.push(e.id, ENEMY_ID[e.type], Math.round(e.x), Math.round(e.y), f, tele || e.st === 2 ? Math.round(Math.atan2(e.ay, e.ax) * 10) : 0);
     }
     const B = []; for (const b of this.proj) B.push(b.k, Math.round(b.x), Math.round(b.y), Math.round(Math.atan2(b.vy, b.vx) * 10));
@@ -1157,6 +1249,7 @@ export class Sim {
       to: g.to || null, a: g.ally ? g.ally.id : null, pts: g.pts ? g.pts.slice() : null, ok: g.done ? 1 : 0
     } : null;
     const ev = this.ev; this.ev = [];
-    return { t: Math.round(this.t * 100) / 100, st: this.state, lv: this.level, xp: Math.round(this.xp * 100) / 100, xn: this.xpNext, kl: this.kills, co: this.coins, E, B, H, G, K, U, M, Bu, Z, Hz, ob, tg: this.bond ? 1 : 0, P, boss, of: this.offers, ev, map: this.map, A, dlg, goal, cam: this.camPos(), cap: this.G.chapter || null };
+    return { t: Math.round(this.t * 100) / 100, st: this.state, lv: this.level, xp: Math.round(this.xp * 100) / 100, xn: this.xpNext, kl: this.kills, co: this.coins, E, B, H, G, K, U, M, Bu, Z, Hz, ob, tg: this.bond ? 1 : 0, P, boss, of: this.offers, ev, map: this.map, A, dlg, goal, cam: this.camPos(), cap: this.G.chapter || null,
+      md: this.mid ? [MID_IDS.indexOf(this.mid.k), Math.max(0, Math.ceil(this.mid.end - this.t)), this.stats.mid] : null }; // dinámica 3
   }
 }
