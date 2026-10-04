@@ -312,7 +312,8 @@ function buildHud() {
     <div class="pausemenu" id="pausemenu" hidden><div class="panel">
       <h2>Pausa</h2><p class="hint" id="pausenote"></p>
       <button class="big" data-act="resume">Seguir</button>
-      <div class="toggles"><button class="mid" data-act="snd" id="tsnd"></button><button class="mid" data-act="mus" id="tmus"></button><button class="mid" data-act="vib" id="tvib"></button></div>
+      <div class="toggles"><button class="mid" data-act="snd" id="tsnd"></button><button class="mid" data-act="mus" id="tmus"></button><button class="mid" data-act="vib" id="tvib"></button><button class="mid" data-act="cal" id="tcal"></button></div>
+      <p class="hint" id="calnote"></p>
       <button class="mid ghost" data-act="quit">Salir al menú</button>
     </div></div>`;
   hudBuilt = true;
@@ -596,6 +597,9 @@ function paintToggles() {
   const t = (id, label, on) => { const el = $(id); if (el) { el.textContent = `${label}: ${on ? "sí" : "no"}`; el.classList.toggle("off", !on); } };
   t("#tsnd", "Sonido", !sfx.muted); t("#tmus", "Música", music.on); t("#tvib", "Vibrar", vibOn);
   const v = $("#tvib"); if (v) v.hidden = !navigator.vibrate;
+  // gráficos: calidad Alta / Ahorro (R.setQuality la guarda en localStorage)
+  const q = $("#tcal"); if (q) q.textContent = `Calidad: ${R.q === "ahorro" ? "Ahorro" : "Alta"}`;
+  const n = $("#calnote"); if (n) n.textContent = R.q === "ahorro" ? "Ahorro: sin brillos, gradación de color ni partículas de ambiente. Para celus que se traban." : "Alta: brillos, gradación de color y ambiente de cada mapa.";
 }
 let wake = null;
 async function keepAwake(on) {
@@ -643,6 +647,7 @@ document.addEventListener("click", e => {
     case "resume": setPaused(false); break;
     case "snd": sfx.toggle(); if (screen === "run") paintToggles(); else draw(); break;
     case "mus": music.toggle(); paintToggles(); break;
+    case "cal": R.setQuality(R.q === "ahorro" ? "alta" : "ahorro"); paintToggles(); break; // gráficos
     case "vib": vibOn = !vibOn; try { localStorage.setItem("gdl-vib", vibOn ? "1" : "0"); } catch (e) {} paintToggles(); buzz(40); break;
     case "quit":
       setPaused(false);

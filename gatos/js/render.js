@@ -88,6 +88,14 @@ class Pool {
   clear() { this.life.fill(0); }
   count() { let n = 0; for (let i = 0; i < this.n; i++) if (this.life[i] > 0) n++; return n; }
 }
+/* ---------- calidad: Alta (todo) o Ahorro (sin postproceso ni partículas de ambiente, la mitad de partículas de efectos) ---------- */
+const Q_KEY = "gdl-calidad";
+function loadQuality() {
+  try { const v = localStorage.getItem(Q_KEY); if (v === "alta" || v === "ahorro") return v; } catch (e) {}
+  // sin preferencia guardada: los celus que avisan poca memoria (2 GB o menos) arrancan en Ahorro
+  const mem = typeof navigator !== "undefined" ? navigator.deviceMemory : 0;
+  return mem && mem <= 2 ? "ahorro" : "alta";
+}
 const FX_N = 600, AMB_N = 220;
 // ambiente: tipo de partícula -> número (para el array tipado)
 const AK = { hoja: 0, polvo: 1, vapor: 2, insecto: 3, chispa: 4, harina: 5, luciernaga: 6, gota: 7 };
@@ -188,7 +196,7 @@ export class Renderer {
     // ambiente del mapa (AMBIENCE): partículas en su propio pool, luces que titilan y la capa de noche con viñeta
     this.amb = new Pool(AMB_N); this.em = []; this.ambCfg = null; this.ambWarm = false; this.tmpL = new Array(16);
     this.nightC = document.createElement("canvas"); this.nightKey = "";
-    this.q = "alta";
+    this.q = loadQuality();
     // bloom: lista de brillos del cuadro (coordenadas del mundo), dibujados juntos al final
     this.glN = 0; this.glX = new Float32Array(128); this.glY = new Float32Array(128); this.glR = new Uint8Array(128); this.glC = new Uint8Array(128); this.glA = new Float32Array(128);
     this.mapG = null; this.propG = new Map();
@@ -209,6 +217,14 @@ export class Renderer {
     this.bg.imageSmoothingEnabled = false;
   }
   get hi() { return this.q === "alta"; }
+  // la elige la pausa y queda guardada en el celu
+  setQuality(q) {
+    q = q === "ahorro" ? "ahorro" : "alta";
+    try { localStorage.setItem(Q_KEY, q); } catch (e) {}
+    if (q === this.q) return;
+    this.q = q; this.nightKey = ""; this.glN = 0; this.amb.clear(); this.ambWarm = true;
+    if (this.map && this.hi) this.grade();
+  }
   setMap(theme) {
     this.theme = theme; this.map = buildMap(theme);
     const A = this.ambCfg = AMBIENCE[theme] || null;
@@ -347,6 +363,7 @@ export class Renderer {
     return snd;
   }
   part(x, y, c, sp, life, size = 1, grav = 120) {
+    if (this.q === "ahorro" && Math.random() < 0.5) return;
     const P = this.fx, i = P.take(), a = Math.random() * 6.2832, v = sp * (0.3 + Math.random() * 0.7);
     P.x[i] = x; P.y[i] = y; P.vx[i] = Math.cos(a) * v; P.vy[i] = Math.sin(a) * v - 20; P.life[i] = P.max[i] = life; P.c[i] = ci(c); P.s[i] = size; P.gr[i] = grav;
   }
