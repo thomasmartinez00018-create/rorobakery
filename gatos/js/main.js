@@ -63,6 +63,19 @@ document.head.insertAdjacentHTML("beforeend", `<style id="a11y-dinamica">
 #hud.zurdo .pairult{right:auto;left:calc(14px + env(safe-area-inset-left,0px))}#hud.grandes .pairult{bottom:calc(156px + env(safe-area-inset-bottom,0px))}
 .pairult[hidden]{display:none}.ultbtn.pair{box-shadow:0 0 0 4px var(--pink),0 4px 0 #000}
 </style>`);
+/* dinámica 11: especial "Llamá a Maitena". Se desbloquea en la historia: story.js pone "special:maitena" en el
+   unlock del capítulo de Bielli y main.js lo guarda en prof.unlock. Si el modo historia cambia la clave, alcanza con
+   tocar esta función. */
+const hasUnlock = id => !!(prof.unlock && (prof.unlock["special:" + id] || prof.unlock[id]));
+let hostMait = false, guestMait = false;
+document.head.insertAdjacentHTML("beforeend", `<style id="mait-dinamica">
+.maitbtn{position:absolute;right:calc(110px + env(safe-area-inset-right,0px));bottom:calc(96px + env(safe-area-inset-bottom,0px));width:60px;height:60px;border-radius:50%;
+  background:conic-gradient(var(--pink) var(--k,0%),rgba(40,44,80,.85) 0);display:grid;place-items:center;border:4px solid #000;box-shadow:0 4px 0 #000;touch-action:none}
+.maitbtn span{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:#15183a;font:12px/1 var(--display);color:var(--muted)}
+.maitbtn.ready span{background:#3a0f2a;color:var(--pink)}.maitbtn[hidden]{display:none}
+#hud.zurdo .maitbtn{right:auto;left:calc(110px + env(safe-area-inset-left,0px))}#hud.grandes .maitbtn{bottom:calc(124px + env(safe-area-inset-bottom,0px));right:calc(140px + env(safe-area-inset-right,0px))}
+#hud.grandes.zurdo .maitbtn{right:auto;left:calc(140px + env(safe-area-inset-left,0px))}
+</style>`);
 function applyA11y() { hud.classList.toggle("zurdo", leftBtn); hud.classList.toggle("grandes", bigBtn); }
 const input = new Input($("#touch"), $("#joy-base"), $("#joy-knob"));
 const ui = $("#ui"), hud = $("#hud");
@@ -110,7 +123,7 @@ function netHandlers() {
   return {
     status(st) {
       me.connected = st === "connected";
-      if (st === "connected") { sfx.join(); me.protoBad = false; if (me.side === "guest") me.net.send({ t: "hello", who: prof.who, meta: prof.up, proto: PROTO }); else sendLobby(); }
+      if (st === "connected") { sfx.join(); me.protoBad = false; if (me.side === "guest") me.net.send({ t: "hello", who: prof.who, meta: { ...prof.up, maitena: hasUnlock("maitena") ? 1 : 0 }, proto: PROTO }); else sendLobby(); }
       if (st === "busy") { errMsg = "Esa sala ya está llena."; leave(); }
       if (st === "closed") onPartnerLost();
       draw();
@@ -121,7 +134,7 @@ function netHandlers() {
         lastGuestMsg = performance.now(); guestAway = false;
         if (d.t === "hello") { me.partner = d.who === "rocio" ? "rocio" : "thomas"; me.partnerMeta = cleanMeta(d.meta); me.protoBad = d.proto !== PROTO; sendLobby(); draw(); }
         if (d.t === "in" && sim && isFinite(d.vw) && isFinite(d.vh)) sim.setView("guest", +d.vw, +d.vh);
-        if (d.t === "in" && d.pos && isFinite(d.pos.x) && isFinite(d.pos.y)) { guestInput.pos = { x: +d.pos.x, y: +d.pos.y }; guestInput.face = d.face < 0 ? -1 : 1; guestInput.moving = d.moving ? 1 : 0; if (d.ult) guestInput.ult = true; if (d.dash) guestInput.dash = true; }
+        if (d.t === "in" && d.pos && isFinite(d.pos.x) && isFinite(d.pos.y)) { guestInput.pos = { x: +d.pos.x, y: +d.pos.y }; guestInput.face = d.face < 0 ? -1 : 1; guestInput.moving = d.moving ? 1 : 0; if (d.ult) guestInput.ult = true; if (d.dash) guestInput.dash = true; if (d.mait) guestInput.mait = true; }
         if (d.t === "pick" && sim) sim.pick("guest", d.i | 0);
         if (d.t === "adv" && sim) sim.adv("guest", !!d.skip);
       } else {
@@ -134,7 +147,7 @@ function netHandlers() {
     }
   };
 }
-const cleanMeta = m => { const o = {}; for (const k of ["hp", "dmg", "spd", "mag"]) o[k] = Math.max(0, Math.min(5, (m && m[k]) | 0)); return o; };
+const cleanMeta = m => { const o = {}; for (const k of ["hp", "dmg", "spd", "mag"]) o[k] = Math.max(0, Math.min(5, (m && m[k]) | 0)); o.maitena = !!(m && m.maitena); return o; }; // maitena: dinámica 11
 function sendLobby() { if (me.net && me.net.connected) me.net.send({ t: "lobby", who: prof.who, map, cap: capSel, proto: PROTO }); }
 
 async function createRoom() {
@@ -183,7 +196,7 @@ function startRun(m, chars, cap) {
     // dinámica 4: desde la segunda partida de arcade de la sesión, arranque rápido (reloj en 0:30 y una mejora)
     const fast = !chapter(cap) && arcadeRuns > 0; if (!chapter(cap)) arcadeRuns++;
     sim = new Sim(map, chapter(cap) ? chapterGuion(curCap) : undefined, { fast, picante: !chapter(cap) && optOn("picante"), sinfin: !chapter(cap) && optOn("sinfin") }); // dinámica 9: opciones de la alcancía
-    sim.addPlayer("host", chars.host || "thomas", prof.up);
+    sim.addPlayer("host", chars.host || "thomas", { ...prof.up, maitena: hasUnlock("maitena") }); // dinámica 11
     if (chars.guest) sim.addPlayer("guest", chars.guest, me.partnerMeta || {});
     snap = sim.snapshot();
   } else { sim = null; snap = null; guestPos = null; }
@@ -225,6 +238,7 @@ function onEvents(ev) {
     // dinámica 5: combos de pareja (un cartel por combo cada 15 s)
     if (e[0] === "combo" && performance.now() - (comboMsgAt[e[1]] || -1e9) > 15000) { comboMsgAt[e[1]] = performance.now(); const c = COMBO_BANNER[e[1]]; if (c) banner(c[0], c[1]); }
     if (e[0] === "second") banner("¡Pedido de Roro's de emergencia!", snap && Object.keys(snap.P).length === 1 ? "Te levantás. Linda se distrae 5 segundos" : "Se levantan los dos. Linda se distrae 5 segundos"); // dinámica 8
+    if (e[0] === "mait") banner(e[2] ? "¡Maitena de a dos!" : "¡Llamaste a Maitena!", ["¡Correte, Thomas!", "Invicta, dije.", "¿Otra vez yo?"][Math.floor(Math.random() * 3)]); // dinámica 11
     if (e[0] === "endless") banner("¡Linda cayó!", "Sin fin: ya es victoria. Aguanten todo lo que puedan"); // dinámica 9
     if (e[0] === "fast") banner("Arranque rápido", "Revancha: arrancan en 0:30 con una mejora");
     if (e[0] === "ladron") banner("¡Gato ladrón!", "Se roba la experiencia del piso: agárrenlo antes de que escape");
@@ -252,8 +266,8 @@ function loop(now) {
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
   let V;
   if (screen === "run" && me.side === "host" && sim) {
-    const inp = { host: { dir: input.vec, ult: input.takeUlt(), dash: input.takeDash() || hostDash } }; hostDash = false;
-    if (sim.players.guest) { inp.guest = { ...guestInput }; guestInput.ult = false; guestInput.dash = false; }
+    const inp = { host: { dir: input.vec, ult: input.takeUlt(), dash: input.takeDash() || hostDash, mait: hostMait } }; hostDash = false; hostMait = false;
+    if (sim.players.guest) { inp.guest = { ...guestInput }; guestInput.ult = false; guestInput.dash = false; guestInput.mait = false; }
     sim.setView("host", R.bw, R.bh);
     if (sim.players.guest) heartbeat(now);
     if (!paused) sim.step(dt, inp);
@@ -288,7 +302,8 @@ function loop(now) {
         guestDash = false;
         sendAcc += dt;
         const ult = input.takeUlt() || guestUlt;
-        if (me.net && (sendAcc >= 0.05 || ult || dash)) { sendAcc = 0; me.net.send({ t: "in", pos: { x: guestPos.x, y: guestPos.y }, face: guestPos.face, moving: guestPos.moving, ult, dash, vw: R.bw, vh: R.bh }); guestUlt = false; }
+        const mait = guestMait; // dinámica 11
+        if (me.net && (sendAcc >= 0.05 || ult || dash || mait)) { sendAcc = 0; me.net.send({ t: "in", pos: { x: guestPos.x, y: guestPos.y }, face: guestPos.face, moving: guestPos.moving, ult, dash, mait: mait ? 1 : 0, vw: R.bw, vh: R.bh }); guestUlt = false; guestMait = false; }
       }
       V = view(snap, "guest", guestPos);
     }
@@ -360,6 +375,7 @@ function buildHud() {
     <button class="ultbtn" id="ultbtn" data-act="ult"><span id="ultlabel">COMBO</span></button>
     <button class="dashbtn" id="dashbtn" data-act="dash"><span>ESQUIVE</span></button>
     <div class="pairult" id="pairult" hidden></div>
+    <button class="maitbtn" id="maitbtn" data-act="mait" hidden><span>MAITENA</span></button>
     <div class="goalhud" id="goalhud" hidden></div>
     <div class="objhud" id="objhud" hidden><img src="${portrait("regalo", 3)}" alt=""><span id="objtxt"></span></div>
     <div class="build" id="build"></div>
@@ -406,6 +422,9 @@ function updateHud(dt) {
     put("pairult", "pairult", pairTxt, (e, v) => { e.hidden = !v; e.textContent = v; });
     put("ultpair", "ultbtn", !!pairTxt && mine.u >= 1, (e, v) => e.classList.toggle("pair", v));
     put("ultlabel", "ultlabel", mine.c === "thomas" ? "COMBO" : "TORTAS", (e, v) => { e.textContent = v; });
+    // dinámica 11: botón de Maitena (solo si lo desbloquearon en la historia)
+    show("maitbtn", mine.mt !== undefined);
+    if (mine.mt !== undefined) { put("maitk", "maitbtn", Math.round(mine.mt * 20) * 5, (e, v) => e.style.setProperty("--k", v + "%")); put("maitready", "maitbtn", mine.mt >= 1, (e, v) => e.classList.toggle("ready", v)); }
     const dk = 1 - Math.min(1, (me.side === "guest" && guestPos ? Math.max(guestPos.dcd, mine.dc) : mine.dc) / 2.4);
     put("dashk", "dashbtn", Math.round(dk * 20) * 5, (e, v) => e.style.setProperty("--k", v + "%"));
     put("build", "build", JSON.stringify([mine.w, mine.pa, mine.e]), e => { e.innerHTML = buildIcons(mine); });
@@ -700,7 +719,7 @@ document.addEventListener("click", e => {
   const b = e.target.closest("[data-act]"); if (!b || b.disabled) return;
   const a = b.dataset.act, v = b.dataset.v;
   sfx.init();
-  if (a !== "ult" && a !== "pick" && a !== "dash") sfx.click();
+  if (a !== "ult" && a !== "pick" && a !== "dash" && a !== "mait") sfx.click();
   switch (a) {
     case "start": music.start(); music.set("menu"); screen = "menu"; if (joinDraft.length === 4 && prof.who) joinRoom(joinDraft); draw(); break;
     case "who": prof.who = v; save(); newDemo(); draw(); break;
@@ -744,13 +763,15 @@ document.addEventListener("click", e => {
 let shopBack = "menu";
 // esquive y combo responden al apoyar el dedo, sin esperar a soltar
 document.addEventListener("pointerdown", e => {
-  const b = e.target.closest('[data-act="dash"],[data-act="ult"]'); if (!b) return;
+  const b = e.target.closest('[data-act="dash"],[data-act="ult"],[data-act="mait"]'); if (!b) return;
   e.preventDefault(); sfx.init();
-  if (b.dataset.act === "ult") { if (me.side === "host") input.ultPressed = true; else guestUlt = true; }
+  if (b.dataset.act === "mait") { if (me.side === "host") hostMait = true; else guestMait = true; } // dinámica 11
+  else if (b.dataset.act === "ult") { if (me.side === "host") input.ultPressed = true; else guestUlt = true; }
   else { if (me.side === "host") hostDash = true; else guestDash = true; }
 });
 addEventListener("keydown", e => {
   if (screen === "run" && (e.key === "Escape" || e.key === "p" || e.key === "P")) { const pm = $("#pausemenu"); setPaused(!!(pm && pm.hidden)); }
+  if (screen === "run" && (e.key === "m" || e.key === "M")) { if (me.side === "host") hostMait = true; else guestMait = true; } // dinámica 11
   // en un diálogo, Espacio o Enter avanzan (y no se gasta el combo)
   if (screen === "run" && snap && snap.st === "dialog" && (e.key === " " || e.key === "Enter")) { input.ultPressed = false; advDialog(false); e.preventDefault(); }
 });

@@ -99,6 +99,12 @@ export const ALCANCIA = [
   { id: "picante", at: 1200, name: "Picante", desc: "Gatos con 25% más de vida y daño. 40% más de monedas." },
   { id: "sinfin", at: 3000, name: "Sin fin", desc: "Después de Linda la partida sigue hasta que caigan. Cuenta como victoria." }
 ];
+/* dinámica 11: especial "Llamá a Maitena" (SPECIALS.maitena de story.js). Lo tiene quien lo desbloqueó en la historia
+   (addPlayer con meta.maitena). Se carga con `kills` gatos (en el arcade, recarga larga); al tocarlo Maitena entra
+   corriendo desde fuera de cámara, tira `hits` patadas giratorias de radio r (dmg cada una, noquea `ko` s) y se va.
+   Si la pareja la llamó hace menos de `pair` s: radio pairR y daño x pairK. Sim.callMaitena(p, { free: true }) la
+   llama sin gastar la carga (para el evento "maitena" de la historia). */
+export const MAITENA = { kills: 250, r: 120, dmg: 160, hits: 3, every: 0.5, enter: 0.5, ko: 2, pair: 2.5, pairR: 170, pairK: 1.5 };
 export const MID_IDS = ["corbata", "apagon", "liquidacion", "sparring", "riego", "promo", "salida"];
 export const MID_OF = { plaza: "corbata", estacion: "apagon", feria: "liquidacion", bielli: "sparring", cancha: "riego", tortugas: "promo", terrazas: "salida" };
 export const GOALS = ["none", "survive", "defend", "escort", "trains", "track", "boss", "reach", "protect"];
@@ -249,6 +255,7 @@ export class Sim {
       maxHp: 100 + m.hp * 10, hp: 100 + m.hp * 10, speed: 62 * (1 + m.spd * 0.05), dmgMul: 1 + m.dmg * 0.08, cdMul: 1, magnet: 26 * (1 + m.mag * 0.15), regen: 0, area: 1, armor: 1,
       weapons: { [char === "thomas" ? "patada" : "medialuna"]: 1 }, passives: {}, evo: {}, cds: {}, inv: 0, downed: false, reviveT: 0, ult: 0, kills: 0, lastUlt: -9,
       dashCd: 0, dashT: 0, dvx: 0, dvy: 0, bond: false,
+      maitOn: !!m.maitena, mait: 0, lastMait: -9,                       // dinámica 11
       dog: null, orbA: 0
     };
     if (this.map === "bielli" && char === "thomas") p.dmgMul += 0.15; // juega de local
@@ -310,6 +317,7 @@ export class Sim {
       if (p.dashT > 0) { p.dashT -= dt; p.x += p.dvx * dt; p.y += p.dvy * dt; }
       p.x = clamp(p.x, bx0, bx1); p.y = clamp(p.y, by0, by1);
       if (inp.ult && p.ult >= 1) this.ultimate(p);
+      if (inp.mait && p.maitOn && p.mait >= 1) this.callMaitena(p); // dinámica 11
       p.inv = Math.max(0, p.inv - dt);
       if (p.regen) p.hp = Math.min(p.maxHp, p.hp + p.regen * dt);
     }
@@ -644,6 +652,7 @@ export class Sim {
       if (e.hp <= 0) continue;
       e.flash = Math.max(0, e.flash - dt); e.slow = Math.max(0, e.slow - dt);
       if (ENEMY[e.type].obj) continue;
+      if (e.ko > this.t) { e.x += e.kx * dt; e.y += e.ky * dt; e.kx *= Math.pow(0.02, dt); e.ky *= Math.pow(0.02, dt); e.x = clamp(e.x, bx0, bx1); e.y = clamp(e.y, by0, by1); continue; } // dinámica 11: noqueado
       let tgt = null, bd = Infinity;
       for (const p of alive) { const d = d2(p, e); if (d < bd) { bd = d; tgt = p; } }
       // lo que hay que defender o proteger atrae a los gatos (pesa como si estuviera más cerca)
@@ -806,7 +815,7 @@ export class Sim {
     this.kills++;
     if (this.mid && ((this.mid.k === "corbata" && this._by === "ally") || (this.mid.k === "salida" && this._by === "hz") || this.mid.k === "promo")) this.stats.mid++; // dinámica 3
     if (e.bag) this.gems.push({ x: e.x, y: e.y, v: e.bag, pull: 0 });                     // dinámica 3: el ladrón suelta lo robado
-    if (p) { p.kills++; p.ult = Math.min(1, p.ult + (B.boss ? 0.5 : e.elite ? 0.25 : 1 / 55)); }
+    if (p) { p.kills++; p.ult = Math.min(1, p.ult + (B.boss ? 0.5 : e.elite ? 0.25 : 1 / 55)); if (p.maitOn) p.mait = Math.min(1, p.mait + 1 / MAITENA.kills); }
     if (e.type === this.G.win.kill) {
       if (!this.endless) { this.win(); return; }
       // dinámica 9, sin fin: cuenta como victoria y la partida sigue con hordas cada 50 s
@@ -1206,6 +1215,38 @@ export class Sim {
     this.ev.push(["ally", a.id, type]);
     return a;
   }
+  // dinámica 11: Llamá a Maitena
+  callMaitena(p, o = {}) {
+    if (!o.free) p.mait = 0;
+    const mate = Object.values(this.players).find(q => q !== p);
+    const pair = !!(mate && !mate.downed && this.t - mate.lastMait < MAITENA.pair);
+    p.lastMait = this.t;
+    const v = this.view[p.side] || { hw: 97, hh: 211 }, dir = this.rnd() < 0.5 ? -1 : 1;
+    const a = this.addAlly("maitena", { x: clamp(p.x + dir * (v.hw + 14), this.cfg.b[0], this.cfg.b[2]), y: p.y, inv: true, hp: 999 });
+    if (!a) return null;
+    a.mt = { p: p.side, t: 0, hits: 0, r: pair ? MAITENA.pairR : MAITENA.r, dmg: MAITENA.dmg * (pair ? MAITENA.pairK : 1) * p.dmgMul, dir, x0: a.x };
+    a.inv = 99; this.ev.push(["mait", p.side, pair ? 1 : 0, Math.round(p.x), Math.round(p.y)]);
+    if (pair) this.ev.push(["sync", Math.round(p.x), Math.round(p.y)]);
+    return a;
+  }
+  maitTick(a, dt) {
+    const M = a.mt, p = this.players[M.p] || this.alive()[0]; M.t += dt; a.flash = 0;
+    const tx = p ? p.x : a.x, ty = p ? p.y : a.y;
+    if (M.t < MAITENA.enter) { const k = Math.min(1, dt * 10); a.x += (tx - a.x) * k; a.y += (ty + 6 - a.y) * k; a.face = tx >= a.x ? 1 : -1; a.st = 2; a.ax = a.face; a.ay = 0; return; }
+    const kt = MAITENA.enter + M.hits * MAITENA.every;
+    if (M.hits < MAITENA.hits && M.t >= kt) {
+      M.hits++; a.st = 1; a.x = tx; a.y = ty + 6;
+      this.ev.push(["boom", Math.round(a.x), Math.round(a.y), M.r], ["slash", Math.round(a.x), Math.round(a.y), a.face, Math.min(60, M.r), 2]);
+      this._by = "mait"; // para no contarlos como gatos de Corbata
+      this.near(a.x, a.y, M.r, e => { if (!this.foe(e)) return; const dx = e.x - a.x, dy = e.y - a.y, m = Math.hypot(dx, dy) || 1; if (m > M.r) return; e.ko = this.t + (ENEMY[e.type].boss ? 0.6 : MAITENA.ko); this.damage(e, M.dmg, null, dx / m * 200, dy / m * 200, true); });
+      this._by = "ally";
+      return;
+    }
+    if (M.hits >= MAITENA.hits && M.t >= kt) { // se va saludando por donde vino
+      a.st = 0; a.face = M.dir; a.x += M.dir * 240 * dt;
+      if (M.t > kt + 0.6) this.allies = this.allies.filter(q => q !== a);
+    }
+  }
   hurtAlly(a, dmg) {
     a.hp -= dmg; a.inv = 0.6; a.flash = 0.12;
     if (a.hp <= 0) { a.hp = 0; a.down = true; a.downT = 10; a.st = 0; this.ev.push(["allydown", a.id, Math.round(a.x), Math.round(a.y)]); }
@@ -1213,6 +1254,7 @@ export class Sim {
   updateAllies(dt) {
     const alive = this.alive(), [bx0, by0, bx1, by1] = this.cfg.b, g = this.goal;
     for (const a of this.allies) {
+      if (a.mt) { this.maitTick(a, dt); continue; } // dinámica 11: Maitena del especial
       const C = a.cfg;
       a.inv = Math.max(0, a.inv - dt); a.flash = Math.max(0, a.flash - dt); a.cd -= dt;
       if (a.down) {
@@ -1332,7 +1374,8 @@ export class Sim {
     const P = {};
     for (const p of Object.values(this.players)) P[p.side] = {
       c: p.char, x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10, f: p.face, m: p.moving, hp: Math.round(p.hp), mh: p.maxHp, d: p.downed ? 1 : 0, rv: Math.round(p.reviveT * 100) / 100, u: Math.round(p.ult * 100) / 100, i: p.inv > 0 ? 1 : 0, sp: p.speed,
-      o: p.orbs || null, dg: p.dog ? [Math.round(p.dog.x), Math.round(p.dog.y), p.dog.face || 1] : null, w: p.weapons, pa: p.passives, e: p.evo, k: p.kills, dc: Math.round(p.dashCd * 10) / 10
+      o: p.orbs || null, dg: p.dog ? [Math.round(p.dog.x), Math.round(p.dog.y), p.dog.face || 1] : null, w: p.weapons, pa: p.passives, e: p.evo, k: p.kills, dc: Math.round(p.dashCd * 10) / 10,
+      ...(p.maitOn ? { mt: Math.round(p.mait * 100) / 100 } : {}) // dinámica 11
     };
     const boss = this.bossRef && this.bossRef.hp > 0 ? { n: this.bossRef.type, hp: this.bossRef.hp / this.bossRef.maxHp } : null;
     // modo historia (en el arcade van vacíos o null: un invitado viejo los ignora)
