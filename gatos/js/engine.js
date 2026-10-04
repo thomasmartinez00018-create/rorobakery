@@ -812,8 +812,9 @@ export class Sim {
       this.ev.push(["slash", Math.round(p.x), Math.round(p.y), p.face, Math.round(r), X.patada ? 2 : both ? 1 : 0]);
       this.near(p.x, p.y, r, e => { const dx = e.x - p.x, dy = e.y - p.y; if (dx * dx + dy * dy > r * r) return; if (!both && dx * p.face < -6) return; const m = Math.hypot(dx, dy) || 1; e.kick = this.t; e.kickBy = p.side; this.damage(e, dmg, p, X.patada ? dx / m * kb : Math.sign(dx || p.face) * kb, X.patada ? dy / m * kb : dy * 2); });
     }
-    if (W.medialuna && this.cd(p, "medialuna", X.medialuna ? 0.75 : 0.95 - W.medialuna * 0.07)) {
-      const lv = W.medialuna, dmg = 10 + lv * 4;
+    // dinámica 7: medialunas un poco más lentas y flojas (eran el doble de la mediana en weapons_bench)
+    if (W.medialuna && this.cd(p, "medialuna", X.medialuna ? 0.75 : 1 - W.medialuna * 0.06)) {
+      const lv = W.medialuna, dmg = 10 + lv * 3.5;
       if (X.medialuna) {
         const t = this.nearest(p, 190);
         const base = t ? Math.atan2(t.y - p.y, t.x - p.x) : (p.face > 0 ? 0 : Math.PI);
@@ -827,12 +828,13 @@ export class Sim {
     }
     if (W.juli) {
       p.orbA += dt * 3.2;
-      const lv = W.juli, n = X.juli ? 4 : Math.min(3, 1 + Math.floor(lv / 2)), r = (26 + lv * 3) * A * (X.juli ? 1.2 : 1), dmg = (5 + lv * 3) * (X.juli ? 1.5 : 1);
+      // dinámica 7: Juli pega más (8 + 5 por nivel), gira más abierta, re-araña cada 0,25 s y Juli Mimosa gira 1,5 veces más lejos
+      const lv = W.juli, n = X.juli ? 4 : Math.min(3, 1 + Math.floor(lv / 2)), r = (28 + lv * 5) * A * (X.juli ? 1.5 : 1), dmg = (8 + lv * 5) * (X.juli ? 1.5 : 1);
       p.orbs = [];
       for (let i = 0; i < n; i++) {
         const a = p.orbA + i * Math.PI * 2 / n, ox = p.x + Math.cos(a) * r, oy = p.y + Math.sin(a) * r * 0.7;
         p.orbs.push([Math.round(ox), Math.round(oy)]);
-        this.near(ox, oy, 10, e => { if (d2({ x: ox, y: oy }, e) > (e.r + 6) ** 2) return; if ((e.hits.juli || 0) > this.t) return; e.hits.juli = this.t + 0.35; e.juli = this.t; e.juliBy = p.side; this.damage(e, dmg, p, Math.cos(a) * 80, Math.sin(a) * 80); if (X.juli) p.hp = Math.min(p.maxHp, p.hp + 0.35); });
+        this.near(ox, oy, 10, e => { if (d2({ x: ox, y: oy }, e) > (e.r + 6) ** 2) return; if ((e.hits.juli || 0) > this.t) return; e.hits.juli = this.t + 0.25; e.juli = this.t; e.juliBy = p.side; this.damage(e, dmg, p, Math.cos(a) * 80, Math.sin(a) * 80); if (X.juli) p.hp = Math.min(p.maxHp, p.hp + 0.35); });
       }
     } else p.orbs = null;
     if (W.romero) {
@@ -862,14 +864,15 @@ export class Sim {
         this.pools.push({ x, y, r: Math.round((17 + lv * 3) * A * (X.mate ? 1.4 : 1)), life: X.mate ? 4.5 : 3, tick: 0, dmg: (5 + lv * 3) * (X.mate ? 1.3 : 1), own: p.side, slow: !!X.mate });
       }
     }
-    if (W.bondi && this.cd(p, "bondi", (9.5 - W.bondi * 1.2) * (X.bondi ? 0.75 : 1))) {
+    if (W.bondi && this.cd(p, "bondi", (9.5 - W.bondi * 1.1) * (X.bondi ? 0.75 : 1))) { // dinámica 7: antes 1,2 por nivel
       const lv = W.bondi, dirs = X.bondi ? [1, -1] : [this.rnd() < 0.5 ? 1 : -1];
       dirs.forEach((dir, i) => this.buses.push({ x: p.x - dir * 220, y: p.y + (X.bondi ? (i ? 20 : -20) : this.rr(-18, 18)), dir, life: 1.8, dmg: (40 + lv * 20) * (X.bondi ? 1.4 : 1), own: p.side, hit: new Set(), h: 14 + lv * 2 }));
       this.ev.push(["bus", p.x, p.y]);
     }
     if (W.rodillo && this.cd(p, "rodillo", 1.7 - W.rodillo * 0.15)) {
-      const lv = W.rodillo, dmg = (12 + lv * 5) * (X.rodillo ? 1.5 : 1);
-      const dirs = X.rodillo ? [[1, 0], [-1, 0], [0, 1], [0, -1]] : [[p.face, 0]];
+      const lv = W.rodillo, dmg = (14 + lv * 5) * (X.rodillo ? 1.5 : 1); // dinámica 7: antes 12 + 5 por nivel
+      // dinámica 7: desde nivel 3 salen dos palos, adelante y atrás
+      const dirs = X.rodillo ? [[1, 0], [-1, 0], [0, 1], [0, -1]] : lv >= 3 ? [[p.face, 0], [-p.face, 0]] : [[p.face, 0]];
       for (const [ux, uy] of dirs) this.proj.push({ k: 1, x: p.x, y: p.y - 4, vx: ux * 190 + (uy ? 0 : 0), vy: uy * 170 + (ux ? this.rr(-20, 20) : 0), dmg, pierce: 999, life: 1.6, own: p.side, back: true, t: 0, hit: new Set() });
     }
     if (W.torta && this.cd(p, "torta", 2.9 - W.torta * 0.3)) {
