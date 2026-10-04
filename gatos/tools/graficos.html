@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gráficos: poses y efectos</title>
+<style>html,body{margin:0;background:#000;overflow:hidden;font:14px monospace;color:#fff}canvas{display:block}
+#lab{position:fixed;left:0;right:0;top:8px;text-align:center;text-shadow:1px 1px 0 #000;pointer-events:none}</style></head>
+<body><canvas id="game"></canvas><div id="lab"></div>
+<script type="module">
+// Vista de prueba de render.js: poses de los personajes (quieto, caminar, golpe, patada, lanzar, esquive,
+// invulnerable, caído), muertes con "pop", números de daño y el ambiente del mapa. Sin red ni motor corriendo.
+// Uso: tools/graficos.html?map=plaza&q=alta   (sirve también para capturas antes/después)
+import { buildSprites } from "../js/sprites.js";
+import { Renderer } from "../js/render.js";
+const QS = new URLSearchParams(location.search), map = QS.get("map") || "plaza";
+buildSprites();
+const R = new Renderer(document.getElementById("game"));
+if (R.setQuality && QS.get("q")) R.setQuality(QS.get("q"));
+R.setMap(map);
+const CX = +(QS.get("x") || 300), CY = +(QS.get("y") || 760);
+const P = (c, dx, dy, o = {}) => ({ c, x: CX + dx, y: CY + dy, f: 1, m: 0, hp: 100, mh: 100, d: 0, rv: 0, i: 0, u: 0, sp: 62, dc: 0, ...o });
+const base = {
+  quieto: P("thomas", -60, -40), camina: P("thomas", -20, -40, { m: 1 }), golpe: P("thomas", 20, -40), invul: P("thomas", 60, -40, { m: 1, i: 1 }),
+  rquieto: P("rocio", -60, 10), rcamina: P("rocio", -20, 10, { m: 1, f: -1 }), lanza: P("rocio", 20, 10), esquive: P("rocio", 60, 10, { m: 1 }),
+  lejos: P("rocio", 420, -260), lejosT: P("thomas", -500, 300, { d: 1, rv: 0.5 }),
+  caidoT: P("thomas", -40, 60, { d: 1, rv: 1.1 }), caidoR: P("rocio", 0, 60, { d: 1, rv: 0.4 }), poca: P("thomas", 40, 60, { hp: 18, u: 1 })
+};
+const enemies = [];
+let t = 0, last = performance.now(), slashT = 0, dashT = 0, dieT = 0;
+function frame(now) {
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; t += dt;
+  const players = {};
+  for (const [k, p] of Object.entries(base)) players[k] = { ...p };
+  // el que esquiva va y viene
+  players.esquive.x = CX + 60 + Math.sin(t * 2) * 14; players.esquive.f = Math.cos(t * 2) > 0 ? 1 : -1;
+  const ev = [];
+  if ((slashT -= dt) <= 0) { slashT = 0.45; ev.push(["slash", base.golpe.x, base.golpe.y, 1, 18, 0], ["throw", base.lanza.x, base.lanza.y]); }
+  if ((dashT -= dt) <= 0) { dashT = 0.9; ev.push(["dash", Math.round(players.esquive.x), Math.round(players.esquive.y), "esquive"]); }
+  if ((dieT -= dt) <= 0) { dieT = 0.7; const x = CX - 70 + Math.random() * 140, y = CY - 70; ev.push(["die", Math.round(x), Math.round(y), [0, 1, 3, 6, 7, 8][Math.floor(Math.random() * 6)]], ["hit", Math.round(x), Math.round(y - 8), 12 + Math.floor(Math.random() * 40), Math.random() < 0.4 ? 1 : 0]); }
+  R.events(ev, "poca");
+  R.frame({ local: "poca", players, enemies, allies: [], proj: [], eproj: [], gems: [], pickups: [], pools: [], bombs: [], buses: [], zones: [], hz: [], obj: null, bond: 0, goal: null, cam: [CX, CY + 10] }, dt);
+  requestAnimationFrame(frame);
+}
+document.getElementById("lab").textContent = map + " · " + (R.q || "");
+requestAnimationFrame(frame);
+window.ready = true;
+</script></body></html>

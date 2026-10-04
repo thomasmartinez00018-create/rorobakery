@@ -2,6 +2,7 @@
 import { Sim, WEAPONS, PASSIVES, MAPS, EVO_OF, chapterGuion } from "./engine.js";
 import { buildSprites, SPR, portrait as portraitPng, dialogPortrait } from "./sprites.js";
 import { Renderer, THEMES } from "./render.js";
+import { STORY_MAPS } from "./maps.js";
 import { Net, makeCode, cleanCode, PROTO } from "./net.js";
 import { sfx } from "./sfx.js";
 import { music } from "./music.js";
@@ -336,7 +337,8 @@ function buildHud() {
     <div class="pausemenu" id="pausemenu" hidden><div class="panel">
       <h2>Pausa</h2><p class="hint" id="pausenote"></p>
       <button class="big" data-act="resume">Seguir</button>
-      <div class="toggles"><button class="mid" data-act="snd" id="tsnd"></button><button class="mid" data-act="mus" id="tmus"></button><button class="mid" data-act="vib" id="tvib"></button></div>
+      <div class="toggles"><button class="mid" data-act="snd" id="tsnd"></button><button class="mid" data-act="mus" id="tmus"></button><button class="mid" data-act="vib" id="tvib"></button><button class="mid" data-act="cal" id="tcal"></button></div>
+      <p class="hint" id="calnote"></p>
       <button class="mid ghost" data-act="quit">Salir al menú</button>
     </div></div>`;
   hudBuilt = true;
@@ -407,6 +409,7 @@ function updateHud(dt) {
   if (s.st === "run" && music.mode === "pause" && $("#pausemenu").hidden) music.set(s.boss ? "boss" : "run");
   // fin
   if ((s.st === "over" || s.st === "win") && !endShown) {
+    if (resultTimer === 0) R.wipe("cierre"); // gráficos: el iris se cierra sobre tu personaje mientras llegan los resultados
     resultTimer += dt;
     if (resultTimer > 1.6) { endShown = true; resultTimer = 0; finish(s); }
   }
@@ -536,6 +539,11 @@ function charCard(c) {
     <img src="${portrait(on ? sk.id : c, 6)}" alt=""><b>${NAME[c]}</b><span>${c === "thomas" ? "Patada Bielli · cuerpo a cuerpo" : "Medialunas · a distancia"}</span></button>
     ${has ? `<button class="link skin" data-act="skin" data-v="${c}">Ropa: ${on ? esc(sk.name) : "de siempre"}</button>` : ""}</div>`;
 }
+// gráficos: los mapas de la historia (abuela, roros) aparecen en el arcade solo si la historia los desbloqueó
+// (prof.unlock["map:<id>"], lo guarda saveChapter con el `unlock` de cada capítulo) y si el motor ya tiene su
+// entrada en MAPS (engine.js). Mientras falte cualquiera de las dos cosas, el menú queda como antes.
+function mapaHistoriaJugable(k) { return !!(prof.unlock && prof.unlock["map:" + k]) && !!MAPS[k] && !!THEMES[k]; }
+function mapList() { return [...Object.keys(THEMES), ...STORY_MAPS.filter(mapaHistoriaJugable)]; }
 function mapCards() {
   // historia: los mapas abuela y roros (no enumerables en THEMES) aparecen al final, desbloqueados jugando la historia
   const list = [...Object.entries(THEMES), ...Object.keys(STORY_MAP_FROM).map(k => [k, THEMES[k]])];
@@ -577,15 +585,26 @@ function storyResult(r) {
     ${credits ? `<div class="credits">${credits.map(c => `<span>${esc(c)}</span>`).join("")}</div>` : ""}`;
 }
 let lastResult = null;
+// gráficos: transición pixelada al cambiar de pantalla (R.wipe en render.js). Iris al entrar a jugar (rosa si es un
+// capítulo) y mosaico al salir del título, de la partida o al mostrar los resultados. Lo demás cambia sin transición.
+let shownScreen = screen;
+function screenFx(from, to) {
+  if (to === "run") R.wipe(curCap ? "capitulo" : "iris");
+  else if (from === "title" || from === "run" || to === "results") R.wipe("mosaico");
+}
 function draw(result) {
   if (result) lastResult = result;
+  if (screen !== shownScreen) { screenFx(shownScreen, screen); shownScreen = screen; }
   document.body.dataset.screen = screen;
   if (screen !== "run") hud.hidden = true;
   if (screen === "title") {
+    // gráficos: pantalla de título con los tres protagonistas (retratos de diálogo), el logo y la demo de fondo
+    const cast = [["thomas", "c-a"], ["linda", "c-b"], ["rocio", "c-c"]].map(([id, cl]) => { const src = dialogPortrait(id, 3); return src ? `<img class="${cl}" src="${src}" alt="">` : ""; }).join("");
     ui.innerHTML = `<section class="title" data-act="start">
-      <h1 class="logo"><span>GATOS</span><span>de LINDA</span></h1>
+      <div class="cast" aria-hidden="true">${cast}</div>
+      <h1 class="logo"><span>GATOS</span><span>de LINDA</span><em class="ver">2.0</em></h1>
       <p class="tag">Supervivientes del barrio · para dos</p>
-      <button class="press" data-act="start">Tocá para empezar</button></section>`;
+      <button class="press" data-act="start"><i aria-hidden="true"></i>Tocá para empezar<i aria-hidden="true"></i></button></section>`;
     return;
   }
   if (screen === "menu") {
@@ -700,6 +719,9 @@ function paintToggles() {
   const t = (id, label, on) => { const el = $(id); if (el) { el.textContent = `${label}: ${on ? "sí" : "no"}`; el.classList.toggle("off", !on); } };
   t("#tsnd", "Sonido", !sfx.muted); t("#tmus", "Música", music.on); t("#tvib", "Vibrar", vibOn);
   const v = $("#tvib"); if (v) v.hidden = !navigator.vibrate;
+  // gráficos: calidad Alta / Ahorro (R.setQuality la guarda en localStorage)
+  const q = $("#tcal"); if (q) q.textContent = `Calidad: ${R.q === "ahorro" ? "Ahorro" : "Alta"}`;
+  const n = $("#calnote"); if (n) n.textContent = R.q === "ahorro" ? "Ahorro: sin brillos, gradación de color ni partículas de ambiente. Para celus que se traban." : "Alta: brillos, gradación de color y ambiente de cada mapa.";
 }
 let wake = null;
 async function keepAwake(on) {
@@ -755,6 +777,7 @@ document.addEventListener("click", e => {
     case "resume": setPaused(false); break;
     case "snd": sfx.toggle(); if (screen === "run") paintToggles(); else draw(); break;
     case "mus": music.toggle(); paintToggles(); break;
+    case "cal": R.setQuality(R.q === "ahorro" ? "alta" : "ahorro"); paintToggles(); break; // gráficos
     case "vib": vibOn = !vibOn; try { localStorage.setItem("gdl-vib", vibOn ? "1" : "0"); } catch (e) {} paintToggles(); buzz(40); break;
     case "quit":
       setPaused(false);
