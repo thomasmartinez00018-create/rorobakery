@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Revisión de mapas</title>
+<style>html,body{margin:0;background:#0c0c12;color:#ddd;font:13px/1.3 monospace}canvas{image-rendering:pixelated;display:block}#st{position:absolute;left:8px;top:8px;white-space:pre}</style>
+</head><body><canvas id="cv"></canvas><div id="st">cargando</div>
+<script type="module">
+// Hoja de revisión de un mapa: el mapa entero de día (con props), el mapa de noche reducido y tres recortes
+// a escala del juego (x3). Uso: mapas.html?map=plaza  ·  &crops=x,y;x,y;x,y  ·  &view=full (solo el mapa 1:1)
+import { buildSprites, SPR } from "../js/sprites.js";
+import { buildMap, THEMES, AMBIENCE, GEO } from "../js/maps.js";
+const q = new URLSearchParams(location.search), id = q.get("map") || "plaza", st = document.getElementById("st");
+const CROPS = {
+  plaza: [[512, 110], [512, 600], [600, 330]], estacion: [[190, 380], [560, 450], [820, 680]], feria: [[640, 160], [512, 980], [512, 120]],
+  bielli: [[512, 130], [690, 640], [200, 240]], cancha: [[512, 512], [140, 150], [800, 160]], tortugas: [[420, 200], [512, 330], [600, 620]],
+  terrazas: [[440, 110], [860, 880], [880, 190]], abuela: [[512, 160], [300, 600], [512, 860]], roros: [[180, 200], [512, 380], [780, 430]]
+};
+try {
+  buildSprites();
+  const t0 = performance.now(); const M = buildMap(id); const ms = Math.round(performance.now() - t0);
+  const missing = [...new Set(M.props.filter(p => !SPR[p.s]).map(p => p.s))];
+  const badL = M.lights.filter(L => !/^#[0-9a-f]{6}$/i.test(L.c));
+  // compuesto de día: mapa + props ordenados por altura, como render.js
+  const day = document.createElement("canvas"); day.width = day.height = 1024; const d = day.getContext("2d"); d.imageSmoothingEnabled = false;
+  d.drawImage(M.canvas, 0, 0);
+  for (const p of [...M.props].sort((a, b) => a.y - b.y)) { const s = SPR[p.s]; if (!s) { d.fillStyle = "#f0f"; d.fillRect(p.x - 4, p.y - 8, 8, 8); continue; } d.drawImage(p.fl ? s.fl[0] : s.f[0], p.x - (s.w >> 1), p.y - s.ay); }
+  // de noche: la capa oscura con huecos de luz y el tinte aditivo, igual que Renderer.lighting
+  const night = document.createElement("canvas"); night.width = night.height = 1024; const n = night.getContext("2d");
+  n.drawImage(day, 0, 0);
+  const lc = document.createElement("canvas"); lc.width = lc.height = 1024; const lg = lc.getContext("2d");
+  const [nr, ng, nb, na] = THEMES[id].night; lg.fillStyle = `rgba(${nr},${ng},${nb},${na})`; lg.fillRect(0, 0, 1024, 1024);
+  lg.globalCompositeOperation = "destination-out";
+  for (const L of M.lights) { const gr = lg.createRadialGradient(L.x, L.y, 0, L.x, L.y, L.r); gr.addColorStop(0, "rgba(0,0,0,1)"); gr.addColorStop(0.6, "rgba(0,0,0,.6)"); gr.addColorStop(1, "rgba(0,0,0,0)"); lg.fillStyle = gr; lg.fillRect(L.x - L.r, L.y - L.r, L.r * 2, L.r * 2); }
+  n.drawImage(lc, 0, 0); n.globalCompositeOperation = "lighter";
+  for (const L of M.lights) { const gr = n.createRadialGradient(L.x, L.y, 0, L.x, L.y, L.r * 0.7); gr.addColorStop(0, L.c + "38"); gr.addColorStop(1, L.c + "00"); n.fillStyle = gr; n.fillRect(L.x - L.r, L.y - L.r, L.r * 2, L.r * 2); }
+  n.globalCompositeOperation = "source-over";
+  const cv = document.getElementById("cv"), g = cv.getContext("2d");
+  const b = GEO[id] && GEO[id].b;
+  if (q.get("view") === "full") { cv.width = cv.height = 1024; g.drawImage(q.get("night") ? night : day, 0, 0); }
+  else {
+    cv.width = 2048; cv.height = 1064; g.imageSmoothingEnabled = false; g.fillStyle = "#0c0c12"; g.fillRect(0, 0, 2048, 1064);
+    g.drawImage(day, 0, 40);
+    if (b) { g.strokeStyle = "rgba(255,60,200,.8)"; g.setLineDash([6, 4]); g.strokeRect(b[0] + 0.5, b[1] + 40.5, b[2] - b[0], b[3] - b[1]); g.setLineDash([]); }
+    if (GEO[id] && GEO[id].rails) for (const y of GEO[id].rails) { g.fillStyle = "rgba(255,40,40,.7)"; g.fillRect(0, y - 26 + 40, 6, 52); g.fillRect(1018, y - 26 + 40, 6, 52); }
+    g.imageSmoothingEnabled = true; g.drawImage(night, 1024, 40, 512, 512); g.imageSmoothingEnabled = false;
+    const crops = q.get("crops") ? q.get("crops").split(";").map(s => s.split(",").map(Number)) : CROPS[id] || [[512, 512], [512, 512], [512, 512]];
+    const slot = [[1536, 40, day], [1024, 552, night], [1536, 552, day]];
+    crops.forEach(([x, y], i) => { const [sx, sy, src] = slot[i], w = 171; const x0 = Math.max(0, Math.min(1024 - w, x - (w >> 1))), y0 = Math.max(0, Math.min(1024 - w, y - (w >> 1))); g.drawImage(src, x0, y0, w, w, sx, sy, 512, 512); g.strokeStyle = "#333"; g.strokeRect(sx + 0.5, sy + 0.5, 511, 511); });
+    g.fillStyle = "#ddd"; g.font = "bold 18px monospace"; g.fillText(`${THEMES[id].name} · ${id} · props ${M.props.length} · luces ${M.lights.length} · ${ms} ms${missing.length ? " · FALTAN: " + missing.join(",") : ""}${badL.length ? " · LUZ MAL" : ""}`, 10, 26);
+    g.font = "13px monospace"; g.fillText("día 1:1 (rosa = zona caminable propuesta)", 1030, 26 + 0);
+  }
+  st.textContent = missing.length || badL.length ? `ERROR faltan ${missing.join(",")} luces mal ${badL.length}` : `OK ${id} props ${M.props.length} luces ${M.lights.length} ${ms}ms amb ${AMBIENCE[id] ? "si" : "no"}`;
+  st.style.display = "none"; document.title = st.textContent;
+} catch (e) { st.textContent = "ERROR " + e.message + "\n" + e.stack; document.title = "ERROR " + e.message; }
+</script></body></html>

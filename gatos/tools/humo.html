@@ -1,0 +1,21 @@
+<!doctype html><html><head><meta charset="utf-8"><title>humo</title></head><body><canvas id="c"></canvas>
+<script type="module">
+// Prueba de humo: el Renderer real arma cada mapa (incluidos los de historia) y dibuja un cuadro de cada uno.
+import { buildSprites } from "../js/sprites.js";
+import { Renderer, THEMES } from "../js/render.js";
+import { Sim } from "../js/engine.js";
+import { STORY_MAPS } from "../js/maps.js";
+const out = [];
+try {
+  buildSprites(); const R = new Renderer(document.getElementById("c"));
+  const ids = [...Object.keys(THEMES), ...STORY_MAPS];
+  for (const id of ids) {
+    R.setMap(id); const sim = new Sim(id); sim.addPlayer("host", "thomas");
+    for (let i = 0; i < 30; i++) sim.step(1 / 30, { host: { x: 0, y: 0 } });
+    const V = typeof sim.snapshot === "function" ? sim.snapshot() : null;
+    out.push(id + ":" + (THEMES[id] ? "ok" : "sin-tema") + ":" + R.map.props.length);
+  }
+  out.push("menu-enumera:" + Object.keys(THEMES).join(","));
+} catch (e) { out.push("ERROR " + e.message); }
+document.title = out.join(" | ");
+</script></body></html>
