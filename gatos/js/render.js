@@ -1,6 +1,6 @@
 // Render 2D pixel art: mapa pregenerado, entidades ordenadas por altura, luces nocturnas y efectos.
 import { SPR } from "./sprites.js";
-import { MAP, ENEMY_NAME, HAZ_ID, PICKS, ALLY, F_FLASH, F_TELE, F_ELITE, F_RUSH, F_WET, F_LEFT, F_DOWN } from "./engine.js";
+import { MAP, ENEMY_NAME, HAZ_ID, PICKS, ALLY, F_FLASH, F_TELE, F_ELITE, F_RUSH, F_WET, F_LEFT, F_DOWN, F_STUN } from "./engine.js";
 import { THEMES, buildMap } from "./maps.js";
 export { THEMES };
 
@@ -277,6 +277,8 @@ export class Renderer {
     if (rush) { const a = o.a / 10; g.fillStyle = "rgba(255,255,255,.5)"; for (let i = 1; i < 4; i++) g.fillRect(Math.round(x - Math.cos(a) * i * 5), Math.round(y - 5 - Math.sin(a) * i * 5), 2, 1); }
     g.drawImage(img, x - (s.w >> 1), y - s.ay + (o.type === 2 ? -6 : 0) - (rush && name === "saltarin" ? 4 : 0));
     if (tele) { const hy = y - s.h - 6; g.fillStyle = "#16121c"; g.fillRect(x - 2, hy - 1, 4, 9); g.fillStyle = Math.floor(this.t * 10) % 2 ? "#ff4a5a" : "#ffd24a"; g.fillRect(x - 1, hy, 2, 5); g.fillRect(x - 1, hy + 6, 2, 1); }
+    // dinámica 2: aturdida (Luz frenada por la pareja): estrellitas girando arriba de la cabeza
+    if (f & F_STUN) { g.fillStyle = "#ffd24a"; for (let i = 0; i < 3; i++) { const a = this.t * 6 + i * 2.1; g.fillRect(Math.round(x + Math.cos(a) * 7), Math.round(y - s.h - 2 + Math.sin(a) * 2), 2, 2); } }
     if (f & F_WET) { g.fillStyle = "#7fd0ff"; const k = Math.floor(this.t * 6 + o.id) % 3; g.fillRect(x - 3 + k * 2, y - s.h + k, 1, 2); }
   }
   drawAlly(g, o, X, Y) {

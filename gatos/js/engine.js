@@ -54,6 +54,7 @@ export const ALLY = {
 };
 // banderas de cada gato en la foto del estado
 export const F_FLASH = 1, F_TELE = 2, F_ELITE = 4, F_RUSH = 8, F_WET = 16, F_LEFT = 32, F_DOWN = 64; // LEFT y DOWN: solo aliados
+export const F_STUN = 128;        // dinámica 2: gato o jefa aturdida (recibe más daño)
 export const GOALS = ["none", "survive", "defend", "escort", "trains", "track", "boss", "reach", "protect"];
 
 export const WEAPONS = {
@@ -104,9 +105,16 @@ export function mulberry32(a) {
    - mix: [[tipo, peso, desde t, hasta t, tope], ...]  activo si t > desde y t <= hasta; tope = número o [base, cada t]
    - win: { kill: tipo } | { t: segundos } | { goal: true } · lose: { allDown: true }
    - goal, events, allies, dialogs: modo historia (ver más abajo) */
+/* dinámica 2: Luz como pelea de pareja. Valores por defecto de Sim.luzPar (reutilizable: un jefe del modo historia,
+   por ejemplo luz2, puede usar la misma lógica con { pair: { near: 28, stun: 2.5, stunMul: 1.5 } } en su entrada de bosses).
+   mark/markDbl: segundos de aviso (línea roja que sigue al marcado); near: px entre el marcado y su pareja para frenarla
+   (72 = hilo de corazón); half: segundos de carga antes de chequear; stun: segundos aturdida; stunMul: daño recibido;
+   cd: pausa entre cargas; dodge: jugando solo, esquivar en esos segundos antes del chequeo también la frena. */
+export const LUZ_PAR = { mark: 0.65, markDbl: 0.4, near: 72, half: 0.35, stun: 2, stunMul: 2, cd: 2.6, dodge: 0.6 };
 export const ARCADE = {
   id: "arcade",
-  bosses: [{ t: 210, type: "luz", dist: 150, calm: 3 }, { t: 420, type: "linda", dist: 160, calm: 4, phase: 1 }],
+  // hp: multiplicador de vida del jefe; pair: true (LUZ_PAR) u objeto que pisa valores de LUZ_PAR
+  bosses: [{ t: 210, type: "luz", dist: 150, calm: 3, hp: 2.5, pair: true }, { t: 420, type: "linda", dist: 160, calm: 4, phase: 1 }],
   hordes: [{ t: 150, n: 40, dist: 150, kinds: ["gato"] }, { t: 330, n: 40, dist: 150, kinds: ["saltarin", "negro", "negro"] }],
   orders: [95, 250, 365],
   elites: { first: 70, min: 38, max: 58, slope: 25, pools: [[0, ["gato", "saltarin"]], [110, ["saltarin", "negro", "madre"]], [200, ["negro", "gordo", "madre", "saltarin"]]] },
@@ -233,7 +241,7 @@ export class Sim {
       if (inp.dash && p.dashCd <= 0) {
         p.dashCd = 2.4; p.inv = Math.max(p.inv, 0.35);
         if (!inp.pos) { if (!mx && !my) mx = p.face; const m = Math.hypot(mx, my); p.dvx = mx / m * 290; p.dvy = my / m * 290; p.dashT = 0.17; }
-        this.ev.push(["dash", Math.round(p.x), Math.round(p.y), p.side]);
+        this.ev.push(["dash", Math.round(p.x), Math.round(p.y), p.side]); p.lastDash = this.t;
       }
       if (p.dashT > 0) { p.dashT -= dt; p.x += p.dvx * dt; p.y += p.dvy * dt; }
       p.x = clamp(p.x, bx0, bx1); p.y = clamp(p.y, by0, by1);
@@ -349,6 +357,8 @@ export class Sim {
     while (this.bossIdx < this.bosses.length && t >= this.bosses[this.bossIdx].t) {
       const b = this.bosses[this.bossIdx++], q = this.ringPos(b.dist || 150);
       this.bossRef = this.spawnAt(b.type, q.x, q.y); if (b.phase) this.bossRef.phase = b.phase;
+      if (b.hp) { this.bossRef.hp *= b.hp; this.bossRef.maxHp = this.bossRef.hp; }                  // dinámica 2
+      if (b.pair) this.bossRef.pair = b.pair === true ? LUZ_PAR : { ...LUZ_PAR, ...b.pair };
       this.ev.push(["boss", b.type]); this.calm = b.calm || 0;
     }
     const bossAlive = this.bossRef && this.bossRef.hp > 0;
@@ -524,6 +534,7 @@ export class Sim {
           else if (m < 92) spd *= 0.25;
           break;
         case "luz":
+          if (e.pair) { spd *= this.luzPar(e, dt, e.pair); if (e.st === 2) { dx = e.ax; dy = e.ay; } break; } // dinámica 2
           e.cd -= dt;
           if (e.st === 1) { spd = 0; if ((e.stT -= dt) <= 0) { e.st = 2; e.stT = 0.7; } }
           else if (e.st === 2) { spd *= 4.4; dx = e.ax; dy = e.ay; if ((e.stT -= dt) <= 0) { e.st = 0; if (e.hp < e.maxHp * 0.5 && !e.dbl) { e.dbl = true; e.cd = 0.25; } else { e.dbl = false; e.cd = 2.6; } } }
@@ -547,6 +558,41 @@ export class Sim {
       if (this.allies.length) for (const a of this.allies) { if (a.down || a.cfg.inv || a.inv > 0) continue; const rr = e.r + a.r; if (d2(a, e) < rr * rr) this.hurtAlly(a, dmg); }
       if (this.lures.length) for (const L of this.lures) { if (!L.tgt || L.down || L.inv > 0) continue; const rr = e.r + L.r; if (d2(L, e) < rr * rr) { L.hp = Math.max(0, L.hp - dmg); L.inv = 0.25; L.flash = 0.12; this.ev.push(["goalhit", Math.round(L.x), Math.round(L.y)]); } }
     }
+  }
+  /* dinámica 2: carga de pareja. Devuelve el multiplicador de velocidad del cuadro (0 quieta, 4,4 cargando).
+     st 1: marca a un jugador (alterna entre los dos) y la línea lo sigue; st 2: carga en línea recta; a los o.half s
+     de carga, si la pareja del marcado está a menos de o.near px (o, jugando solo, si el marcado esquivó hace menos de
+     o.dodge s), se frena y pasa a st 3: aturdida o.stun s, recibe o.stunMul de daño. Con menos de la mitad de vida
+     carga dos veces seguidas. Evento ["mark", lado] al marcar y ["stun", x, y] al frenarse. */
+  luzPar(e, dt, o) {
+    e.cd -= dt;
+    if (e.st === 3) { if ((e.stT -= dt) <= 0) { e.st = 0; e.stun = 0; e.cd = 1.2; } return 0; }
+    if (e.st === 1) {
+      const m = e.mark && this.players[e.mark.side] === e.mark && !e.mark.downed ? e.mark : this.alive()[0];
+      if (m) { e.mark = m; const ux = m.x - e.x, uy = m.y - e.y, d = Math.hypot(ux, uy) || 1; e.ax = ux / d; e.ay = uy / d; }
+      if ((e.stT -= dt) <= 0) { e.st = 2; e.stT = 0.7; e.chk = false; }
+      return 0;
+    }
+    if (e.st === 2) {
+      e.stT -= dt;
+      if (!e.chk && e.stT <= 0.7 - o.half) {
+        e.chk = true;
+        const m = e.mark, solo = Object.keys(this.players).length === 1;
+        const mate = m && this.alive().find(q => q !== m);
+        const held = m && !m.downed && (mate ? d2(m, mate) < o.near * o.near : solo && this.t - (m.lastDash || -9) < o.dodge);
+        if (held) { e.st = 3; e.stT = o.stun; e.stun = o.stunMul; e.dbl = false; e.kx = e.ky = 0; this.ev.push(["stun", Math.round(e.x), Math.round(e.y)]); return 0; }
+      }
+      if (e.stT <= 0) { e.st = 0; if (e.hp < e.maxHp * 0.5 && !e.dbl) { e.dbl = true; e.cd = 0.25; } else { e.dbl = false; e.cd = o.cd; } }
+      return 4.4;
+    }
+    const al = this.alive();
+    if (e.cd <= 0 && al.length) {
+      e.markI = (e.markI || 0) + 1; e.mark = e.dbl && e.mark && !e.mark.downed ? e.mark : al[e.markI % al.length];
+      e.st = 1; e.stT = e.dbl ? o.markDbl : o.mark;
+      this.ev.push(["charge", Math.round(e.x), Math.round(e.y)], ["mark", e.mark.side]);
+      return 0;
+    }
+    return 1;
   }
   // Linda cambia de táctica a medida que pierde vida
   linda(e, dx, dy, dt, dmgScale) {
@@ -595,7 +641,7 @@ export class Sim {
   damage(e, dmg, p, kx = 0, ky = 0, raw) {
     if (e.hp <= 0) return;
     const crit = !raw && this.rnd() < 0.08;
-    const d = Math.round(raw ? dmg : dmg * (p ? p.dmgMul * (p.bond ? 1.2 : 1) : 1) * (crit ? 2 : 1));
+    const d = Math.round((raw ? dmg : dmg * (p ? p.dmgMul * (p.bond ? 1.2 : 1) : 1) * (crit ? 2 : 1)) * (e.stun || 1)); // stun: dinámica 2
     e.hp -= d; e.flash = 0.12;
     const kb = ENEMY[e.type].boss ? 0.15 : ENEMY[e.type].obj ? 0 : e.elite ? 0.35 : 1;
     e.kx += kx * kb; e.ky += ky * kb;
@@ -1075,7 +1121,7 @@ export class Sim {
     const E = [];
     for (const e of this.enemies) {
       const tele = (e.st === 1 && (e.type === "saltarin" || e.type === "escupidor" || e.type === "luz"));
-      const f = (e.flash > 0 ? F_FLASH : 0) | (tele ? F_TELE : 0) | (e.elite ? F_ELITE : 0) | (e.st === 2 ? F_RUSH : 0) | (e.slow > 0 ? F_WET : 0);
+      const f = (e.flash > 0 ? F_FLASH : 0) | (tele ? F_TELE : 0) | (e.elite ? F_ELITE : 0) | (e.st === 2 ? F_RUSH : 0) | (e.slow > 0 ? F_WET : 0) | (e.stun ? F_STUN : 0);
       E.push(e.id, ENEMY_ID[e.type], Math.round(e.x), Math.round(e.y), f, tele || e.st === 2 ? Math.round(Math.atan2(e.ay, e.ax) * 10) : 0);
     }
     const B = []; for (const b of this.proj) B.push(b.k, Math.round(b.x), Math.round(b.y), Math.round(Math.atan2(b.vy, b.vx) * 10));

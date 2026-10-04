@@ -42,6 +42,7 @@ let sim = null, snap = null, runId = 0, runOn = false, paused = false, endShown 
 let pendingEv = [], sendAcc = 0, lastSeen = 0;
 let guestPos = null, guestInput = { pos: null, face: 1, moving: 0, ult: false, dash: false };
 const smooth = new Map();
+let luzMsgAt = 0; // dinámica 2: para no repetir el cartel de Luz en cada carga
 let bannerT = 0, errMsg = null, busyMsg = null, joinDraft = cleanCode(new URLSearchParams(location.search).get("sala") || "");
 
 /* ---------------- modo historia (js/story.js, si existe; si no, nada cambia) ---------------- */
@@ -174,6 +175,13 @@ function onEvents(ev) {
     if (e[0] === "warn") { const b = HZ_BANNER[e[1]]; if (b) banner(b[0], b[1]); }
     if (e[0] === "phase") banner(e[1] === 2 ? "¡Linda se enoja!" : "¡Linda está furiosa!", e[1] === 2 ? "Salgan de los círculos rojos" : "Busquen el hueco en el anillo");
     if (e[0] === "sync") banner("¡Combo de pareja!", "Doble poder y se curan los dos");
+    // dinámica 2: Luz marca a uno y se frena si el otro está pegado (jugando solo, si esquivás justo)
+    if (e[0] === "mark" && performance.now() - luzMsgAt > 7000) {
+      luzMsgAt = performance.now(); const solo = snap && Object.keys(snap.P).length === 1;
+      const who = e[1] === me.side ? "¡Luz te marcó!" : `¡Luz marcó a ${NAME[(snap && snap.P[e[1]] && snap.P[e[1]].c) || ""] || "tu pareja"}!`;
+      banner(who, solo ? "Esquivá justo cuando arranca y se choca" : "Júntense: pegados la frenan");
+    }
+    if (e[0] === "stun") { luzMsgAt = performance.now(); banner("¡Luz se frenó!", "Está aturdida: le pegan el doble"); }
     if (e[0] === "obj") banner(["Se enfrió el pedido", "¡Pedido entregado!", "¡Pedido de Roro's!"][e[1]], ["Otra vez será", "Caja, alfajor y monedas", "Párense encima: juntos carga el doble"][e[1]]);
     if (e[0] === "vacuum" && e[3] === me.side) banner("¡Imán!", "Toda la experiencia para ustedes");
     if (e[0] === "splash" && e[3] === me.side) banner("¡Manguerazo!", "A los gatos no les gusta el agua");
