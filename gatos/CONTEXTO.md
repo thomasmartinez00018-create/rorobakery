@@ -156,7 +156,7 @@ Cada mapa tiene un **nivel de dificultad** (tier). Cada nivel suma +7% de vida a
 
 ### Progreso guardado
 
-Se guarda en cada dispositivo (localStorage, clave `gdl-profile`; las preferencias van en `gdl-music`, `gdl-mute` y `gdl-vib`).
+Se guarda en cada dispositivo (localStorage, clave `gdl-profile`; las preferencias van en `gdl-music`, `gdl-mute` y `gdl-vib`). Desde la fase de cimientos el perfil es v2 (`js/profile.js`): un perfil v1 se migra solo conservando todo y el original queda copiado en `gdl-profile-v1`. En el Taller, "Código de respaldo" permite copiar el perfil como texto y recuperarlo en otro celu.
 
 - **Monedas por partida:** (monedas juntadas + gatos/12 + segundos/20 + 60 si ganaron) × (1 + nivel del mapa × 0,12).
 - **Taller:** Vida (+10), Fuerza (+8%), Velocidad (+5%) e Imán (+15%), hasta nivel 5 cada una. Cuestan 15, 35, 70, 120 y 200 monedas.
@@ -192,7 +192,7 @@ Se guarda en cada dispositivo (localStorage, clave `gdl-profile`; las preferenci
 - **Audio:** música chiptune y sonidos sintetizados en vivo con WebAudio.
 
 **Red (PeerJS / WebRTC P2P):**
-- **Sala:** el anfitrión crea un código de 4 letras (prefijo de id `gatos-de-linda-v1-`).
+- **Sala:** el anfitrión crea un código de 4 letras (prefijo de id `gatos-de-linda-v2-`). `hello` y `lobby` llevan `proto` (`PROTO` en `net.js`): si no coincide, la sala pide "Actualizá la página" y no arranca.
 - **Simulación:** la corre **solo el anfitrión**. Manda una foto del estado 20 veces por segundo, con los eventos acumulados.
 - **Movimiento del invitado:** se mueve localmente (sin demora) y manda su posición junto con el tamaño de su pantalla (`vw`, `vh`), así los gatos aparecen justo afuera de lo que ve cada uno (`edgePos` en el motor). El esquive también se simula local y el anfitrión solo aplica la invulnerabilidad.
 - **Mensajes del anfitrión al invitado:** `lobby {who,map}`, `start {map,chars}`, `s {snapshot}`, `menu`.
@@ -243,7 +243,7 @@ Abrir `http://127.0.0.1:8766/?debug`. Con `?debug` queda disponible `window.__g(
 **Herramientas que se usaron en desarrollo:**
 - Simulación sin navegador con bots, para balance: importar `Sim`, avanzar con `step(dt, input)` y elegir mejoras con `pick(side, i)`.
 - Pruebas con Playwright para cada mapa, de a dos, nivel, evolución, tren, combo de pareja, Linda y resultados.
-- Ninguna de estas herramientas está guardada en el repo.
+- Desde la fase de cimientos están en `gatos/tools/` (bots, lote de partidas, rendimiento, pruebas en Node y en navegador). `node gatos/tools/test.mjs` corre todo; las mediciones están en `gatos/tools/mediciones.md`.
 
 ## 8. Cómo se publica
 

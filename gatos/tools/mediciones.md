@@ -120,3 +120,24 @@ Con `EXACT=1` el motor nuevo usa `Math.random` como azar (en vez de su `this.rnd
 | Terrazas solo | 35% → 38% | 6:17 → 7:34 (-12 a +261 s) | sí |
 
 Tiempo de `step`: sin diferencia medible. En la Mac compartida con otros agentes el mismo motor varió entre corridas de 0,030 a 0,099 ms (Terrazas 7:00) y de 0,26 a 0,45 ms (estrés), más que cualquier diferencia entre los dos motores.
+
+## 4. Infraestructura del modo historia
+
+El arcade no consume azar ni cambia con lo nuevo (diálogo, objetivos, aliados, cámara): la batería completa con el motor final (`results/3_final`) da **los 14 archivos idénticos byte a byte** a los de `results/2_guion`. La foto del arcade suma unos 45 bytes en JSON (`A: [], dlg: null, goal: null, cam: null, cap: null`).
+
+Capítulo de ejemplo (`js/story.js`, defender la fuente 60 s) con el bot, que ahora se queda cerca de lo que hay que defender: gana 19 de 20 (10 a dúo, 10 solo).
+
+## 5. Del motor original al final (bot corregido, 40 partidas por configuración)
+
+`results/0_base_bot2` (commit 02ab518) contra `results/3_final`: 13/14 dentro del margen. La que queda afuera es Feria dúo: gana 100% → 95% y la mediana de fin baja de 8:12 a 8:01 (IC95 de -17 a -2 s), o sea que a Linda la vencen unos 11 s antes. Con 14 comparaciones al 95% es esperable que una salga afuera por azar. Monedas por partida: 615,7 → 601,9 (menos 2%).
+
+## 6. Pruebas
+
+`node tools/test.mjs` corre todo. Última corrida, todo en verde:
+
+| Archivo | Qué prueba | Resultado |
+| --- | --- | --- |
+| `test_perfil.mjs` | Perfil v1 de ejemplo → v2 con localStorage de mentira, copia del original, perfil roto, versión futura, valores sucios, código de respaldo de ida y vuelta, `storage.persist()` | 11 en verde |
+| `test_guion.mjs` | Arcade idéntico byte a byte al motor sin guion (84 partidas), semilla, mezcla, topes, eventos, victoria por tiempo y por jefe | 8 en verde |
+| `test_historia.mjs` | Diálogo (los dos tocan, relevo a los 6 s, desconexión, saltar, solo, cola con la subida de nivel, epílogo), los 9 objetivos, hitos, aliados (ids, lista A, embestir, área, seguir, levantarse), cámara, capítulo de ejemplo con bots | 28 en verde |
+| `test_navegador.mjs` | Chromium real: perfil v1 migrado y código de respaldo desde el Taller; arcade 30 s; capítulo de ejemplo completo; tope de 60 cuadros con pantalla de 120 Hz simulada (dibujó 60,3 cuadros por segundo con el refresco a 125 Hz); de a dos en dos navegadores con PeerServer local: sala, diálogo que espera a los dos, relevo a los 5,3 s, invitado que se mueve y ve el objetivo, aviso "Actualizá la página" con versión distinta; ningún error en consola | 11 en verde |

@@ -23,6 +23,9 @@ export function brain(sim, p, other) {
   // va al objeto más cercano (antes sumaba la atracción de todos: 40 monedas tiradas lo arrastraban hacia los gatos)
   let pk = null, pd = 200; for (const k of sim.pickups) { const d = Math.hypot(k.x - p.x, k.y - p.y) || 1; if (d < pd) { pd = d; pk = k; } }
   if (pk) { fx += (pk.x - p.x) / pd * 1.2; fy += (pk.y - p.y) / pd * 1.2; }
+  // modo historia: se queda cerca de lo que hay que defender y va a los rastros o al destino
+  const G = sim.goal, gt = G && !G.done && (G.target || (G.k === "reach" && { x: G.to[0], y: G.to[1] }) || (G.k === "escort" && G.ally) || (G.pts && G.pts.length && { x: G.pts[0][0], y: G.pts[0][1] }));
+  if (gt) { const d = Math.hypot(gt.x - p.x, gt.y - p.y) || 1; if (d > (G.target ? 45 : 8)) { fx += (gt.x - p.x) / d * 1.6; fy += (gt.y - p.y) / d * 1.6; } }
   if (sim.obj) { const d = Math.hypot(sim.obj.x - p.x, sim.obj.y - p.y) || 1; fx += (sim.obj.x - p.x) / d * 1.5; fy += (sim.obj.y - p.y) / d * 1.5; }
   if (other) { const d = Math.hypot(other.x - p.x, other.y - p.y) || 1; const w = other.downed ? 3 : d > 60 ? 0.8 : 0; fx += (other.x - p.x) / d * w; fy += (other.y - p.y) / d * w; }
   const b = sim.cfg.b, cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2; const dc = Math.hypot(cx - p.x, cy - p.y) || 1; fx += (cx - p.x) / dc * 0.25 * (dc / 300); fy += (cy - p.y) / dc * 0.25 * (dc / 300);
@@ -46,8 +49,9 @@ export function choose(policy, p, opts) {
 }
 
 // exact: usa Math.random como azar del motor (para comparar bit a bit con un motor sin RNG propio)
-export function runGame({ map = "plaza", duo = true, policy = "builder", meta = {}, dt = 1 / 30, react = 0, maxT = 600, chars, seed, exact = false } = {}) {
-  const sim = new Sim(map, undefined, seed !== undefined ? { seed } : undefined);
+// guion: un guion del motor (por ejemplo chapterGuion(capítulo)); en los diálogos el bot toca enseguida
+export function runGame({ map = "plaza", duo = true, policy = "builder", meta = {}, dt = 1 / 30, react = 0, maxT = 600, chars, seed, exact = false, guion } = {}) {
+  const sim = new Sim(map, guion, seed !== undefined ? { seed } : undefined);
   if (exact && "rnd" in sim) sim.rnd = Math.random;
   const cs = chars || (duo ? ["thomas", "rocio"] : ["thomas"]);
   sim.addPlayer("host", cs[0], meta); if (duo) sim.addPlayer("guest", cs[1], meta);
@@ -63,6 +67,7 @@ export function runGame({ map = "plaza", duo = true, policy = "builder", meta = 
   let acc = 0, winK = 0, wEn = 0, wOn = 0, wN = 0, wMinHp = 1, lastK = 0, held = {};
   const tick = 10; // ventana de 10 s
   while (sim.state !== "over" && sim.state !== "win" && sim.t < maxT) {
+    if (sim.state === "dialog") { for (const s of Object.keys(sim.players)) sim.adv(s); continue; }
     if (sim.state === "levelup") {
       for (const s of Object.keys(sim.offers)) if (sim.offers[s] && sim.offers[s].pick === null) { const o = sim.offers[s].opts, i = choose(policy, sim.players[s], o); picks.push({ t: Math.round(sim.t), side: s, ...o[i] }); sim.pick(s, i); }
       continue;
