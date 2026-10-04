@@ -70,21 +70,68 @@ export const PICK_CAP = 30;       // tope de objetos en el piso (las cajas de Ro
 export const PICK_LIFE = 40;      // monedas, imanes y mangueras vencen a los 40 s y parpadean los últimos 5
 const EXPIRES = { moneda: 1, iman: 1, manguera: 1 }; // la caja y el alfajor no vencen: son premio y vida
 
-const rnd = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const d2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
 
+// azar con semilla (mulberry32): la misma semilla da la misma partida, para pruebas y cinemáticas
+export function mulberry32(a) {
+  a >>>= 0;
+  return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+
+/* ---------- guion de la partida: qué pasa y cuándo ----------
+   new Sim(mapa, guion, { seed }). Sin guion se juega ARCADE, que es el modo de siempre.
+   - bosses: [{ t, type, dist, calm, phase }]       jefes que aparecen a los t segundos
+   - hordes: [{ t, n, dist, kinds }]                 anillo de n gatos con dos huecos; kinds se reparte por i % largo
+   - orders: [t, ...]                                pedidos de Roro's (si hay un jefe vivo se corren 12 s)
+   - elites: { first, min, max, slope, pools: [[desde t, [tipos]], ...] } (null: sin élites)
+   - crates: { first, max } (null: sin cajones) · pigeons: { from } (null: sin palomas) · hazards: peligro del mapa sí o no
+   - rate: { base, per, max, cap }                   gatos por segundo = min(max, base + t / per), tope de cap en pantalla
+   - mix: [[tipo, peso, desde t, hasta t, tope], ...]  activo si t > desde y t <= hasta; tope = número o [base, cada t]
+   - win: { kill: tipo } | { t: segundos } | { goal: true } · lose: { allDown: true }
+   - goal, events, allies, dialogs: modo historia (ver más abajo) */
+export const ARCADE = {
+  id: "arcade",
+  bosses: [{ t: 210, type: "luz", dist: 150, calm: 3 }, { t: 420, type: "linda", dist: 160, calm: 4, phase: 1 }],
+  hordes: [{ t: 150, n: 40, dist: 150, kinds: ["gato"] }, { t: 330, n: 40, dist: 150, kinds: ["saltarin", "negro", "negro"] }],
+  orders: [95, 250, 365],
+  elites: { first: 70, min: 38, max: 58, slope: 25, pools: [[0, ["gato", "saltarin"]], [110, ["saltarin", "negro", "madre"]], [200, ["negro", "gordo", "madre", "saltarin"]]] },
+  crates: { first: 12, max: 5 },
+  pigeons: { from: 50 },
+  hazards: true,
+  rate: { base: 0.9, per: 34, max: 9, cap: 220 },
+  mix: [["gato", 10, 0, 300], ["gato", 5, 300], ["saltarin", 3, 45, 200], ["saltarin", 4, 200], ["escupidor", 2, 90, 250, [4, 90]], ["escupidor", 3, 250, null, [4, 90]],
+    ["negro", 4, 110, 300], ["negro", 7, 300], ["madre", 2, 140, null, 7], ["gordo", 2, 180, 300], ["gordo", 3, 300]],
+  win: { kill: "linda" },
+  lose: { allDown: true },
+  goal: null,
+  events: []
+};
+// completa un guion parcial con lo del arcade que falte (lo que se pone en null queda apagado)
+export function makeGuion(g) {
+  if (!g) return ARCADE;
+  const out = { ...ARCADE, ...g };
+  for (const k of ["bosses", "hordes", "orders", "mix", "events"]) out[k] = out[k] || [];
+  out.win = out.win || {}; out.lose = out.lose || { allDown: true };
+  return out;
+}
+
 export class Sim {
-  constructor(map = "plaza") {
+  constructor(map = "plaza", guion, opts = {}) {
     this.map = MAPS[map] ? map : "plaza"; this.cfg = MAPS[this.map];
+    this.seed = opts.seed !== undefined ? opts.seed >>> 0 : (Math.random() * 4294967296) >>> 0;
+    this.rnd = mulberry32(this.seed);
+    const G = this.G = makeGuion(guion);
     this.t = 0; this.state = "run";
     this.players = {}; this.enemies = []; this.proj = []; this.eproj = []; this.gems = []; this.pools = []; this.bombs = []; this.buses = []; this.pickups = []; this.zones = []; this.hz = [];
     this.nextId = 1; this.level = 1; this.xp = 0; this.xpNext = 5; this.kills = 0; this.coins = 0;
     this.offers = {}; this.pendingLevels = 0;
-    this.ev = []; this.spawnAcc = 0; this.boss1 = false; this.boss2 = false; this.bossRef = null;
-    this.hordes = [150, 330]; this.calm = 0;
-    this.eliteNext = 70; this.crateNext = 12; this.hzNext = this.cfg.hzFirst || 9e9;
-    this.objTimes = [95, 250, 365]; this.obj = null;
+    this.ev = []; this.spawnAcc = 0; this.bossIdx = 0; this.bossRef = null;
+    this.bosses = G.bosses.slice().sort((a, b) => a.t - b.t);
+    this.hordes = G.hordes.slice().sort((a, b) => a.t - b.t); this.calm = 0;
+    this.eliteNext = G.elites ? G.elites.first : 9e9; this.crateNext = G.crates ? G.crates.first : 9e9; this.hzNext = (G.hazards && this.cfg.hzFirst) || 9e9;
+    this.objTimes = G.orders.slice().sort((a, b) => a - b); this.obj = null;
+    this.events = G.events.filter(e => e.t !== undefined).sort((a, b) => a.t - b.t); this.evIdx = 0;
     this.bond = false;
     this.view = {};                 // medio ancho y medio alto de lo que ve cada jugador, para que los gatos aparezcan fuera de cámara
     this.grid = new Map();
@@ -120,6 +167,7 @@ export class Sim {
   onScreen(x, y, m = 0) { for (const p of this.alive()) { const v = this.view[p.side]; if (v && Math.abs(x - p.x) < v.hw + m && Math.abs(y - p.y) < v.hh + m) return true; } return false; }
 
   alive() { return Object.values(this.players).filter(p => !p.downed); }
+  rr(a, b) { return a + this.rnd() * (b - a); }
   inB(x, y, m = 0) { const b = this.cfg.b; return x >= b[0] + m && x <= b[2] - m && y >= b[1] + m && y <= b[3] - m; }
 
   /* ---------- paso de simulación ---------- */
@@ -164,7 +212,28 @@ export class Sim {
     this.updateObjective(dt);
     this.updateGems(dt);
     this.cleanup();
-    if (this.alive().length === 0) { this.state = "over"; this.ev.push(["over"]); }
+    if (this.G.lose.allDown !== false && this.alive().length === 0) { this.state = "over"; this.ev.push(["over"]); }
+    else if (this.G.win.t && this.t >= this.G.win.t && this.state === "run") this.win();
+  }
+  win() { if (this.state === "win" || this.state === "over") return; this.state = "win"; this.ev.push(["win"]); }
+  lose() { if (this.state === "win" || this.state === "over") return; this.state = "over"; this.ev.push(["over"]); }
+
+  // eventos con hora del guion: { t, do: "elite" | "horde" | "boss" | "order" | "spawn" | "calm" | "win" | "lose", ... }
+  runEvents() {
+    while (this.evIdx < this.events.length && this.t >= this.events[this.evIdx].t) this.doEvent(this.events[this.evIdx++]);
+  }
+  doEvent(e) {
+    switch (e.do) {
+      case "elite": this.spawnElite(e.type); break;
+      case "horde": this.hordes.unshift({ t: this.t, n: e.n, dist: e.dist, kinds: e.kinds }); break;
+      case "boss": this.bosses.splice(this.bossIdx, 0, { t: this.t, type: e.type, dist: e.dist, calm: e.calm, phase: e.phase }); break;
+      case "order": this.objTimes.unshift(this.t); break;
+      case "spawn": { const n = e.n || 1; for (let i = 0; i < n; i++) { const q = e.x !== undefined ? { x: e.x + this.rr(-8, 8), y: e.y + this.rr(-8, 8) } : this.edgePos(150); const en = this.spawnAt(e.type || "gato", q.x, q.y, e.hp || 1); if (e.elite) { en.elite = true; en.r = Math.round(en.r * 1.8); en.dmg *= 1.4; en.spd *= 0.85; } } break; }
+      case "calm": this.calm = e.s || 4; break;
+      case "win": this.win(); break;
+      case "lose": this.lose(); break;
+      default: if (this.onEvent) this.onEvent(e);
+    }
   }
 
   revive(dt) {
@@ -184,32 +253,32 @@ export class Sim {
     const solo = Object.keys(this.players).length === 1 ? 0.7 : 1;
     const hp = b.boss ? b.hp * solo * (1 + tier * 0.06) * (1 + this.level * 0.08) : b.hp * scale * hpMul * (solo < 1 ? 0.85 : 1);
     const [x0, y0, x1, y1] = this.cfg.b;
-    const e = { id: this.nextId++, type, x: clamp(x, x0, x1), y: clamp(y, y0, y1), hp, maxHp: hp, spd: b.spd * (b.boss ? 1 : 1 + this.t / 900), dmg: b.dmg, r: b.r, flash: 0, kx: 0, ky: 0, wob: Math.random() * 9, cd: rnd(1, 2.5), st: 0, stT: 0, ax: 0, ay: 0, slow: 0, hits: {} };
+    const e = { id: this.nextId++, type, x: clamp(x, x0, x1), y: clamp(y, y0, y1), hp, maxHp: hp, spd: b.spd * (b.boss ? 1 : 1 + this.t / 900), dmg: b.dmg, r: b.r, flash: 0, kx: 0, ky: 0, wob: this.rnd() * 9, cd: this.rr(1, 2.5), st: 0, stT: 0, ax: 0, ay: 0, slow: 0, hits: {} };
     if (type === "paloma") { e.x = x; e.y = y; }
     this.enemies.push(e);
     return e;
   }
   // punto a cierta distancia de un jugador, dentro de la zona caminable
   ringPos(dist, from) {
-    const ps = this.alive(); const p = from || ps[Math.floor(Math.random() * ps.length)] || Object.values(this.players)[0];
+    const ps = this.alive(); const p = from || ps[Math.floor(this.rnd() * ps.length)] || Object.values(this.players)[0];
     for (let i = 0; i < 10; i++) {
-      const a = Math.random() * Math.PI * 2, x = p.x + Math.cos(a) * dist, y = p.y + Math.sin(a) * dist;
+      const a = this.rnd() * Math.PI * 2, x = p.x + Math.cos(a) * dist, y = p.y + Math.sin(a) * dist;
       if (this.inB(x, y, 6)) return { x, y, p };
     }
-    const a = Math.random() * Math.PI * 2;
+    const a = this.rnd() * Math.PI * 2;
     return { x: p.x + Math.cos(a) * dist, y: p.y + Math.sin(a) * dist, p };
   }
   // justo afuera de la pantalla (si no sabemos el tamaño de pantalla, a distancia fija como antes)
   edgePos(min = 140, from) {
-    const ps = this.alive(); const p = from || ps[Math.floor(Math.random() * ps.length)] || Object.values(this.players)[0];
-    const v = this.view[p.side]; if (!v) return this.ringPos(rnd(min, min + 40), p);
+    const ps = this.alive(); const p = from || ps[Math.floor(this.rnd() * ps.length)] || Object.values(this.players)[0];
+    const v = this.view[p.side]; if (!v) return this.ringPos(this.rr(min, min + 40), p);
     for (let i = 0; i < 12; i++) {
-      const a = Math.random() * Math.PI * 2, c = Math.abs(Math.cos(a)) || 1e-6, s = Math.abs(Math.sin(a)) || 1e-6;
-      const d = Math.max(min, Math.min(v.hw / c, v.hh / s) + rnd(14, 34));
+      const a = this.rnd() * Math.PI * 2, c = Math.abs(Math.cos(a)) || 1e-6, s = Math.abs(Math.sin(a)) || 1e-6;
+      const d = Math.max(min, Math.min(v.hw / c, v.hh / s) + this.rr(14, 34));
       const x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
       if (this.inB(x, y, 6) && !this.onScreen(x, y, 8)) return { x, y, p };
     }
-    return this.ringPos(rnd(min, min + 40), p);
+    return this.ringPos(this.rr(min, min + 40), p);
   }
   pressure() {
     const n = Object.keys(this.players).length;
@@ -219,49 +288,57 @@ export class Sim {
   }
   count(type) { let n = 0; for (const e of this.enemies) if (e.type === type && e.hp > 0) n++; return n; }
   spawn(dt) {
-    const t = this.t, tier = this.cfg.tier;
+    const t = this.t, tier = this.cfg.tier, G = this.G;
     const crossed = every => Math.floor(t / every) !== Math.floor((t - dt) / every);
-    if (!this.boss1 && t >= RUN_BOSS1) { this.boss1 = true; const q = this.ringPos(150); this.bossRef = this.spawnAt("luz", q.x, q.y); this.ev.push(["boss", "luz"]); this.calm = 3; }
-    if (!this.boss2 && t >= RUN_BOSS2) { this.boss2 = true; const q = this.ringPos(160); this.bossRef = this.spawnAt("linda", q.x, q.y); this.bossRef.phase = 1; this.ev.push(["boss", "linda"]); this.calm = 4; }
+    // jefes del guion (arcade: Luz a los 3:30 y Linda a los 7:00)
+    while (this.bossIdx < this.bosses.length && t >= this.bosses[this.bossIdx].t) {
+      const b = this.bosses[this.bossIdx++], q = this.ringPos(b.dist || 150);
+      this.bossRef = this.spawnAt(b.type, q.x, q.y); if (b.phase) this.bossRef.phase = b.phase;
+      this.ev.push(["boss", b.type]); this.calm = b.calm || 0;
+    }
     const bossAlive = this.bossRef && this.bossRef.hp > 0;
     // horda en anillo con dos huecos: hay que encontrar la salida
-    if (this.hordes.length && t >= this.hordes[0]) {
-      this.hordes.shift(); this.ev.push(["horde"]);
+    if (this.hordes.length && t >= this.hordes[0].t) {
+      const h = this.hordes.shift(); this.ev.push(["horde"]);
       const ps = this.alive(); const p = ps[0] || Object.values(this.players)[0];
-      const gap = Math.random() * Math.PI * 2, N = 40;
+      const gap = this.rnd() * Math.PI * 2, N = h.n || 40, kinds = h.kinds || ["gato"], dist = h.dist || 150;
       for (let i = 0; i < N; i++) {
         const a = i / N * Math.PI * 2, da = k => Math.abs(Math.atan2(Math.sin(a - k), Math.cos(a - k)));
         if (da(gap) < 0.42 || da(gap + Math.PI) < 0.42) continue;
-        this.spawnAt(t > 300 ? (i % 3 ? "negro" : "saltarin") : "gato", p.x + Math.cos(a) * 150, p.y + Math.sin(a) * 150);
+        this.spawnAt(kinds[i % kinds.length], p.x + Math.cos(a) * dist, p.y + Math.sin(a) * dist);
       }
     }
     // bandada de palomas que cruza
     const pe = this.cfg.pigeons || 42;
-    if (t > 50 && crossed(pe)) {
+    if (G.pigeons && t > G.pigeons.from && crossed(pe)) {
       const q = this.edgePos(170); const dx = q.p.x - q.x, dy = q.p.y - q.y, m = Math.hypot(dx, dy);
-      for (let i = 0; i < 12; i++) { const e = this.spawnAt("paloma", q.x + rnd(-20, 20), q.y + rnd(-20, 20)); e.vx = dx / m; e.vy = dy / m; }
+      for (let i = 0; i < 12; i++) { const e = this.spawnAt("paloma", q.x + this.rr(-20, 20), q.y + this.rr(-20, 20)); e.vx = dx / m; e.vy = dy / m; }
     }
     // gato de élite: duro, lento, suelta una caja
     if (t >= this.eliteNext) {
-      this.eliteNext = t + Math.max(38, 58 - t / 25);
+      const el = G.elites;
+      this.eliteNext = t + Math.max(el.min, el.max - t / el.slope);
       if (!bossAlive) this.spawnElite();
     }
     // cajones para romper
     if (t >= this.crateNext) {
       this.crateNext = t + (this.cfg.crates || 13);
-      if (this.count("caja") < 5) { const q = this.ringPos(rnd(90, 200)); if (this.inB(q.x, q.y, 20)) this.spawnAt("caja", q.x, q.y); }
+      if (this.count("caja") < G.crates.max) { const q = this.ringPos(this.rr(90, 200)); if (this.inB(q.x, q.y, 20)) this.spawnAt("caja", q.x, q.y); }
     }
     // pedido de Roro's
     if (this.objTimes.length && t >= this.objTimes[0]) {
       if (bossAlive) this.objTimes[0] += 12; else { this.objTimes.shift(); this.startObjective(); }
     }
     // peligro del lugar
-    if (this.cfg.hz && t >= this.hzNext) { this.hzNext = t + this.cfg.hzEvery * rnd(0.85, 1.15); this.spawnHazard(); }
+    if (G.hazards && this.cfg.hz && t >= this.hzNext) { this.hzNext = t + this.cfg.hzEvery * this.rr(0.85, 1.15); this.spawnHazard(); }
+    // eventos sueltos del guion (modo historia)
+    if (this.evIdx < this.events.length) this.runEvents();
 
     if (this.calm > 0) { this.calm -= dt; }
+    if (!G.rate) return;
     const moving = this.enemies.length - this.count("caja");
-    if (moving >= 220) return;
-    const rate = Math.min(9, 0.9 + t / 34) * this.pressure() * (1 + tier * 0.04) * (this.calm > 0 ? 0.2 : 1) * (Object.keys(this.players).length === 1 ? 0.72 : 1);
+    if (moving >= G.rate.cap) return;
+    const rate = Math.min(G.rate.max, G.rate.base + t / G.rate.per) * this.pressure() * (1 + tier * 0.04) * (this.calm > 0 ? 0.2 : 1) * (Object.keys(this.players).length === 1 ? 0.72 : 1);
     this.spawnAcc += rate * dt;
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
@@ -269,23 +346,24 @@ export class Sim {
       this.spawnAt(this.pickType(), q.x, q.y);
     }
   }
+  // mezcla de gatos del guion: [tipo, peso, desde t, hasta t, tope]
   pickType() {
-    const t = this.t;
-    const W = [["gato", t < 300 ? 10 : 5]];
-    if (t > 45) W.push(["saltarin", t > 200 ? 4 : 3]);
-    if (t > 90 && this.count("escupidor") < 4 + Math.floor(t / 90)) W.push(["escupidor", t > 250 ? 3 : 2]);
-    if (t > 110) W.push(["negro", t > 300 ? 7 : 4]);
-    if (t > 140 && this.count("madre") < 7) W.push(["madre", 2]);
-    if (t > 180) W.push(["gordo", t > 300 ? 3 : 2]);
-    const tot = W.reduce((a, w) => a + w[1], 0); let r = Math.random() * tot;
+    const t = this.t, W = [];
+    for (const [k, w, from = 0, to = null, cap = null] of this.G.mix) {
+      if (!(t > from) || (to !== null && t > to)) continue;
+      if (cap !== null && this.count(k) >= (Array.isArray(cap) ? cap[0] + Math.floor(t / cap[1]) : cap)) continue;
+      W.push([k, w]);
+    }
+    if (!W.length) return "gato";
+    const tot = W.reduce((a, w) => a + w[1], 0); let r = this.rnd() * tot;
     for (const [k, w] of W) { if ((r -= w) <= 0) return k; }
-    return "gato";
+    return W[0][0];
   }
-  spawnElite() {
-    const t = this.t;
-    const pool = t < 110 ? ["gato", "saltarin"] : t < 200 ? ["saltarin", "negro", "madre"] : ["negro", "gordo", "madre", "saltarin"];
+  spawnElite(type) {
+    const t = this.t, pools = (this.G.elites || ARCADE.elites).pools;
+    let pool = pools[0][1]; for (const [from, ks] of pools) if (t >= from) pool = ks;
     const q = this.edgePos(160);
-    const e = this.spawnAt(pool[Math.floor(Math.random() * pool.length)], q.x, q.y, 8);
+    const e = this.spawnAt(type || pool[Math.floor(this.rnd() * pool.length)], q.x, q.y, 8);
     e.elite = true; e.r = Math.round(e.r * 1.8); e.dmg *= 1.4; e.spd *= 0.85;
     this.ev.push(["elite", Math.round(e.x), Math.round(e.y)]);
   }
@@ -295,7 +373,7 @@ export class Sim {
     const ps = this.alive(); if (!ps.length) return;
     const cx = ps.reduce((a, p) => a + p.x, 0) / ps.length, cy = ps.reduce((a, p) => a + p.y, 0) / ps.length;
     let x = cx, y = cy;
-    for (let i = 0; i < 16; i++) { const a = Math.random() * Math.PI * 2, d = rnd(170, 240); x = cx + Math.cos(a) * d; y = cy + Math.sin(a) * d; if (this.inB(x, y, 40)) break; }
+    for (let i = 0; i < 16; i++) { const a = this.rnd() * Math.PI * 2, d = this.rr(170, 240); x = cx + Math.cos(a) * d; y = cy + Math.sin(a) * d; if (this.inB(x, y, 40)) break; }
     const b = this.cfg.b; x = clamp(x, b[0] + 40, b[2] - 40); y = clamp(y, b[1] + 40, b[3] - 40);
     this.obj = { x, y, prog: 0, left: 32, acc: 0 };
     this.ev.push(["obj", 2]);
@@ -307,7 +385,7 @@ export class Sim {
     const solo = Object.keys(this.players).length === 1;
     o.prog += dt * (inside >= 2 ? 0.5 : inside === 1 ? (solo ? 0.34 : 0.2) : 0);
     // el olor a torta atrae gatos
-    if (inside) { o.acc += dt; if (o.acc > 1.1) { o.acc = 0; const a = Math.random() * Math.PI * 2; this.spawnAt(Math.random() < 0.5 ? "saltarin" : "gato", o.x + Math.cos(a) * 120, o.y + Math.sin(a) * 120); } }
+    if (inside) { o.acc += dt; if (o.acc > 1.1) { o.acc = 0; const a = this.rnd() * Math.PI * 2; this.spawnAt(this.rnd() < 0.5 ? "saltarin" : "gato", o.x + Math.cos(a) * 120, o.y + Math.sin(a) * 120); } }
     if (o.prog >= 1) {
       this.drop("caja", o.x, o.y + 6); this.drop("alfajor", o.x - 12, o.y); this.drop("moneda", o.x + 12, o.y); this.drop("moneda", o.x + 16, o.y + 8);
       this.coins += 3; this.ev.push(["obj", 1, Math.round(o.x), Math.round(o.y)]); this.obj = null;
@@ -317,11 +395,11 @@ export class Sim {
   /* ---------- peligros que cruzan el mapa (avisan antes) ---------- */
   spawnHazard() {
     const k = this.cfg.hz, H = HAZ[k], ps = this.alive(); if (!ps.length) return;
-    const p = ps[Math.floor(Math.random() * ps.length)], b = this.cfg.b;
-    let y = clamp(p.y + rnd(-6, 6), b[1] + H.h, b[3] - H.h);
+    const p = ps[Math.floor(this.rnd() * ps.length)], b = this.cfg.b;
+    let y = clamp(p.y + this.rr(-6, 6), b[1] + H.h, b[3] - H.h);
     if (k === "tren") y = Math.abs(p.y - 335) < Math.abs(p.y - 675) ? 335 : 675;
-    const dir = Math.random() < 0.5 ? 1 : -1;
-    const lanes = k === "cortadora" ? [y, clamp(y + (Math.random() < 0.5 ? -60 : 60), b[1] + H.h, b[3] - H.h)] : [y];
+    const dir = this.rnd() < 0.5 ? 1 : -1;
+    const lanes = k === "cortadora" ? [y, clamp(y + (this.rnd() < 0.5 ? -60 : 60), b[1] + H.h, b[3] - H.h)] : [y];
     for (const ly of lanes) this.hz.push({ k, y: ly, h: H.h, dir, warn: H.warn, x: dir > 0 ? -10 : MAP + 10, len: H.len, spd: H.spd, dmg: H.dmg, edmg: H.edmg, hit: new Set(), ph: new Set() });
     this.ev.push(["warn", k]);
   }
@@ -377,12 +455,12 @@ export class Sim {
         case "paloma": if (e.vx !== undefined) { dx = e.vx; dy = e.vy + Math.sin(this.t * 6 + e.wob) * 0.4; } break;
         case "saltarin":
           if (e.st === 1) { spd = 0; if ((e.stT -= dt) <= 0) { e.st = 2; e.stT = 0.36; } }
-          else if (e.st === 2) { spd = 235; dx = e.ax; dy = e.ay; if ((e.stT -= dt) <= 0) { e.st = 0; e.cd = rnd(2.4, 3.4); } }
+          else if (e.st === 2) { spd = 235; dx = e.ax; dy = e.ay; if ((e.stT -= dt) <= 0) { e.st = 0; e.cd = this.rr(2.4, 3.4); } }
           else if ((e.cd -= dt) <= 0 && m < 85) { e.st = 1; e.stT = e.elite ? 0.6 : 0.5; e.ax = dx; e.ay = dy; }
           break;
         case "escupidor":
           e.cd -= dt;
-          if (e.st === 1) { spd = 0; if ((e.stT -= dt) <= 0) { e.st = 0; e.cd = rnd(2.8, 3.8); const n = e.elite ? 3 : 1; for (let i = 0; i < n; i++) { const a = Math.atan2(tgt.y - e.y, tgt.x - e.x) + (i - (n - 1) / 2) * 0.28; this.eproj.push({ k: 1, x: e.x, y: e.y - 5, vx: Math.cos(a) * 88, vy: Math.sin(a) * 88, life: 2.6, dmg: 9 * dmgScale }); } this.ev.push(["spit", Math.round(e.x), Math.round(e.y)]); } }
+          if (e.st === 1) { spd = 0; if ((e.stT -= dt) <= 0) { e.st = 0; e.cd = this.rr(2.8, 3.8); const n = e.elite ? 3 : 1; for (let i = 0; i < n; i++) { const a = Math.atan2(tgt.y - e.y, tgt.x - e.x) + (i - (n - 1) / 2) * 0.28; this.eproj.push({ k: 1, x: e.x, y: e.y - 5, vx: Math.cos(a) * 88, vy: Math.sin(a) * 88, life: 2.6, dmg: 9 * dmgScale }); } this.ev.push(["spit", Math.round(e.x), Math.round(e.y)]); } }
           else if (m < 125 && e.cd <= 0 && this.eproj.length < 48) { e.st = 1; e.stT = 0.6; spd = 0; }
           else if (m < 72) { dx = -dx; dy = -dy; spd *= 0.8; }
           else if (m < 115) spd *= 0.25;
@@ -421,7 +499,7 @@ export class Sim {
         e.cd = ph === 1 ? 2.4 : 2.2;
         const n = ph === 1 ? 3 : 5;
         for (let i = 0; i < n; i++) { const a = base + (i - (n - 1) / 2) * 0.3; this.eproj.push({ k: 0, x: e.x, y: e.y - 8, vx: Math.cos(a) * 95, vy: Math.sin(a) * 95, life: 3.5, dmg: 12 * dmgScale }); }
-        if (Math.random() < 0.42) {
+        if (this.rnd() < 0.42) {
           const kinds = ph === 1 ? ["negro", "negro", "negro", "negro", "negro", "negro"] : ["madre", "saltarin", "madre", "saltarin"];
           kinds.forEach((k, i) => { const a = i / kinds.length * Math.PI * 2; this.spawnAt(k, e.x + Math.cos(a) * 34, e.y + Math.sin(a) * 34); });
           this.ev.push(["summon", Math.round(e.x), Math.round(e.y)]);
@@ -429,9 +507,9 @@ export class Sim {
       } else {
         // anillo de bolas de pelo con un hueco para escapar
         e.cd = 2.9;
-        const N = 20, gap = base + rnd(-0.6, 0.6);
+        const N = 20, gap = base + this.rr(-0.6, 0.6);
         for (let i = 0; i < N; i++) { const a = i / N * Math.PI * 2; if (Math.abs(Math.atan2(Math.sin(a - gap), Math.cos(a - gap))) < 0.5) continue; this.eproj.push({ k: 0, x: e.x, y: e.y - 8, vx: Math.cos(a) * 80, vy: Math.sin(a) * 80, life: 4, dmg: 12 * dmgScale }); }
-        if (Math.random() < 0.3) { for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2; this.spawnAt("saltarin", e.x + Math.cos(a) * 34, e.y + Math.sin(a) * 34); } this.ev.push(["summon", Math.round(e.x), Math.round(e.y)]); }
+        if (this.rnd() < 0.3) { for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2; this.spawnAt("saltarin", e.x + Math.cos(a) * 34, e.y + Math.sin(a) * 34); } this.ev.push(["summon", Math.round(e.x), Math.round(e.y)]); }
       }
       this.ev.push(["hairball", Math.round(e.x), Math.round(e.y)]);
     }
@@ -439,8 +517,8 @@ export class Sim {
       e.zcd -= dt;
       if (e.zcd <= 0) {
         e.zcd = ph === 3 ? 3.4 : 4.4;
-        for (const p of this.alive()) this.zones.push({ x: p.x + rnd(-8, 8), y: p.y + rnd(-8, 8), r: 24, t: 0, dur: 1.15, dmg: 16 * dmgScale });
-        if (ph === 3) { const q = this.ringPos(rnd(30, 70)); this.zones.push({ x: q.x, y: q.y, r: 30, t: 0, dur: 1.3, dmg: 16 * dmgScale }); }
+        for (const p of this.alive()) this.zones.push({ x: p.x + this.rr(-8, 8), y: p.y + this.rr(-8, 8), r: 24, t: 0, dur: 1.15, dmg: 16 * dmgScale });
+        if (ph === 3) { const q = this.ringPos(this.rr(30, 70)); this.zones.push({ x: q.x, y: q.y, r: 30, t: 0, dur: 1.3, dmg: 16 * dmgScale }); }
         this.ev.push(["zones"]);
       }
     }
@@ -456,7 +534,7 @@ export class Sim {
 
   damage(e, dmg, p, kx = 0, ky = 0, raw) {
     if (e.hp <= 0) return;
-    const crit = !raw && Math.random() < 0.08;
+    const crit = !raw && this.rnd() < 0.08;
     const d = Math.round(raw ? dmg : dmg * (p ? p.dmgMul * (p.bond ? 1.2 : 1) : 1) * (crit ? 2 : 1));
     e.hp -= d; e.flash = 0.12;
     const kb = ENEMY[e.type].boss ? 0.15 : ENEMY[e.type].obj ? 0 : e.elite ? 0.35 : 1;
@@ -471,16 +549,16 @@ export class Sim {
     if (B.obj) { this.dropCrate(e); return; }
     this.kills++;
     if (p) { p.kills++; p.ult = Math.min(1, p.ult + (B.boss ? 0.5 : e.elite ? 0.25 : 1 / 55)); }
-    if (e.type === "linda") { this.state = "win"; this.ev.push(["win"]); return; }
-    if (e.type === "luz") { for (let i = 0; i < 16; i++) this.gems.push({ x: e.x + rnd(-24, 24), y: e.y + rnd(-24, 24), v: 5, pull: 0 }); this.drop("alfajor", e.x - 8, e.y); this.drop("caja", e.x + 8, e.y); this.bossRef = null; this.calm = 8; this.ev.push(["bossdown"]); return; }
+    if (e.type === this.G.win.kill) { this.win(); return; }
+    if (B.boss) { for (let i = 0; i < 16; i++) this.gems.push({ x: e.x + this.rr(-24, 24), y: e.y + this.rr(-24, 24), v: 5, pull: 0 }); this.drop("alfajor", e.x - 8, e.y); this.drop("caja", e.x + 8, e.y); this.bossRef = null; this.calm = 8; this.ev.push(["bossdown", e.type]); return; }
     if (e.type === "madre") for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2; const k = this.spawnAt("gatito", e.x + Math.cos(a) * 8, e.y + Math.sin(a) * 8); k.kx = Math.cos(a) * 90; k.ky = Math.sin(a) * 90; }
-    if (e.elite) { this.drop("caja", e.x, e.y); for (let i = 0; i < 4; i++) this.gems.push({ x: e.x + rnd(-14, 14), y: e.y + rnd(-14, 14), v: 5, pull: 0 }); return; }
+    if (e.elite) { this.drop("caja", e.x, e.y); for (let i = 0; i < 4; i++) this.gems.push({ x: e.x + this.rr(-14, 14), y: e.y + this.rr(-14, 14), v: 5, pull: 0 }); return; }
     this.gems.push({ x: e.x, y: e.y, v: B.xp, pull: 0 });
-    if (Math.random() < 0.01) this.drop("alfajor", e.x + 4, e.y);
-    if (Math.random() < 0.04) this.drop("moneda", e.x - 4, e.y);
+    if (this.rnd() < 0.01) this.drop("alfajor", e.x + 4, e.y);
+    if (this.rnd() < 0.04) this.drop("moneda", e.x - 4, e.y);
   }
   dropCrate(e) {
-    const r = Math.random();
+    const r = this.rnd();
     const k = r < 0.34 ? "moneda" : r < 0.56 ? "alfajor" : r < 0.76 ? "iman" : "manguera";
     this.drop(k, e.x, e.y);
     if (k === "moneda") this.drop(k, e.x + 7, e.y + 3);
@@ -557,23 +635,23 @@ export class Sim {
       const lv = W.mate, n = X.mate ? 2 : 1, cands = this.targets(p, 120, 2);
       for (let i = 0; i < n; i++) {
         const tgt = cands[i];
-        const x = tgt ? tgt.x : p.x + rnd(-30, 30), y = tgt ? tgt.y : p.y + rnd(-30, 30);
+        const x = tgt ? tgt.x : p.x + this.rr(-30, 30), y = tgt ? tgt.y : p.y + this.rr(-30, 30);
         this.pools.push({ x, y, r: Math.round((17 + lv * 3) * A * (X.mate ? 1.4 : 1)), life: X.mate ? 4.5 : 3, tick: 0, dmg: (5 + lv * 3) * (X.mate ? 1.3 : 1), own: p.side, slow: !!X.mate });
       }
     }
     if (W.bondi && this.cd(p, "bondi", (9.5 - W.bondi * 1.2) * (X.bondi ? 0.75 : 1))) {
-      const lv = W.bondi, dirs = X.bondi ? [1, -1] : [Math.random() < 0.5 ? 1 : -1];
-      dirs.forEach((dir, i) => this.buses.push({ x: p.x - dir * 220, y: p.y + (X.bondi ? (i ? 20 : -20) : rnd(-18, 18)), dir, life: 1.8, dmg: (40 + lv * 20) * (X.bondi ? 1.4 : 1), own: p.side, hit: new Set(), h: 14 + lv * 2 }));
+      const lv = W.bondi, dirs = X.bondi ? [1, -1] : [this.rnd() < 0.5 ? 1 : -1];
+      dirs.forEach((dir, i) => this.buses.push({ x: p.x - dir * 220, y: p.y + (X.bondi ? (i ? 20 : -20) : this.rr(-18, 18)), dir, life: 1.8, dmg: (40 + lv * 20) * (X.bondi ? 1.4 : 1), own: p.side, hit: new Set(), h: 14 + lv * 2 }));
       this.ev.push(["bus", p.x, p.y]);
     }
     if (W.rodillo && this.cd(p, "rodillo", 1.7 - W.rodillo * 0.15)) {
       const lv = W.rodillo, dmg = (12 + lv * 5) * (X.rodillo ? 1.5 : 1);
       const dirs = X.rodillo ? [[1, 0], [-1, 0], [0, 1], [0, -1]] : [[p.face, 0]];
-      for (const [ux, uy] of dirs) this.proj.push({ k: 1, x: p.x, y: p.y - 4, vx: ux * 190 + (uy ? 0 : 0), vy: uy * 170 + (ux ? rnd(-20, 20) : 0), dmg, pierce: 999, life: 1.6, own: p.side, back: true, t: 0, hit: new Set() });
+      for (const [ux, uy] of dirs) this.proj.push({ k: 1, x: p.x, y: p.y - 4, vx: ux * 190 + (uy ? 0 : 0), vy: uy * 170 + (ux ? this.rr(-20, 20) : 0), dmg, pierce: 999, life: 1.6, own: p.side, back: true, t: 0, hit: new Set() });
     }
     if (W.torta && this.cd(p, "torta", 2.9 - W.torta * 0.3)) {
       const lv = W.torta, cands = this.enemies.filter(e => this.foe(e) && d2(p, e) < 110 * 110);
-      const tgt = cands[Math.floor(Math.random() * cands.length)];
+      const tgt = cands[Math.floor(this.rnd() * cands.length)];
       if (tgt) this.bombs.push({ x0: p.x, y0: p.y, x: tgt.x, y: tgt.y, t: 0, dur: 0.55, r: Math.round((24 + lv * 4) * A), dmg: 22 + lv * 10, own: p.side, cl: !!X.torta });
     }
   }
@@ -593,7 +671,7 @@ export class Sim {
     } else {
       this.ev.push(["ultR", p.x, p.y]);
       const n = sync ? 14 : 10;
-      for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, r = rnd(20, 85); this.bombs.push({ x0: p.x, y0: p.y, x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r, t: -i * 0.05, dur: 0.5, r: 28, dmg: 55 * k, own: p.side }); }
+      for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, r = this.rr(20, 85); this.bombs.push({ x0: p.x, y0: p.y, x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r, t: -i * 0.05, dur: 0.5, r: 28, dmg: 55 * k, own: p.side }); }
     }
   }
 
@@ -619,7 +697,7 @@ export class Sim {
       if (bm.t >= bm.dur && !bm.done) {
         bm.done = true; this.ev.push(["boom", Math.round(bm.x), Math.round(bm.y), bm.r]);
         this.near(bm.x, bm.y, bm.r, e => { const dx = e.x - bm.x, dy = e.y - bm.y, m = Math.hypot(dx, dy) || 1; if (m < bm.r) this.damage(e, bm.dmg, byside(bm.own), dx / m * 150, dy / m * 150); });
-        if (bm.cl) for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2 + rnd(0, 1); extra.push({ x0: bm.x, y0: bm.y, x: bm.x + Math.cos(a) * bm.r * 1.2, y: bm.y + Math.sin(a) * bm.r * 1.2, t: 0, dur: 0.4, r: Math.round(bm.r * 0.7), dmg: bm.dmg * 0.6, own: bm.own }); }
+        if (bm.cl) for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2 + this.rr(0, 1); extra.push({ x0: bm.x, y0: bm.y, x: bm.x + Math.cos(a) * bm.r * 1.2, y: bm.y + Math.sin(a) * bm.r * 1.2, t: 0, dur: 0.4, r: Math.round(bm.r * 0.7), dmg: bm.dmg * 0.6, own: bm.own }); }
       }
     }
     this.bombs.push(...extra);
@@ -675,7 +753,7 @@ export class Sim {
     const evo = Object.keys(p.weapons).find(w => p.weapons[w] >= WEAPONS[w].max && !p.evo[w] && p.passives[WEAPONS[w].evo.p]);
     if (evo) { p.evo[evo] = true; this.ev.push(["chest", p.side, "evo", evo, Math.round(p.x), Math.round(p.y)]); return; }
     const up = Object.keys(p.weapons).filter(w => p.weapons[w] < WEAPONS[w].max);
-    if (up.length) { const w = up[Math.floor(Math.random() * up.length)]; p.weapons[w]++; this.ev.push(["chest", p.side, "up", w, Math.round(p.x), Math.round(p.y)]); return; }
+    if (up.length) { const w = up[Math.floor(this.rnd() * up.length)]; p.weapons[w]++; this.ev.push(["chest", p.side, "up", w, Math.round(p.x), Math.round(p.y)]); return; }
     p.hp = p.maxHp; this.coins += 5; this.ev.push(["chest", p.side, "gold", "", Math.round(p.x), Math.round(p.y)]);
   }
 
@@ -706,7 +784,7 @@ export class Sim {
     }
     const out = [];
     while (out.length < 3 && pool.length) {
-      const tot = pool.reduce((a, o) => a + o.weight, 0); let r = Math.random() * tot, i = 0;
+      const tot = pool.reduce((a, o) => a + o.weight, 0); let r = this.rnd() * tot, i = 0;
       while (r > pool[i].weight) { r -= pool[i].weight; i++; }
       out.push(pool.splice(i, 1)[0]);
     }

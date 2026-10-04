@@ -143,7 +143,7 @@ function onEvents(ev) {
     if (e[0] === "boss") buzz(150);
     if (e[0] === "chest" && e[1] === me.side) buzz(e[2] === "evo" ? [40, 40, 90] : 40);
     if (e[0] === "boss") { banner(e[1] === "luz" ? "¡LUZ!" : "¡LINDA!", e[1] === "luz" ? "La gata de la abuela está furiosa" : "La jefa en persona. Derrótenla para ganar"); music.set("boss"); }
-    if (e[0] === "bossdown") { banner("¡Luz se rindió!", "Dejó un alfajor"); music.set("run"); }
+    if (e[0] === "bossdown") { banner(!e[1] || e[1] === "luz" ? "¡Luz se rindió!" : "¡Lo derrotaron!", "Dejó un alfajor"); music.set("run"); }
     if (e[0] === "horde") banner("¡HORDA!", "Los rodearon");
     if (e[0] === "down") { const who = e[3] === me.side ? "Caíste" : `¡Cayó ${NAME[(snap && snap.P[e[3]] && snap.P[e[3]].c) || ""] || "tu pareja"}!`; banner(who, e[3] === me.side ? "Esperá que te levanten" : "Parate al lado para levantarlo"); }
     if (e[0] === "levelup") music.set("pause");

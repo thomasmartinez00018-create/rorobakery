@@ -88,3 +88,35 @@ Objetos del piso en la foto a los 7:00 en Plaza: 1165 → 85 bytes.
 | Costo de las luces en Plaza 5:00 (con menos sin) | 1,39 ms | 0,30 ms |
 
 El tope de 60 cuadros por segundo no se puede medir en Chromium headless (corre a 60 Hz). Se verificó en el navegador simulando una pantalla de 120 Hz (ver sección de pruebas).
+
+## 3. Motor con guion y azar con semilla
+
+### Prueba exacta (lo que garantiza que el arcade es el mismo)
+
+Con `EXACT=1` el motor nuevo usa `Math.random` como azar (en vez de su `this.rnd` con semilla) y el lote reemplaza `Math.random` por uno con semilla fija. Si el guion por defecto hace exactamente lo mismo que el código de antes, las dos corridas tienen que dar los mismos resultados byte a byte.
+
+- 7 mapas, dúo y solo, 40 partidas cada uno (560 partidas): motor de antes (commit 053fb2b) contra motor con guion. **Los 14 archivos de resultados son idénticos byte a byte.**
+- `node test_guion.mjs` repite esa comparación (6 partidas por configuración, 84 en total) más pruebas de semilla, mezcla, topes, eventos y victoria por tiempo.
+
+### Bots con el azar propio del motor (comparación estadística)
+
+`results/1_opt` (antes del guion) contra `results/2_guion` (motor con `this.rnd` y semilla por partida): **14/14 configuraciones dentro del margen**.
+
+| Configuración | Gana antes → después | Fin mediana antes → después (IC95 de la diferencia) | ¿Dentro del margen? |
+| --- | --- | --- | --- |
+| Plaza dúo | 98% → 98% | 7:48 → 7:46 (-11 a +13 s) | sí |
+| Plaza solo | 73% → 78% | 7:40 → 7:43 (-8 a +14 s) | sí |
+| Estación dúo | 98% → 100% | 7:56 → 7:55 (-15 a +11 s) | sí |
+| Estación solo | 78% → 65% | 7:44 → 7:39 (-16 a +4 s) | sí |
+| Feria dúo | 98% → 95% | 8:00 → 8:01 (-10 a +9 s) | sí |
+| Feria solo | 68% → 63% | 7:42 → 7:42 (-14 a +22 s) | sí |
+| Bielli dúo | 95% → 98% | 7:56 → 7:53 (-13 a +7 s) | sí |
+| Bielli solo | 57% → 50% | 7:32 → 7:35 (-9 a +16 s) | sí |
+| Cancha dúo | 95% → 90% | 8:02 → 7:57 (-18 a +8 s) | sí |
+| Cancha solo | 50% → 38% | 7:41 → 7:30 (-131 a +8 s) | sí |
+| Tortugas dúo | 90% → 93% | 8:08 → 7:57 (-22 a +10 s) | sí |
+| Tortugas solo | 38% → 48% | 7:31 → 7:40 (-23 a +243 s) | sí |
+| Terrazas dúo | 93% → 95% | 8:05 → 8:08 (-12 a +12 s) | sí |
+| Terrazas solo | 35% → 38% | 6:17 → 7:34 (-12 a +261 s) | sí |
+
+Tiempo de `step`: sin diferencia medible. En la Mac compartida con otros agentes el mismo motor varió entre corridas de 0,030 a 0,099 ms (Terrazas 7:00) y de 0,26 a 0,45 ms (estrés), más que cualquier diferencia entre los dos motores.
