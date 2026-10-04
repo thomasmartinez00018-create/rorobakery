@@ -1,6 +1,6 @@
 // Gatos de Linda — menús, salas, bucle de juego y sincronización entre los dos celus.
 import { Sim, WEAPONS, PASSIVES, MAPS, EVO_OF, chapterGuion } from "./engine.js";
-import { buildSprites, SPR, portrait as portraitPng } from "./sprites.js";
+import { buildSprites, SPR, portrait as portraitPng, dialogPortrait } from "./sprites.js";
 import { Renderer, THEMES } from "./render.js";
 import { Net, makeCode, cleanCode, PROTO } from "./net.js";
 import { sfx } from "./sfx.js";
@@ -20,6 +20,12 @@ const HZ_BANNER = { tren: ["¡Viene el tren!", "Salgan de las vías"], fletero: 
 const UPG = { hp: ["Vida", "+10 de vida"], dmg: ["Fuerza", "+8% de daño"], spd: ["Velocidad", "+5% de velocidad"], mag: ["Imán", "+15% de alcance"] };
 const UPG_COST = [15, 35, 70, 120, 200];
 const MAP_COST = { plaza: 0, estacion: 60, feria: 120, bielli: 150, cancha: 180, tortugas: 260, terrazas: 350 };
+// historia: mapas que se ganan jugando la historia (no se compran) y qué capítulo los da
+const STORY_MAP_FROM = { roros: "el prólogo", abuela: "el capítulo 5" };
+HZ_BANNER.corbata = ["¡Corbata!", "Pasa corriendo por el patio"]; HZ_BANNER.bandejas = ["¡Bandejas!", "Se soltó el carro de las tortas"];
+// lo que se desbloquea en la historia, con su nombre para el menú
+const UNLOCK_NAME = { "map:roros": "Mapa Roro's Bakery", "map:abuela": "Mapa La casa de la abuela", "skin:bielli": "Thomas con la ropa del Team Bielli", "skin:roros": "Rocío con el delantal de Roro's", "special:maitena": "Especial Llamá a Maitena", "ally:corbata": "Corbata te acompaña" };
+const SKIN = { thomas: { unlock: "skin:bielli", id: "thomasBielli", name: "Team Bielli" }, rocio: { unlock: "skin:roros", id: "rocioRoros", name: "Delantal de Roro's" } };
 let coinIc = "";
 const COIN = () => coinIc || (coinIc = `<img class="coin-ic" src="${portrait("moneda", 3)}" alt="monedas">`);
 
@@ -48,17 +54,21 @@ let bannerT = 0, errMsg = null, busyMsg = null, joinDraft = cleanCode(new URLSea
 const QS = new URLSearchParams(location.search);
 let STORY = null, capSel = null, curCap = null;
 import("./story.js").then(m => {
-  // el story.js de ejemplo solo aparece con ?debug o ?historia, así no se ve en el juego publicado
-  if (m.EXAMPLE && !QS.has("debug") && !QS.has("historia")) return;
   if (Array.isArray(m.CHAPTERS) && m.CHAPTERS.length) { STORY = m; if (screen !== "run") draw(); }
 }).catch(() => {});
+// historia: capítulos disponibles = el máximo entre los dos celus (el anfitrión manda el suyo en lobby)
+let partnerCap = 0, hostCap = 0;
+const storyCap = () => Math.max(prof.story.cap | 0, me.connected ? (me.side === "host" ? partnerCap : hostCap) : 0);
+const skinOf = c => { const k = SKIN[c]; return k && prof.unlock[k.unlock] && prof.skin && prof.skin[c] === k.id ? k.id : null; };
+if (!prof.skin) prof.skin = {};
 const chapter = id => (STORY && id && STORY.CHAPTERS.find(c => c.id === id)) || null;
-const speaker = who => (STORY && STORY.SPEAKERS && STORY.SPEAKERS[who] && STORY.SPEAKERS[who].name) || NAME[who] || who || "";
+const speaker = who => STORY && STORY.SPEAKERS && STORY.SPEAKERS[who] ? STORY.SPEAKERS[who].name : NAME[who] || who || ""; // el narrador no tiene nombre
 // capítulo terminado: lo guardan los dos celus (el anfitrión además le avisa al invitado con {t:"cap"})
-function saveChapter(id, n) {
+function saveChapter(id, n, stars) {
   if (!id) return;
   const ch = chapter(id), num = ch ? ch.n | 0 : n | 0;
-  prof.story.done[id] = true; prof.story.cap = Math.max(prof.story.cap | 0, num + 1);
+  const old = prof.story.done[id], best = Math.max(typeof old === "object" ? old.stars | 0 : old ? 1 : 0, stars | 0);
+  prof.story.done[id] = { stars: best || 1 }; prof.story.cap = Math.max(prof.story.cap | 0, num + 1);
   for (const u of (ch && ch.unlock) || []) prof.unlock[u] = true;
   save();
 }
@@ -73,7 +83,7 @@ function netHandlers() {
   return {
     status(st) {
       me.connected = st === "connected";
-      if (st === "connected") { sfx.join(); me.protoBad = false; if (me.side === "guest") me.net.send({ t: "hello", who: prof.who, meta: prof.up, proto: PROTO }); else sendLobby(); }
+      if (st === "connected") { sfx.join(); me.protoBad = false; if (me.side === "guest") me.net.send({ t: "hello", who: prof.who, meta: prof.up, proto: PROTO, cap: prof.story.cap | 0, skin: skinOf(prof.who) }); else sendLobby(); }
       if (st === "busy") { errMsg = "Esa sala ya está llena."; leave(); }
       if (st === "closed") onPartnerLost();
       draw();
@@ -82,15 +92,15 @@ function netHandlers() {
       if (!d || typeof d !== "object") return;
       if (me.side === "host") {
         lastGuestMsg = performance.now(); guestAway = false;
-        if (d.t === "hello") { me.partner = d.who === "rocio" ? "rocio" : "thomas"; me.partnerMeta = cleanMeta(d.meta); me.protoBad = d.proto !== PROTO; sendLobby(); draw(); }
+        if (d.t === "hello") { me.partner = d.who === "rocio" ? "rocio" : "thomas"; me.partnerMeta = cleanMeta(d.meta); me.protoBad = d.proto !== PROTO; partnerCap = Math.max(0, Math.min(9, d.cap | 0)); me.partnerSkin = d.skin === "thomasBielli" || d.skin === "rocioRoros" ? d.skin : null; sendLobby(); draw(); }
         if (d.t === "in" && sim && isFinite(d.vw) && isFinite(d.vh)) sim.setView("guest", +d.vw, +d.vh);
-        if (d.t === "in" && d.pos && isFinite(d.pos.x) && isFinite(d.pos.y)) { guestInput.pos = { x: +d.pos.x, y: +d.pos.y }; guestInput.face = d.face < 0 ? -1 : 1; guestInput.moving = d.moving ? 1 : 0; if (d.ult) guestInput.ult = true; if (d.dash) guestInput.dash = true; }
+        if (d.t === "in" && d.pos && isFinite(d.pos.x) && isFinite(d.pos.y)) { guestInput.pos = { x: +d.pos.x, y: +d.pos.y }; guestInput.face = d.face < 0 ? -1 : 1; guestInput.moving = d.moving ? 1 : 0; if (d.ult) guestInput.ult = true; if (d.dash) guestInput.dash = true; if (d.mt) guestInput.mai = true; }
         if (d.t === "pick" && sim) sim.pick("guest", d.i | 0);
-        if (d.t === "adv" && sim) sim.adv("guest", !!d.skip);
+        if (d.t === "adv" && sim) sim.adv("guest", !!d.skip, typeof d.c === "number" ? d.c | 0 : undefined);
       } else {
-        if (d.t === "lobby") { me.partner = d.who; map = THEMES[d.map] ? d.map : "plaza"; capSel = d.cap || null; me.protoBad = d.proto !== PROTO; draw(); }
-        if (d.t === "start" && !me.protoBad) startRun(d.map, d.chars, d.cap);
-        if (d.t === "cap") saveChapter(d.id, d.n);
+        if (d.t === "lobby") { me.partner = d.who; map = THEMES[d.map] ? d.map : "plaza"; capSel = d.cap || null; hostCap = Math.max(0, Math.min(9, d.avail | 0)); me.protoBad = d.proto !== PROTO; draw(); }
+        if (d.t === "start" && !me.protoBad) startRun(d.map, d.chars, d.cap, d.skins, d.opts);
+        if (d.t === "cap") saveChapter(d.id, d.n, d.stars);
         if (d.t === "s" && d.s) { snap = d.s; lastSeen = performance.now(); onEvents(snap.ev || []); }
         if (d.t === "menu") { endRun(); toMenu(); }
       }
@@ -98,7 +108,7 @@ function netHandlers() {
   };
 }
 const cleanMeta = m => { const o = {}; for (const k of ["hp", "dmg", "spd", "mag"]) o[k] = Math.max(0, Math.min(5, (m && m[k]) | 0)); return o; };
-function sendLobby() { if (me.net && me.net.connected) me.net.send({ t: "lobby", who: prof.who, map, cap: capSel, proto: PROTO }); }
+function sendLobby() { if (me.net && me.net.connected) me.net.send({ t: "lobby", who: prof.who, map, cap: capSel, avail: prof.story.cap | 0, proto: PROTO }); }
 
 async function createRoom() {
   busyMsg = "Creando sala"; errMsg = null; draw();
@@ -135,17 +145,22 @@ function onPartnerLost() {
 function hostStart() {
   if (me.protoBad && me.net && me.net.connected) { draw(); return; }
   const chars = { host: prof.who, guest: me.connected ? me.partner : null };
-  if (me.net && me.net.connected) me.net.send({ t: "start", map, chars, cap: capSel });
-  startRun(map, chars, capSel);
+  const skins = { host: skinOf(prof.who), guest: me.connected ? me.partnerSkin || null : null };
+  // historia: lo que se desbloqueó y se puede usar en el arcade (Maitena y Corbata)
+  const opts = { maitena: !!prof.unlock["special:maitena"], corbata: !!(prof.unlock["ally:corbata"] && prof.corbataOn) };
+  if (me.net && me.net.connected) me.net.send({ t: "start", map, chars, cap: capSel, skins, opts });
+  startRun(map, chars, capSel, skins, opts);
 }
-function startRun(m, chars, cap) {
+function startRun(m, chars, cap, skins = {}, opts = {}) {
   map = THEMES[m] ? m : "plaza"; R.setMap(map);
   curCap = chapter(cap); if (cap && !curCap) curCap = { id: cap, n: 0, title: "Capítulo", sub: "" };
   runId++; runOn = true; paused = false; lastGuestMsg = lastSeen = performance.now(); guestAway = false; endShown = false; earned = 0; smooth.clear(); pendingEv = [];
+  guestInput.pos = null; guestInput.mai = false; dlgSeenNow = new Set(); // historia: la revancha no arrastra la posición vieja del invitado
   if (me.side === "host") {
-    sim = new Sim(map, chapter(cap) ? chapterGuion(curCap) : undefined);
-    sim.addPlayer("host", chars.host || "thomas", prof.up);
-    if (chars.guest) sim.addPlayer("guest", chars.guest, me.partnerMeta || {});
+    const arcadeOpts = !chapter(cap) && (opts.maitena || opts.corbata) ? { specials: opts.maitena ? { maitena: true } : {}, allies: opts.corbata ? ["corbata"] : [] } : undefined;
+    sim = new Sim(map, chapter(cap) ? chapterGuion(curCap, { solo: !chars.guest }) : arcadeOpts);
+    sim.addPlayer("host", chars.host || "thomas", prof.up, skins.host);
+    if (chars.guest) sim.addPlayer("guest", chars.guest, me.partnerMeta || {}, skins.guest);
     snap = sim.snapshot();
   } else { sim = null; snap = null; guestPos = null; }
   screen = "run"; music.set("run"); sfx.play("levelup");
@@ -165,8 +180,9 @@ function onEvents(ev) {
     if ((e[0] === "down" || e[0] === "revive") && e[3] === me.side) buzz(e[0] === "down" ? [90, 60, 180] : 60);
     if (e[0] === "boss") buzz(150);
     if (e[0] === "chest" && e[1] === me.side) buzz(e[2] === "evo" ? [40, 40, 90] : 40);
-    if (e[0] === "boss") { banner(e[1] === "luz" ? "¡LUZ!" : "¡LINDA!", e[1] === "luz" ? "La gata de la abuela está furiosa" : "La jefa en persona. Derrótenla para ganar"); music.set("boss"); }
-    if (e[0] === "bossdown") { banner(!e[1] || e[1] === "luz" ? "¡Luz se rindió!" : "¡Lo derrotaron!", "Dejó un alfajor"); music.set("run"); }
+    if (e[0] === "boss") { const b = BOSS_BANNER[e[1]] || BOSS_BANNER.linda; banner(b[0], b[1]); music.set("boss"); if (e[1] === "luz2") sfx.play("boss:luz"); if (e[1] === "canicheBoss") sfx.play("boss:linda"); }
+    if (e[0] === "bossdown") { banner(e[1] === "luz2" ? "¡Luz se rinde!" : e[1] === "canicheBoss" ? "¡La otra Linda se rinde!" : !e[1] || e[1] === "luz" ? "¡Luz se rindió!" : "¡Lo derrotaron!", e[1] === "luz2" || e[1] === "canicheBoss" ? "Bandera blanca" : "Dejó un alfajor"); music.set("run"); }
+    storyEvent(e);
     if (e[0] === "horde") banner("¡HORDA!", "Los rodearon");
     if (e[0] === "down") { const who = e[3] === me.side ? "Caíste" : `¡Cayó ${NAME[(snap && snap.P[e[3]] && snap.P[e[3]].c) || ""] || "tu pareja"}!`; banner(who, e[3] === me.side ? "Esperá que te levanten" : "Parate al lado para levantarlo"); }
     if (e[0] === "levelup") music.set("pause");
@@ -197,8 +213,8 @@ function loop(now) {
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
   let V;
   if (screen === "run" && me.side === "host" && sim) {
-    const inp = { host: { dir: input.vec, ult: input.takeUlt(), dash: input.takeDash() || hostDash } }; hostDash = false;
-    if (sim.players.guest) { inp.guest = { ...guestInput }; guestInput.ult = false; guestInput.dash = false; }
+    const inp = { host: { dir: input.vec, ult: input.takeUlt(), dash: input.takeDash() || hostDash, mai: maiPress } }; hostDash = false; maiPress = false;
+    if (sim.players.guest) { inp.guest = { ...guestInput }; guestInput.ult = false; guestInput.dash = false; guestInput.mai = false; }
     sim.setView("host", R.bw, R.bh);
     if (sim.players.guest) heartbeat(now);
     if (!paused) sim.step(dt, inp);
@@ -233,7 +249,7 @@ function loop(now) {
         guestDash = false;
         sendAcc += dt;
         const ult = input.takeUlt() || guestUlt;
-        if (me.net && (sendAcc >= 0.05 || ult || dash)) { sendAcc = 0; me.net.send({ t: "in", pos: { x: guestPos.x, y: guestPos.y }, face: guestPos.face, moving: guestPos.moving, ult, dash, vw: R.bw, vh: R.bh }); guestUlt = false; }
+        if (me.net && (sendAcc >= 0.05 || ult || dash || maiPress)) { sendAcc = 0; me.net.send({ t: "in", pos: { x: guestPos.x, y: guestPos.y }, face: guestPos.face, moving: guestPos.moving, ult, dash, mt: maiPress ? 1 : 0, vw: R.bw, vh: R.bh }); guestUlt = false; maiPress = false; }
       }
       V = view(snap, "guest", guestPos);
     }
@@ -250,7 +266,7 @@ function loop(now) {
   if (screen === "run" && snap) updateHud(dt);
   requestAnimationFrame(loop);
 }
-let guestUlt = false, guestDash = false, hostDash = false;
+let guestUlt = false, guestDash = false, hostDash = false, maiPress = false; // maiPress: "Llamá a Maitena" (historia)
 // si la pareja no manda nada (celu bloqueado, sin señal), no se traba la partida:
 // a los 4 s se le elige la mejora sola y a los 25 s se sigue sin ella
 let lastGuestMsg = 0, guestAway = false;
@@ -285,7 +301,8 @@ function view(s, local, override) {
     allies.push({ id, type: A[i + 1], x, y, f: A[i + 4], a: A[i + 5] });
   }
   if (guest && smooth.size > seen.size + 50) for (const k of smooth.keys()) if (!seen.has(k)) smooth.delete(k);
-  return { local, players, enemies, allies, proj: s.B, eproj: s.H, gems: s.G, pickups: s.K, pools: s.U, bombs: s.M, buses: s.Bu, zones: s.Z || [], hz: s.Hz || [], obj: s.ob, bond: s.tg, goal: s.goal || null, cam: s.cam || null };
+  return { local, players, enemies, allies, proj: s.B, eproj: s.H, gems: s.G, pickups: s.K, pools: s.U, bombs: s.M, buses: s.Bu, zones: s.Z || [], hz: s.Hz || [], obj: s.ob, bond: s.tg, goal: s.goal || null, cam: s.cam || null,
+    waves: s.Wv || null, mark: (s.boss && s.boss.mk) || null }; // historia: ondas del berrinche y el marcado por Luz
 }
 
 /* ---------------- HUD ---------------- */
@@ -303,7 +320,10 @@ function buildHud() {
     <button class="pausebtn" data-act="pause" aria-label="Pausa">II</button>
     <button class="ultbtn" id="ultbtn" data-act="ult"><span id="ultlabel">COMBO</span></button>
     <button class="dashbtn" id="dashbtn" data-act="dash"><span>ESQUIVE</span></button>
-    <div class="goalhud" id="goalhud" hidden></div>
+    <div class="goalhud" id="goalhud" hidden><b id="goaltxt"></b><div class="gbar"><i id="goalfill"></i></div></div>
+    <div class="hinthud" id="hinthud" hidden></div>
+    <div class="talkhud" id="talkhud" hidden></div>
+    <button class="maibtn" id="maibtn" data-act="mai" hidden><span id="mailabel">MAITENA</span></button>
     <div class="objhud" id="objhud" hidden><img src="${portrait("regalo", 3)}" alt=""><span id="objtxt"></span></div>
     <div class="build" id="build"></div>
     <div class="movehint" id="movehint" hidden>${TOUCH ? "Apoyá el dedo en cualquier lado y arrastrá para moverte.<br>Las armas atacan solas." : "Movete con WASD o las flechas.<br>Shift esquiva · Espacio tira el combo."}</div>
@@ -350,12 +370,28 @@ function updateHud(dt) {
   if (hintT > 0) { hintT -= dt; const v = input.vec; if (v.x || v.y) hintT = Math.min(hintT, 0.6); show("movehint", !(hintT <= 0 || s.st !== "run")); } else show("movehint", false);
   show("objhud", !!s.ob);
   if (s.ob) put("objtxt", "objtxt", `Pedido de Roro's ${s.ob[2]}% · ${s.ob[3]}s`, (e, v) => { e.textContent = v; });
-  show("goalhud", !!s.goal);
-  if (s.goal) put("goaltxt", "goalhud", goalText(s.goal), (e, v) => { e.textContent = v; });
+  show("goalhud", !!s.goal && s.st !== "dialog");
+  if (s.goal) {
+    put("goaltxt", "goaltxt", goalText(s.goal), (e, v) => { e.textContent = v; });
+    put("goalfill", "goalfill", s.goal.p, (e, v) => { e.style.width = v + "%"; });
+    put("goalcry", "goalhud", s.goal.k === "escort" && s.goal.hp < 0, (e, v) => e.classList.toggle("alert", v));
+  }
+  // historia: cartel chico (pistas), subtítulo que no pausa y botón de Maitena
+  show("hinthud", !!s.hn && s.st === "run");
+  if (s.hn) put("hint", "hinthud", s.hn[1], (e, v) => { e.textContent = v; });
+  show("talkhud", !!s.tk && s.st !== "dialog");
+  if (s.tk) put("talk", "talkhud", s.tk[0], e => { const img = dialogPortrait(portraitId(s.tk[1]), 2); e.innerHTML = `${img ? `<img src="${img}" alt="">` : ""}<span><b>${esc(speaker(s.tk[1]))}</b>${esc(s.tk[2])}</span>`; });
+  show("maibtn", !!s.mai && s.st === "run");
+  if (s.mai) {
+    put("maik", "maibtn", Math.round(s.mai[0] * 20) * 5, (e, v) => e.style.setProperty("--k", v + "%"));
+    put("maiready", "maibtn", s.mai[0] >= 1 && !s.mai[2], (e, v) => e.classList.toggle("ready", v));
+    put("mailabel", "mailabel", s.mai[1] && s.mai[1] !== me.side && s.mai[0] >= 1 ? "¡TOCÁ YA!" : s.mai[1] === me.side ? "ESPERANDO" : "MAITENA", (e, v) => { e.textContent = v; });
+  }
+  document.body.classList.toggle("cine", s.st === "dialog");
   renderDialog(s.st === "dialog" ? s.dlg : null);
   show("bossbar", !!s.boss);
   if (s.boss) {
-    put("bossname", "bossname", s.boss.n === "luz" ? "LUZ" : "LINDA, LA JEFA", (e, v) => { e.textContent = v; });
+    put("bossname", "bossname", BOSS_NAME[s.boss.n] || "LINDA, LA JEFA", (e, v) => { e.textContent = v; });
     put("bossfill", "bossfill", Math.round(s.boss.hp * 200) / 2, (e, v) => { e.style.width = v + "%"; });
   }
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) { const b = hudEl("banner"); if (b) b.classList.remove("on"); } }
@@ -370,45 +406,80 @@ function updateHud(dt) {
     if (resultTimer > 1.6) { endShown = true; resultTimer = 0; finish(s); }
   }
 }
-// texto del objetivo para el HUD (en infinitivo: sirve jugando solo o de a dos)
+// texto del objetivo para el HUD (en infinitivo: sirve jugando solo o de a dos). La barra muestra el progreso.
+const mmss = x => fmt(x).replace(/^0/, "");
 function goalText(g) {
-  const lb = g.lb ? " " + g.lb : "", l = g.l !== null && g.l !== undefined ? ` · ${g.l} s` : "", hp = g.hp !== null && g.hp !== undefined ? ` · ${g.hp}%` : "";
+  const lb = g.lb || "", l = g.l !== null && g.l !== undefined ? ` · ${mmss(g.l)}` : "";
   switch (g.k) {
-    case "survive": return `Aguantar${lb}${l}`;
-    case "defend": return `Defender${lb || " el lugar"}${hp}${l}`;
-    case "protect": return `Proteger${lb}${hp}${l}`;
-    case "escort": return `Llevar${lb} · ${g.p}%${hp}`;
-    case "trains": return `Trenes: ${g.n} de ${g.of}`;
-    case "track": return `Rastros: ${g.n} de ${g.of}${l}`;
-    case "boss": return `Derrotar${lb || " a la jefa"}`;
-    case "reach": return `Llegar${lb} · ${g.p}%`;
-    default: return g.lb || "";
+    case "survive": return `${lb || "Aguantar"}${l}`;
+    case "defend": return `${lb || "Defender"}${g.hp !== null ? ` · ${g.hp}%` : ""}${l}`;
+    case "protect": return `${lb || "Proteger"} · ${g.hp}%${l}`;
+    case "escort": return g.hp < 0 ? "¡Carmelo llora! Quedate a su lado" : `${lb || "Llevar"} · ${g.p}%`;
+    case "trains": return g.rs && g.rs[3] >= 0 ? `${lb || "Rescatar"}: ${snap && Object.keys(snap.P).length > 1 ? "quédense" : "quedate"} en el refugio · ${g.rs[3]}%` : `Trenes: ${g.n} de ${g.of}${g.n >= g.of ? "" : g.n >= 2 ? "" : " · la vía no está limpia"}`;
+    case "track": return g.wt ? `Rastros: ${g.n} de ${g.of} · Romero se movió, buscando… ${g.wt} s` : `${lb || "Rastros"}: ${g.n} de ${g.of}${g.sp && g.sp[4] >= 0 ? ` · ${g.sp[4]} s` : ""}`;
+    case "boss": return g.in ? `${lb || "Derrotar a la jefa"} · ${g.hp}%` : "Algo se acerca…";
+    case "reach": return g.rs && g.rs[3] >= 0 ? `Bajar al Chema de la torre · ${g.rs[3]}%` : g.hd !== undefined && g.hd !== null ? `${snap && Object.keys(snap.P).length > 1 ? "Quédense juntos acá" : "Quedate acá"} · ${g.hd}%` : `${lb || "Llegar"} · ${g.p}%`;
+    default: return lb;
   }
 }
+const BOSS_NAME = { luz: "LUZ", linda: "LINDA, LA JEFA", luz2: "LUZ", canicheBoss: "LA OTRA LINDA" };
+const BOSS_BANNER = { luz: ["¡LUZ!", "La gata de la abuela está furiosa"], linda: ["¡LINDA!", "La jefa en persona. Derrótenla para ganar"], luz2: ["¡LUZ!", "Si marca a uno, el otro que se le pegue"], canicheBoss: ["¡LA OTRA LINDA!", "La buena. La de la abuela. La peor"] };
+// quién habla → retrato de diálogo (dialogPortrait de sprites.js)
+function portraitId(who) {
+  if (who === "gata") return "linda";
+  if (who === "romero") return curCap && curCap.n >= 3 ? "gomeghooo" : "romero";
+  if (who === "caniche") return curCap && curCap.id === "terrazas" ? "canicheBoss" : "caniche";
+  if (who === "thomas" || who === "rocio") { for (const p of Object.values((snap && snap.P) || {})) if (p.c === who && p.sk) return p.sk; return who; }
+  return who;
+}
+// eventos de la historia que se muestran como cartel
+function storyEvent(e) {
+  if (e[0] === "sbanner") banner(e[1], e[2]);
+  if (e[0] === "sphase") { const B = snap && snap.boss && snap.boss.n; if (B === "luz2") banner("¡Luz se enoja!", "Ahora carga dos veces seguidas"); else if (B === "canicheBoss") banner(e[1] === 2 ? "¡Carritos!" : "¡Berrinche!", e[1] === 2 ? "La caniche silba y largan los carritos" : "Busquen los huecos de la onda"); music.set("boss"); }
+  if (e[0] === "goaldone" && snap && snap.goal && snap.goal.k === "reach") banner("¡Llegaron!", "");
+  if (e[0] === "rescue") banner("¡Rescatado!", "");
+  if (e[0] === "goallost") banner("¡Se rompió!", "Cuiden lo que queda");
+  if (e[0] === "trackmove") banner("Se perdió el rastro", "Saltó a otro puesto");
+  if (e[0] === "track") banner("¡Rastro!", "");
+  if (e[0] === "give") { if (e[1] === me.side) banner("¡Se suma " + (WEAPONS[e[2]] ? WEAPONS[e[2]].name : e[2]) + "!", WEAPONS[e[2]] ? WEAPONS[e[2]].desc : ""); }
+  if (e[0] === "special") banner("Nuevo especial", "Llamá a Maitena: botón violeta");
+  if (e[0] === "maitena") { banner(e[1] ? "¡Maitena doble!" : "¡Maitena!", e[1] ? "Lo tocaron los dos: pega el doble" : "Invicta"); buzz([40, 30, 80]); }
+  if (e[0] === "maiarm" && e[1] !== me.side) banner("¡Tu pareja llamó a Maitena!", "Tocá el botón ya y sale doble");
+  if (e[0] === "stun") buzz(40);
+}
 // caja de diálogo: retrato, nombre y texto que se escribe solo. Tocar completa el texto y después avanza.
-let dlgKey = "", dlgShown = 0, dlgFull = false;
+// "Saltar" aparece si esa escena ya se vio (en este celu). La pregunta del comisario muestra las opciones.
+let dlgKey = "", dlgShown = 0, dlgFull = false, dlgSeenNow = new Set();
+const dlgSeenKey = d => (curCap ? curCap.id : "arcade") + ":" + d.id;
 function renderDialog(d) {
   const box = $("#dialog"); if (!box) return;
-  if (!d) { if (dlgKey) { dlgKey = ""; box.hidden = true; box.innerHTML = ""; } return; }
-  const key = d.id + ":" + d.i;
+  if (!d) { if (dlgKey) { markSeen(dlgKey.split(":")[0]); dlgKey = ""; box.hidden = true; box.innerHTML = ""; } return; }
+  const key = d.id + ":" + d.i + ":" + d.n;
   if (key !== dlgKey) {
     for (const k of [...hudVals.keys()]) if (k.startsWith("dlg")) hudVals.delete(k);
+    // la escena anterior ya se vio: se anota para ofrecer "Saltar" la próxima vez
+    if (dlgKey && !dlgKey.startsWith(d.id + ":")) markSeen(dlgKey.split(":")[0]);
     dlgKey = key; dlgShown = performance.now(); dlgFull = false;
-    const img = portrait(d.who, 4);
+    const img = d.who === "narrador" ? "" : dialogPortrait(portraitId(d.who), 3) || portrait(d.who, 4);
+    const seen = prof.story.seen && prof.story.seen[dlgSeenKey(d)];
     box.hidden = false;
-    box.innerHTML = `<div class="dlgbox" data-act="adv">${img ? `<img src="${img}" alt="">` : ""}<div class="dlgtxt"><b>${esc(speaker(d.who))}</b><p id="dlgtext"></p><div class="dlgfoot"><span id="dlgwait"></span><button class="skip" data-act="advskip">Saltar</button></div></div></div>`;
+    box.innerHTML = `<div class="dlgbox ${d.who === "narrador" ? "narr" : ""} ${d.o ? "ask" : ""}" data-act="adv">${img ? `<img src="${img}" alt="">` : ""}<div class="dlgtxt"><b>${esc(speaker(d.who))}</b><p id="dlgtext"></p>
+      ${d.o ? `<div class="dlgopts">${d.o.map((o, i) => `<button class="mid" data-act="answer" data-i="${i}">${esc(o)}</button>`).join("")}</div>` : ""}
+      <div class="dlgfoot"><span id="dlgwait"></span>${seen && !d.o ? `<button class="skip" data-act="advskip">Saltar</button>` : ""}</div></div></div>`;
   }
   const n = dlgFull ? d.text.length : Math.min(d.text.length, Math.floor((performance.now() - dlgShown) / 28));
   if (n >= d.text.length) dlgFull = true;
   put("dlgtext", "dlgtext", n, (e, v) => { e.textContent = d.text.slice(0, v); });
-  const mine = d.r && d.r[me.side];
-  put("dlgwait", "dlgwait", mine ? "Esperando a tu pareja…" : `${d.i + 1} de ${d.n} · tocá para seguir`, (e, v) => { e.className = mine ? "wait" : ""; e.textContent = v; });
+  const mine = d.o ? d.an && d.an[me.side] !== undefined : d.r && d.r[me.side];
+  put("dlgwait", "dlgwait", mine ? "Esperando a tu pareja…" : d.o ? "Elegí una respuesta" : `${d.i + 1} de ${d.n} · tocá para seguir`, (e, v) => { e.className = mine ? "wait" : ""; e.textContent = v; });
 }
-function advDialog(skip) {
+function markSeen(id) { if (!id || dlgSeenNow.has(id)) return; dlgSeenNow.add(id); prof.story.seen = prof.story.seen || {}; const k = (curCap ? curCap.id : "arcade") + ":" + id; if (!prof.story.seen[k]) { prof.story.seen[k] = 1; save(); } }
+function advDialog(skip, choice) {
   if (!snap || snap.st !== "dialog" || performance.now() - dlgShown < 300) return;
-  if (!skip && !dlgFull) { dlgFull = true; return; }
-  if (me.side === "host") { if (sim) sim.adv("host", skip); }
-  else if (me.net) me.net.send({ t: "adv", skip: skip ? 1 : 0 });
+  if (snap.dlg && snap.dlg.o && typeof choice !== "number") { dlgFull = true; return; }
+  if (!skip && !dlgFull && typeof choice !== "number") { dlgFull = true; return; }
+  if (me.side === "host") { if (sim) sim.adv("host", skip, choice); }
+  else if (me.net) me.net.send({ t: "adv", skip: skip ? 1 : 0, c: typeof choice === "number" ? choice : undefined });
 }
 function buildIcons(p) {
   const pip = (lv, max) => `<i>${"▮".repeat(lv)}${"▯".repeat(Math.max(0, max - lv))}</i>`;
@@ -438,7 +509,8 @@ function renderLevelUp(s, of) {
 }
 function finish(s) {
   const win = s.st === "win";
-  if (win && s.cap) { saveChapter(s.cap); if (me.side === "host" && me.net && me.net.connected) me.net.send({ t: "cap", id: s.cap, n: curCap ? curCap.n | 0 : 0 }); }
+  const unl = win && curCap && curCap.unlock ? curCap.unlock.filter(u => !prof.unlock[u]) : [];
+  if (win && s.cap) { saveChapter(s.cap, curCap ? curCap.n : 0, s.sr); if (me.side === "host" && me.net && me.net.connected) me.net.send({ t: "cap", id: s.cap, n: curCap ? curCap.n | 0 : 0, stars: s.sr | 0 }); }
   earned = Math.round((s.co + Math.floor(s.kl / 12) + Math.floor(s.t / 20) + (win ? 60 : 0)) * (1 + (MAPS[s.map] || MAPS.plaza).tier * 0.12));
   prof.coins += earned; prof.runs++;
   // los récords y las victorias son del arcade; un capítulo solo guarda su progreso
@@ -448,25 +520,56 @@ function finish(s) {
   hud.hidden = true; $("#levelup").hidden = true; keepAwake(false); setPaused(false);
   screen = "results"; music.set("menu");
   const duel = Object.values(s.P).map(p => ({ c: p.c, k: p.k })).sort((a, b) => b.k - a.k);
-  draw({ win, t: s.t, k: s.kl, lv: s.lv, newBest, duel, cap: curCap });
+  document.body.classList.remove("cine");
+  draw({ win, t: s.t, k: s.kl, lv: s.lv, newBest, duel, cap: curCap, stars: s.sr | 0, eb: s.eb || null, unl });
 }
 
 /* ---------------- pantallas ---------------- */
 function charCard(c) {
-  return `<button class="char ${prof.who === c ? "on" : ""}" data-act="who" data-v="${c}">
-    <img src="${portrait(c, 6)}" alt=""><b>${NAME[c]}</b><span>${c === "thomas" ? "Patada Bielli · cuerpo a cuerpo" : "Medialunas · a distancia"}</span></button>`;
+  const sk = SKIN[c], has = sk && prof.unlock[sk.unlock], on = has && prof.skin[c] === sk.id;
+  return `<div class="charwrap"><button class="char ${prof.who === c ? "on" : ""}" data-act="who" data-v="${c}">
+    <img src="${portrait(on ? sk.id : c, 6)}" alt=""><b>${NAME[c]}</b><span>${c === "thomas" ? "Patada Bielli · cuerpo a cuerpo" : "Medialunas · a distancia"}</span></button>
+    ${has ? `<button class="link skin" data-act="skin" data-v="${c}">Ropa: ${on ? esc(sk.name) : "de siempre"}</button>` : ""}</div>`;
 }
 function mapCards() {
-  return `<div class="maps">${Object.entries(THEMES).map(([k, t]) => {
-    const owned = prof.maps[k];
+  // historia: los mapas abuela y roros (no enumerables en THEMES) aparecen al final, desbloqueados jugando la historia
+  const list = [...Object.entries(THEMES), ...Object.keys(STORY_MAP_FROM).map(k => [k, THEMES[k]])];
+  return `<div class="maps">${list.map(([k, t]) => {
+    const story = STORY_MAP_FROM[k], owned = story ? prof.unlock["map:" + k] : prof.maps[k];
     const tier = MAPS[k].tier;
-    return `<button class="mapc ${map === k ? "on" : ""} ${owned ? "" : "locked"}" data-act="${owned ? "map" : "buymap"}" data-v="${k}"><div><b>${t.name}</b><small>${"★".repeat(tier + 1)}${"☆".repeat(5 - tier)} · ${esc(t.sub)}${tier ? ` · +${tier * 12}%${COIN()}` : ""}</small></div><span>${owned ? (map === k ? "Elegido" : "Elegir") : `${MAP_COST[k]}${COIN()}`}</span></button>`;
+    return `<button class="mapc ${map === k ? "on" : ""} ${owned ? "" : "locked"}" data-act="${owned ? "map" : story ? "" : "buymap"}" data-v="${k}" ${!owned && story ? "disabled" : ""}><div><b>${t.name}</b><small>${"★".repeat(tier + 1)}${"☆".repeat(5 - tier)} · ${esc(t.sub)}${tier ? ` · +${tier * 12}%${COIN()}` : ""}</small></div><span>${owned ? (map === k ? "Elegido" : "Elegir") : story ? `Se gana en ${story}` : `${MAP_COST[k]}${COIN()}`}</span></button>`;
+  }).join("")}${prof.unlock["ally:corbata"] ? `<button class="link" data-act="corbata">Corbata te acompaña: ${prof.corbataOn ? "sí" : "no"}</button>` : ""}</div>`;
+}
+// historia: pantalla de capítulos. Disponibles = el máximo entre los dos celus; candado, tilde y estrellas.
+const starsOf = id => { const d = prof.story.done[id]; return d ? (typeof d === "object" ? d.stars | 0 : 1) || 1 : 0; };
+function chapterList(pick) {
+  const avail = storyCap();
+  return `<div class="caps">${STORY.CHAPTERS.map(c => {
+    const open = c.n <= avail, st = starsOf(c.id), on = capSel === c.id;
+    const tag = c.n === 0 ? "Prólogo" : c.n === 8 ? "Epílogo" : "Capítulo " + c.n;
+    return `<button class="capc ${on ? "on" : ""} ${open ? "" : "locked"} ${st ? "done" : ""}" ${open && pick ? `data-act="cap" data-v="${esc(c.id)}"` : ""} ${open ? "" : "disabled"}>
+      <span class="capn">${c.n === 0 ? "P" : c.n === 8 ? "E" : c.n}</span>
+      <span class="capt"><small>${tag}${open ? "" : " · bloqueado"}</small><b>${open ? esc(c.title) : "¿?"}</b><small>${open ? esc(c.sub) : "Terminen el anterior"}</small></span>
+      <span class="caps-st">${st ? `<i class="tick">✔</i><em>${"★".repeat(st)}${"☆".repeat(3 - st)}</em>` : open ? "" : "🔒"}</span></button>`;
   }).join("")}</div>`;
 }
-// capítulos de la historia (por ahora una lista simple; la pantalla de la historia es de la fase siguiente)
 function capCards() {
-  const list = [{ id: "", title: "Arcade", sub: "Aguantar hasta que aparezca Linda" }, ...STORY.CHAPTERS];
-  return `<p class="label">Historia</p><div class="maps caps">${list.map(c => { const on = (capSel || "") === c.id; return `<button class="mapc ${on ? "on" : ""}" data-act="cap" data-v="${esc(c.id)}"><div><b>${esc(c.title || c.id)}</b><small>${esc(c.sub || "")}${prof.story.done[c.id] ? " · hecho" : ""}</small></div><span>${on ? "Elegido" : "Elegir"}</span></button>`; }).join("")}</div>`;
+  const ch = chapter(capSel);
+  return `<p class="label">Historia</p>${ch ? `<div class="capsel"><b>${esc(ch.title)}</b><small>${esc(ch.sub)}</small></div>` : ""}<button class="mid ghost" data-act="story">${ch ? "Cambiar capítulo" : "Elegir un capítulo"}</button>${ch ? `<button class="link" data-act="cap" data-v="">Volver al arcade</button>` : ""}`;
+}
+// lo desbloqueado en la historia, visible en el menú
+function unlockList() {
+  const got = Object.keys(UNLOCK_NAME).filter(u => prof.unlock[u]);
+  return got.length ? `<p class="unl"><span>Desbloqueado:</span> ${got.map(u => esc(UNLOCK_NAME[u])).join(" · ")}</p>` : "";
+}
+const nextChapter = ch => STORY && ch ? STORY.CHAPTERS.find(c => c.n === (ch.n | 0) + 1) || null : null;
+function storyResult(r) {
+  const ch = r.cap, credits = r.win && ch.credits;
+  return `<h2 class="${r.win ? "win" : "lose"}">${r.win ? (ch.n === 8 ? "¡Feliz Día de la Madre!" : "¡Capítulo superado!") : esc(r.eb ? r.eb[0] : "No salió")}</h2>
+    <p>${esc(ch.title || "")}${r.win ? "" : esc(r.eb && r.eb[1] ? ". " + r.eb[1] + "." : ". Prueben de nuevo.")}</p>
+    ${r.win ? `<p class="starsbig">${"★".repeat(r.stars || 1)}<span>${"☆".repeat(3 - (r.stars || 1))}</span></p><p class="hint">Una estrella por terminarlo, otra si nadie cayó y otra si no se perdió nada en el camino.</p>` : ""}
+    ${r.unl && r.unl.length ? `<div class="unlnew"><b>¡Desbloquearon!</b>${r.unl.map(u => `<span>${esc(UNLOCK_NAME[u] || u)}</span>`).join("")}</div>` : ""}
+    ${credits ? `<div class="credits">${credits.map(c => `<span>${esc(c)}</span>`).join("")}</div>` : ""}`;
 }
 let lastResult = null;
 function draw(result) {
@@ -493,6 +596,8 @@ function draw(result) {
         <button class="mid" data-act="solo" ${prof.who ? "" : "disabled"}>Jugar solo</button>
         <button class="mid ghost" data-act="shop">Taller de mejoras</button>
       </div>`}
+      ${STORY ? `<button class="mid story" data-act="story" ${prof.who ? "" : "disabled"}>Historia: La otra Linda</button>` : ""}
+      ${unlockList()}
       <p class="rec">Récord: ${fmt(prof.best.t)} · ${prof.best.k} gatos · ${prof.wins} victorias</p>
       <button class="link" data-act="snd">${sfx.muted ? "Sonido: apagado" : "Sonido: prendido"}</button>
     </section>`;
@@ -507,9 +612,9 @@ function draw(result) {
       ${me.side === "host" ? `<button class="mid ghost" data-act="share">Compartir link</button>` : ""}
       <p class="status ${me.connected ? "on" : ""}">${me.connected ? `Conectados: ${NAME[prof.who]} y ${partner || "…"}` : "Esperando que entre tu pareja…"}</p>
       ${me.connected && me.protoBad ? `<p class="err">${esc(PROTO_MSG)}</p>` : ""}`}
-      <p class="label">Mapa</p>
-      ${me.side === "host" && !capSel ? mapCards() : `<p class="mapname">${THEMES[map].name}${capSel ? " · " + esc((chapter(capSel) || { title: "Capítulo" }).title) : ""}</p>`}
-      ${me.side === "host" && STORY ? capCards() : ""}
+      ${capSel ? "" : `<p class="label">Mapa</p>`}
+      ${me.side === "host" && !capSel ? mapCards() : capSel ? "" : `<p class="mapname">${THEMES[map].name}</p>`}
+      ${me.side === "host" && STORY ? capCards() : capSel ? `<p class="label">Historia</p><div class="capsel"><b>${esc((chapter(capSel) || { title: "Capítulo" }).title)}</b><small>${esc((chapter(capSel) || { sub: "" }).sub)}</small></div>` : ""}
       ${me.side === "host" ? `<button class="big" data-act="go" ${solo || (me.connected && !me.protoBad) ? "" : "disabled"}>¡A jugar!</button>` : me.protoBad ? "" : `<p class="busy">Esperando que arranque ${partner || "tu pareja"}</p>`}
       <button class="link" data-act="back">Volver</button>
     </section>`;
@@ -518,14 +623,26 @@ function draw(result) {
   if (screen === "results") {
     const r = lastResult;
     ui.innerHTML = `<section class="panel results">
-      ${r.cap ? `<h2 class="${r.win ? "win" : "lose"}">${r.win ? "¡Capítulo superado!" : "No salió"}</h2>
-      <p>${esc(r.cap.title || "")}${r.win ? "" : ". Prueben de nuevo."}</p>` : `<h2 class="${r.win ? "win" : "lose"}">${r.win ? "¡Derrotaron a Linda!" : "Los gatos ganaron"}</h2>
+      ${r.cap ? storyResult(r) : `<h2 class="${r.win ? "win" : "lose"}">${r.win ? "¡Derrotaron a Linda!" : "Los gatos ganaron"}</h2>
       <p>${r.win ? "El barrio está a salvo. Por esta noche." : "Linda se quedó con el barrio. Revancha."}</p>`}
       ${r.duel && r.duel.length > 1 ? `<div class="duel">${r.duel.map((d, i) => `<div class="${i === 0 ? "mvp" : ""}"><img src="${portrait(d.c, 3)}" alt=""><b>${NAME[d.c]}</b><span>${d.k} gatos</span>${i === 0 ? "<em>MVP</em>" : ""}</div>`).join("")}</div>` : ""}
       <div class="stats"><div><b>${fmt(r.t)}</b><span>tiempo${r.newBest ? " · ¡récord!" : ""}</span></div><div><b>${r.k}</b><span>gatos</span></div><div><b>${r.lv}</b><span>nivel</span></div><div><b>+${earned}</b><span>monedas</span></div></div>
-      ${me.side === "host" ? `<button class="big" data-act="again">Revancha</button>` : `<p class="busy">Esperando la revancha</p>`}
+      ${r.cap && r.win && me.side === "host" && nextChapter(r.cap) ? `<button class="big" data-act="next">Siguiente: ${esc(nextChapter(r.cap).title)}</button>` : ""}
+      ${me.side === "host" ? `<button class="${r.cap && r.win && nextChapter(r.cap) ? "mid" : "big"}" data-act="again">${r.cap ? (r.win ? "Jugar de nuevo" : "Reintentar") : "Revancha"}</button>` : `<p class="busy">Esperando a ${esc((me.partner && NAME[me.partner]) || "tu pareja")}</p>`}
+      ${r.cap ? `<button class="mid ghost" data-act="story">Capítulos</button>` : ""}
       <button class="mid ghost" data-act="shop">Taller (${COIN()}${prof.coins})</button>
       <button class="link" data-act="menu">Menú</button>
+    </section>`;
+    return;
+  }
+  if (screen === "story") {
+    const host = !me.connected || me.side === "host";
+    ui.innerHTML = `<section class="panel story">
+      <div class="brand"><h2>La otra Linda</h2><span class="coins">${"★".repeat(0)}${STORY.CHAPTERS.filter(c => prof.story.done[c.id]).length}/9</span></div>
+      <p class="hint">${me.connected ? `De a dos: van los capítulos que tenga cualquiera de los dos.` : "Víspera del Día de la Madre. Se llevaron al Chema y a Amanda. Todo apunta a Linda."}</p>
+      ${chapterList(host)}
+      ${capSel && host ? (me.connected ? `<button class="big" data-act="go" ${me.protoBad ? "disabled" : ""}>¡A jugar!</button>` : `<div class="btns"><button class="big" data-act="storysolo">Jugar solo</button><button class="mid" data-act="storyduo">Jugar de a dos</button></div>`) : !host ? `<p class="busy">Elige ${esc((me.partner && NAME[me.partner]) || "tu pareja")}</p>` : ""}
+      <button class="link" data-act="back">Volver</button>
     </section>`;
     return;
   }
@@ -600,9 +717,9 @@ document.addEventListener("click", e => {
   switch (a) {
     case "start": music.start(); music.set("menu"); screen = "menu"; if (joinDraft.length === 4 && prof.who) joinRoom(joinDraft); draw(); break;
     case "who": prof.who = v; save(); newDemo(); draw(); break;
-    case "create": createRoom(); break;
+    case "create": capSel = null; createRoom(); break;
     case "join": { const el = $("#code"); joinRoom(el ? el.value : joinDraft); break; }
-    case "solo": leave(); me.side = "host"; screen = "solo"; draw(); break;
+    case "solo": leave(); me.side = "host"; capSel = null; screen = "solo"; draw(); break;
     case "shop": shopBack = screen; screen = "shop"; draw(); break;
     case "buy": { const lv = prof.up[v], cost = UPG_COST[lv]; if (lv < 5 && prof.coins >= cost) { prof.coins -= cost; prof.up[v]++; save(); sfx.play("coin"); } draw(); break; }
     case "map": map = v; R.setMap(map); newDemo(); sendLobby(); draw(); break;
@@ -614,11 +731,19 @@ document.addEventListener("click", e => {
     case "bkcopy": { const el = $("#bkout"), code = el ? el.value : exportCode(prof); if (navigator.clipboard) navigator.clipboard.writeText(code).then(() => { backupMsg = { ok: true, text: "Código copiado." }; draw(); }).catch(() => { if (el) el.select(); }); else if (el) el.select(); break; }
     case "bkload": { const el = $("#bkin"); backupIn = el ? el.value : backupIn; try { backupPending = importCode(backupIn); backupMsg = null; } catch (err) { backupPending = null; backupMsg = { ok: false, text: err.message }; } draw(); break; }
     case "bkyes": if (backupPending) { try { localStorage.setItem(BACKUP_KEYS.prev, JSON.stringify(prof)); } catch (err) {} prof = backupPending; backupPending = null; backupIn = ""; save(); newDemo(); backupMsg = { ok: true, text: "Listo: progreso recuperado." }; } draw(); break;
-    case "back": if (screen === "backup") screen = "shop"; else if (screen === "shop") screen = shopBack || "menu"; else { leave(); screen = "menu"; me.code = null; } errMsg = null; draw(); break;
+    case "back": if (screen === "backup") screen = "shop"; else if (screen === "shop") screen = shopBack || "menu"; else if (screen === "story") { screen = me.net && me.code ? "room" : storyBack === "results" ? "menu" : storyBack || "menu"; if (screen === "menu" && !(me.net && me.code)) capSel = null; } else { leave(); screen = "menu"; me.code = null; capSel = null; } errMsg = null; draw(); break;
     case "share": { const url = location.origin + location.pathname + "?sala=" + me.code; if (navigator.share) navigator.share({ title: "Gatos de Linda", text: "Entrá a mi sala", url }).catch(() => {}); else navigator.clipboard && navigator.clipboard.writeText(url).then(() => banner("Link copiado", "")).catch(() => {}); break; }
     case "pick": { if (performance.now() - lvShownAt < 350) break; const i = +b.dataset.i; if (me.side === "host") sim && sim.pick("host", i); else me.net && me.net.send({ t: "pick", i }); sfx.play("coin"); break; }
 
     case "cap": { capSel = v || null; const ch = chapter(capSel); if (ch && THEMES[ch.map]) { map = ch.map; R.setMap(map); newDemo(); } sendLobby(); draw(); break; }
+    // historia
+    case "story": storyBack = screen === "results" ? (me.net && me.code ? "room" : "menu") : screen; screen = "story"; if (!capSel && STORY) { const n = Math.min(8, storyCap()); const c = STORY.CHAPTERS.find(q => q.n === n); if (c) { capSel = c.id; map = c.map; R.setMap(map); newDemo(); } } sendLobby(); draw(); break;
+    case "storysolo": leave(); me.side = "host"; hostStart(); break;
+    case "storyduo": createRoom(); break;
+    case "next": { const n = nextChapter(chapter(capSel)); if (n) { capSel = n.id; map = n.map; R.setMap(map); sendLobby(); hostStart(); } break; }
+    case "skin": { const k = SKIN[v]; if (k) { prof.skin[v] = prof.skin[v] === k.id ? null : k.id; save(); newDemo(); } draw(); break; }
+    case "corbata": prof.corbataOn = !prof.corbataOn; save(); draw(); break;
+    case "answer": advDialog(false, +b.dataset.i); break;
     case "adv": advDialog(false); break;
     case "advskip": advDialog(true); break;
     case "pause": setPaused(true); break;
@@ -633,11 +758,12 @@ document.addEventListener("click", e => {
       break;
   }
 });
-let shopBack = "menu";
+let shopBack = "menu", storyBack = "menu";
 // esquive y combo responden al apoyar el dedo, sin esperar a soltar
 document.addEventListener("pointerdown", e => {
-  const b = e.target.closest('[data-act="dash"],[data-act="ult"]'); if (!b) return;
+  const b = e.target.closest('[data-act="dash"],[data-act="ult"],[data-act="mai"]'); if (!b) return;
   e.preventDefault(); sfx.init();
+  if (b.dataset.act === "mai") { maiPress = true; return; }
   if (b.dataset.act === "ult") { if (me.side === "host") input.ultPressed = true; else guestUlt = true; }
   else { if (me.side === "host") hostDash = true; else guestDash = true; }
 });
@@ -645,6 +771,8 @@ addEventListener("keydown", e => {
   if (screen === "run" && (e.key === "Escape" || e.key === "p" || e.key === "P")) { const pm = $("#pausemenu"); setPaused(!!(pm && pm.hidden)); }
   // en un diálogo, Espacio o Enter avanzan (y no se gasta el combo)
   if (screen === "run" && snap && snap.st === "dialog" && (e.key === " " || e.key === "Enter")) { input.ultPressed = false; advDialog(false); e.preventDefault(); }
+  if (screen === "run" && snap && snap.st === "dialog" && snap.dlg && snap.dlg.o && /^[1-9]$/.test(e.key)) advDialog(false, +e.key - 1);
+  if (screen === "run" && (e.key === "m" || e.key === "M")) maiPress = true; // Llamá a Maitena
 });
 document.addEventListener("input", e => { if (e.target.id === "code") { joinDraft = cleanCode(e.target.value); e.target.value = joinDraft; } if (e.target.id === "bkin") { backupIn = e.target.value; backupPending = null; } });
 

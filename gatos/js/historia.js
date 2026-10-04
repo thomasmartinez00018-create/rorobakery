@@ -112,7 +112,7 @@ const M = {
       case "dialog": this.openDialog(e.lines, { id: e.id, auto: e.auto }); break;
       case "hint": this.setHint(e.text); break;
       case "elite": this.storyElite(e.kind || e.type, e.pos); break;
-      case "give": for (const p of Object.values(this.players)) if ((p.weapons[e.weapon] || 0) < (e.lv || 1)) { p.weapons[e.weapon] = e.lv || 1; this.ev.push(["give", p.side, e.weapon]); } break;
+      case "give": for (const p of Object.values(this.players)) if ((p.weapons[e.weapon] || 0) < (e.lv || 1)) { p.weapons[e.weapon] = e.lv || 1; if (this.t > 0) this.ev.push(["give", p.side, e.weapon]); } break; // al arrancar, sin cartel
       case "ally": { const w = allyId(e.who || e.type), had = this.allies.find(a => a.type === w && !a.gone);
         // el que esperaba quieto (Amanda en el refugio, el Chema en la torre) se suma al grupo
         if (had) { if (had.cfg.act === "idle" && !e.idle) had.cfg = { ...K.ALLY[w] }; break; } const o = e.from ? { x: e.from.x, y: e.from.y } : {}; if (e.idle) o.act = "idle"; this.addAlly(w, o); break; }

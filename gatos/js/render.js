@@ -54,17 +54,44 @@ function tintSprite(col, r) {
   return c;
 }
 
-const FUR = { 0: "#8d8f98", 1: "#2b2833", 2: "#8f96a3", 3: "#e08a3a", 4: "#8d8170", 5: "#8a7a66", 6: "#e0822e", 7: "#efe0c4", 8: "#f4f1ea", 9: "#b7b9c2", 10: "#b07a42" };
+const FUR = { 0: "#8d8f98", 1: "#2b2833", 2: "#8f96a3", 3: "#e08a3a", 4: "#8d8170", 5: "#8a7a66", 6: "#e0822e", 7: "#efe0c4", 8: "#f4f1ea", 9: "#b7b9c2", 10: "#b07a42",
+  17: "#2b2833", 18: "#8d8170", 19: "#efe5d3", 20: "#2e5fa8" }; // historia: guantes, luz2, canicheBoss, premio
 const PICK_SPR = { alfajor: "alfajor", moneda: "moneda", caja: "regalo", iman: "iman", manguera: "manguera" };
-// aliados sin sprite propio todavía: se dibujan con uno parecido (y una marca verde arriba)
-const ALLY_FALLBACK = { humano: "alumno", perro: "romero", gato: "gato" };
+// historia: sprite de cada aliado y de los tipos nuevos (el resto se dibuja con el nombre del motor)
+const ALLY_SPR = { gatalinda: "gataLinda" };
+const STORY_SPR = { guantes: "negro", luz2: "luz" };
+const F_MARK = 128, F_BUFF = 256, F_STUN = 512, F_SURR = 1024, F_CRY = 128, F_RUN = 256, F_KICK = 512; // ver js/historia.js
+
+// historia: efectos de los eventos nuevos (devuelven el sonido, si hay)
+const STORY_EV = {
+  maikick(e) { this.rings.push({ x: e[1], y: e[2], r: e[3], life: 0.45, c: "#ffd24a" }, { x: e[1], y: e[2], r: e[3] * 0.6, life: 0.35, c: "#ffffff" }); for (let i = 0; i < 18; i++) this.part(e[1], e[2], i % 2 ? "#ffd24a" : "#ffffff", 120, 0.5); this.shake = Math.max(this.shake, 4); return "boom"; },
+  maitena() { this.shake = 5; return "ult"; },
+  stun(e) { this.rings.push({ x: e[1], y: e[2], r: 36, life: 0.45, c: "#ffd24a" }); for (let i = 0; i < 10; i++) this.part(e[1], e[2] - 8, "#ffd24a", 60, 0.6); return "chest"; },
+  mark(e) { this.rings.push({ x: e[1], y: e[2], r: 16, life: 0.35, c: "#ff4a5a" }); return ""; },
+  sphase(e) { this.rings.push({ x: e[2], y: e[3], r: 120, life: 0.45, c: "#b36aff" }); this.shake = 6; return "phase"; },
+  premio(e) { for (let i = 0; i < 8; i++) this.part(e[2], e[3], e[1] ? "#ff5a3a" : "#ffd24a", 50, 0.5); return e[1] ? "" : "coin"; },
+  premios(e) { this.rings.push({ x: e[1], y: e[2], r: 60, life: 0.4, c: "#ffd24a" }); return "throw"; },
+  tantrum(e) { this.shake = Math.max(this.shake, 3); for (let i = 0; i < 14; i++) this.part(e[1], e[2], "#ff8ad8", 90, 0.5); return "horde"; },
+  whistle() { return "warn"; },
+  rescue() { return "objok"; },
+  track(e) { this.rings.push({ x: e[1], y: e[2], r: 40, life: 0.45, c: "#ffd24a" }); for (let i = 0; i < 16; i++) this.part(e[1], e[2], "#ffd24a", 70, 0.7); return "objok"; },
+  trackmove() { return "objfail"; },
+  goallost(e) { for (let i = 0; i < 20; i++) this.part(e[2], e[3], i % 2 ? "#ff4a5a" : "#ffd9a0", 80, 0.7); this.shake = 4; return "objfail"; },
+  allydown(e) { for (let i = 0; i < 10; i++) this.part(e[2], e[3], "#7fd0ff", 40, 0.6); return ""; },
+  allyup(e) { for (let i = 0; i < 10; i++) this.part(e[2], e[3], "#6aff9a", 40, 0.6); return "heal"; },
+  answer(e) { return e[1] ? "objok" : "objfail"; },
+  give() { return "chest"; },
+  kidnap() { return "horde"; },
+  goaldone() { return "objok"; },
+  bossdown() { return ""; }
+};
 
 export class Renderer {
   constructor(canvas) {
     this.cv = canvas; this.ctx = canvas.getContext("2d");
     this.buf = document.createElement("canvas"); this.bg = this.buf.getContext("2d");
     this.lc = document.createElement("canvas"); this.lg = this.lc.getContext("2d");
-    this.parts = []; this.nums = []; this.slashes = []; this.rings = [];
+    this.parts = []; this.nums = []; this.slashes = []; this.rings = []; this.allyPos = new Map(); // allyPos: historia
     this.cam = { x: MAP / 2, y: MAP / 2 }; this.shake = 0; this.t = 0;
     this.resize();
     addEventListener("resize", () => this.resize());
@@ -118,6 +145,7 @@ export class Renderer {
       if (k === "pass") { this.shake = Math.max(this.shake, e[1] === "tren" ? 4 : 1); snd.push(e[1] === "tren" ? "train" : "whoosh"); }
       if (k === "obj") snd.push(["objfail", "objok", "obj"][e[1]]);
       if (k === "summon") this.rings.push({ x: e[1], y: e[2], r: 40, life: 0.5, c: "#b36aff" });
+      if (STORY_EV[k]) { const o = STORY_EV[k].call(this, e); if (o) snd.push(o); }
       if (["bus", "boss", "horde", "levelup", "throw", "hairball", "bossdown", "win", "over"].includes(k)) snd.push(k === "boss" ? "boss:" + e[1] : k);
     }
     return snd;
@@ -172,8 +200,10 @@ export class Renderer {
       const s = SPR.regalo; g.drawImage(s.f[0], X(x) - (s.w >> 1), Y(y) - s.h - Math.round(Math.abs(Math.sin(this.t * 3)) * 3));
       drawNum(g, left, X(x), Y(y) - 22, left <= 8 ? "#ff4a5a" : "#ffffff");
     }
-    // objetivo del modo historia
+    // objetivo del modo historia, ondas del berrinche y el jugador marcado por Luz
     if (V.goal) this.drawGoalFloor(g, V, X, Y, vis);
+    if (V.waves && V.waves.length) this.drawWaves(g, V, X, Y);
+    if (V.mark && V.players[V.mark]) { const p = V.players[V.mark], on = Math.floor(this.t * 10) % 2; g.strokeStyle = on ? "#ff4a5a" : "#ffd0d0"; g.lineWidth = 1; g.beginPath(); g.ellipse(X(p.x) + 0.5, Y(p.y) + 0.5, 11, 6, 0, 0, Math.PI * 2); g.stroke(); g.fillStyle = "rgba(255,74,90,.2)"; g.beginPath(); g.ellipse(X(p.x), Y(p.y), 11, 6, 0, 0, Math.PI * 2); g.fill(); }
     // marca donde cae la torta
     for (const [x0, y0, x, y, pct, done, r] of V.bombs) if (!done) { g.strokeStyle = "rgba(255,80,80,.7)"; g.lineWidth = 1; g.beginPath(); g.ellipse(X(x) + 0.5, Y(y) + 0.5, r * 0.5, r * 0.3, 0, 0, Math.PI * 2); g.stroke(); }
 
@@ -183,7 +213,7 @@ export class Renderer {
     for (const z of V.hz) if (!z[5]) list.push([z[1] + z[2], 6, z]);
     for (const e of V.enemies) if (vis(e.x, e.y)) list.push([e.y, 1, e]);
     if (V.allies) for (const a of V.allies) if (vis(a.x, a.y)) list.push([a.y, 7, a]);
-    for (const [side, p] of Object.entries(V.players)) { list.push([p.y, 2, p, side]); if (p.dg) list.push([p.dg[1], 3, p.dg]); if (p.o) for (const o of p.o) list.push([o[1], 4, o]); }
+    for (const [side, p] of Object.entries(V.players)) { list.push([p.y, 2, p, side]); if (p.dg) list.push([p.dg[1], 3, p.dg, side]); if (p.o) for (const o of p.o) list.push([o[1], 4, o, side]); }
     for (const b of V.buses) list.push([b[1], 5, b]);
     list.sort((a, b) => a[0] - b[0]);
     for (const [, kind, o, side] of list) {
@@ -192,8 +222,9 @@ export class Renderer {
       if (kind === 6) { this.drawHazard(g, o, X, Y); continue; }
       if (kind === 7) { this.drawAlly(g, o, X, Y); continue; }
       if (kind === 2) this.drawPlayer(g, o, side === V.local, X, Y);
-      if (kind === 3) { const s = SPR.romero, fr = Math.floor(this.t * 10) % 2; g.drawImage(o[2] < 0 ? s.fl[fr] : s.f[fr], X(o[0]) - (s.w >> 1), Y(o[1]) - s.ay); }
-      if (kind === 4) { const s = SPR.juli, fr = Math.floor(this.t * 8) % 2; g.drawImage(s.f[fr], X(o[0]) - (s.w >> 1), Y(o[1]) - s.ay); }
+      // evoluciones con su sprite: Monsieur Gomeghooo y Juliano Benito Mostacholi (historia)
+      if (kind === 3) { const ev = V.players[side] && V.players[side].e, s = (ev && ev.romero && SPR.gomeghooo) || SPR.romero, fr = Math.floor(this.t * 10) % 2; g.drawImage(o[2] < 0 ? s.fl[fr] : s.f[fr], X(o[0]) - (s.w >> 1), Y(o[1]) - s.ay); }
+      if (kind === 4) { const ev = V.players[side] && V.players[side].e, s = (ev && ev.juli && SPR.juliano) || SPR.juli, fr = Math.floor(this.t * 8) % 2; g.drawImage(s.f[fr], X(o[0]) - (s.w >> 1), Y(o[1]) - s.ay); }
       if (kind === 5) { const s = SPR.bus; g.drawImage(o[2] < 0 ? s.fl[0] : s.f[0], X(o[0]) - (s.w >> 1), Y(o[1]) - s.ay); }
     }
     // proyectiles
@@ -258,8 +289,10 @@ export class Renderer {
   }
 
   drawEnemy(g, o, X, Y) {
-    const name = ENEMY_NAME[o.type], f = o.f, elite = f & F_ELITE;
+    const name0 = ENEMY_NAME[o.type], name = STORY_SPR[name0] || name0, f = o.f, elite = f & F_ELITE;
+    if (name0 === "premio") return this.drawPremio(g, o, X, Y);
     const s = (elite && SPR[name + "E"]) || SPR[name]; if (!s) return;
+    if (name0 !== name || name0 === "canicheBoss" || (f & (F_BUFF | F_MARK | F_STUN | F_SURR))) return this.drawStoryEnemy(g, o, s, name0, X, Y);
     const x = X(o.x), y = Y(o.y);
     if (name === "caja") { g.fillStyle = "rgba(0,0,0,.3)"; g.fillRect(x - 6, y, 12, 2); g.drawImage(f & F_FLASH ? s.wh[0] : s.f[0], x - (s.w >> 1), y - s.ay); return; }
     const tele = f & F_TELE, rush = f & F_RUSH;
@@ -277,38 +310,113 @@ export class Renderer {
     if (tele) { const hy = y - s.h - 6; g.fillStyle = "#16121c"; g.fillRect(x - 2, hy - 1, 4, 9); g.fillStyle = Math.floor(this.t * 10) % 2 ? "#ff4a5a" : "#ffd24a"; g.fillRect(x - 1, hy, 2, 5); g.fillRect(x - 1, hy + 6, 2, 1); }
     if (f & F_WET) { g.fillStyle = "#7fd0ff"; const k = Math.floor(this.t * 6 + o.id) % 3; g.fillRect(x - 3 + k * 2, y - s.h + k, 1, 2); }
   }
+  // aliados de la historia con su sprite real (antes un sprite parecido con un rombito verde)
   drawAlly(g, o, X, Y) {
-    const name = ENEMY_NAME[o.type], cfg = ALLY[name], f = o.f;
-    const s = SPR[name] || SPR[ALLY_FALLBACK[cfg ? cfg.kind : "gato"]]; if (!s) return;
-    const x = X(o.x), y = Y(o.y), n = s.f.length;
+    const name = ENEMY_NAME[o.type], f = o.f;
+    const s = SPR[ALLY_SPR[name] || name]; if (!s) return;
+    const x = X(o.x), y = Y(o.y), A = s.anim;
+    const prev = this.allyPos.get(o.id), moving = prev && Math.abs(prev[0] - o.x) + Math.abs(prev[1] - o.y) > 0.15; this.allyPos.set(o.id, [o.x, o.y]);
+    if (this.allyPos.size > 60) this.allyPos.clear();
     g.fillStyle = "rgba(0,0,0,.28)"; g.fillRect(x - (s.w >> 2), y, s.w >> 1, 2);
     if (f & F_DOWN) {
       g.save(); g.globalAlpha = 0.6; g.translate(x, y - 4); g.rotate(-Math.PI / 2); g.drawImage(s.f[0], -(s.w >> 1), -(s.h >> 1)); g.restore();
       return;
     }
-    const tele = f & F_TELE, rush = f & F_RUSH;
-    const fr = tele ? 0 : Math.floor(this.t * (rush ? 14 : 8) + o.id) % n;
-    const img = (f & F_FLASH) || (tele && Math.floor(this.t * 16) % 2) ? s.wh[fr] : f & F_LEFT ? s.fl[fr] : s.f[fr];
-    if (rush) { const a = o.a / 10; g.fillStyle = "rgba(127,255,170,.6)"; for (let i = 1; i < 4; i++) g.fillRect(Math.round(x - Math.cos(a) * i * 5), Math.round(y - 5 - Math.sin(a) * i * 5), 2, 1); }
-    g.drawImage(img, x - (s.w >> 1), y - s.ay);
-    // marca de aliado: rombito verde arriba de la cabeza
-    const hy = y - s.h - 4 - Math.round(Math.abs(Math.sin(this.t * 3 + o.id)) * 1);
-    g.fillStyle = "#16121c"; g.fillRect(x - 2, hy - 1, 5, 4); g.fillStyle = tele ? (Math.floor(this.t * 10) % 2 ? "#ff4a5a" : "#ffd24a") : "#57e3a0"; g.fillRect(x - 1, hy, 3, 2); g.fillRect(x, hy - 1, 1, 4);
+    const tele = f & F_TELE, rush = f & F_RUSH, left = f & F_LEFT;
+    let seq = (A && (moving || rush) ? A.caminar : A && A.quieto) || [0];
+    if (A && (f & F_KICK || (rush && A.patada)) && (A.patada || A.ataque)) seq = A.patada || A.ataque;
+    if (name === "carmelo" && A && A.patadita && Math.floor(this.t * 3 + o.id) % 5 === 0 && !moving && !(f & F_CRY)) seq = A.quieto;
+    const fr = seq[Math.floor(this.t * (rush || f & F_RUN ? 14 : 8) + o.id) % seq.length] || 0;
+    const img = (f & F_FLASH) || (tele && Math.floor(this.t * 16) % 2) ? s.wh[fr] : left ? s.fl[fr] : s.f[fr];
+    if (rush) { const a = o.a / 10; g.fillStyle = "rgba(255,255,255,.55)"; for (let i = 1; i < 4; i++) g.fillRect(Math.round(x - Math.cos(a) * i * 5), Math.round(y - 5 - Math.sin(a) * i * 5), 2, 1); }
+    // Maitena: patada giratoria (vuelta entera en el lugar)
+    if (f & F_KICK) { const k = (this.t * 3) % 1; g.strokeStyle = `rgba(255,210,74,${0.8 - k * 0.6})`; g.lineWidth = 2; g.beginPath(); g.ellipse(x, y - 6, 10 + k * 16, (10 + k * 16) * 0.6, 0, 0, Math.PI * 2); g.stroke(); }
+    // Carmelo llorando: sentado y con lágrimas
+    const cry = f & F_CRY, dy = cry ? 3 : 0;
+    g.drawImage(img, x - (s.w >> 1), y - s.ay + dy);
+    if (cry) { const k = Math.floor(this.t * 6) % 3; g.fillStyle = "#7fd0ff"; g.fillRect(x - 3, y - s.h + 6 + k, 1, 2); g.fillRect(x + 2, y - s.h + 6 + ((k + 1) % 3), 1, 2); }
+    if (f & F_RUN) { g.fillStyle = "#ffd24a"; g.fillRect(x - 1, y - s.h - 5, 2, 3); g.fillRect(x - 1, y - s.h - 1, 2, 1); }
   }
-  // lo que se defiende, a dónde hay que llegar y los rastros, dibujado en el piso
+  // tipos nuevos (guantes, Luz de pareja, la caniche) y estados de la historia: marcado, agrandado, aturdido, rendido
+  drawStoryEnemy(g, o, s, name, X, Y) {
+    const f = o.f, x = X(o.x), y = Y(o.y), elite = f & F_ELITE, tele = f & F_TELE, rush = f & F_RUSH, buff = f & F_BUFF;
+    const A = s.anim, seq = (A && A.caminar) || [0, 1];
+    const fr = tele || f & (F_STUN | F_SURR) ? seq[0] : seq[Math.floor(this.t * (rush ? 12 : 7) + o.id) % seq.length];
+    const img = (f & F_FLASH) || (tele && Math.floor(this.t * 16) % 2) ? s.wh[fr] : o.fx < 0 ? s.fl[fr] : s.f[fr];
+    if (elite) { const k = 1 + Math.sin(this.t * 6 + o.id) * 0.15; g.fillStyle = "rgba(255,210,74,.35)"; g.beginPath(); g.ellipse(x, y, s.w * 0.4 * k, 5 * k, 0, 0, Math.PI * 2); g.fill(); }
+    if (buff) { g.fillStyle = "rgba(255,90,60,.35)"; g.beginPath(); g.ellipse(x, y, s.w * 0.45, 5, 0, 0, Math.PI * 2); g.fill(); }
+    g.fillStyle = "rgba(0,0,0,.28)"; g.fillRect(x - (s.w >> 2), y, s.w >> 1, 2);
+    // carga marcada con una línea roja (Luz de pareja y la caniche)
+    if (tele && (name === "luz2" || name === "canicheBoss")) {
+      const a = o.a / 10; g.strokeStyle = Math.floor(this.t * 12) % 2 ? "rgba(255,74,90,.8)" : "rgba(255,210,210,.6)"; g.lineWidth = 2; g.setLineDash([4, 3]);
+      g.beginPath(); g.moveTo(x, y - 6); g.lineTo(x + Math.cos(a) * 160, y - 6 + Math.sin(a) * 160); g.stroke(); g.setLineDash([]);
+    }
+    if (rush) { const a = o.a / 10; g.fillStyle = "rgba(255,255,255,.5)"; for (let i = 1; i < 4; i++) g.fillRect(Math.round(x - Math.cos(a) * i * 5), Math.round(y - 5 - Math.sin(a) * i * 5), 2, 1); }
+    if (buff) { g.save(); g.translate(x, y); g.scale(1.25, 1.25); g.drawImage(img, -(s.w >> 1), -s.ay); g.restore(); }
+    else g.drawImage(img, x - (s.w >> 1), y - s.ay);
+    // guantes de box negros
+    if (name === "guantes") { const gx = x + (o.fx < 0 ? -(s.w >> 1) + 1 : (s.w >> 1) - 4), gy = y - 5; for (const dx of [0, 3]) { g.fillStyle = "#16121c"; g.fillRect(gx + dx - 1, gy - 1, 4, 4); g.fillStyle = "#2a2a34"; g.fillRect(gx + dx, gy, 2, 2); g.fillStyle = "#c42a30"; g.fillRect(gx + dx, gy + 2, 2, 1); } }
+    if (tele) { const hy = y - s.h - 6; g.fillStyle = "#16121c"; g.fillRect(x - 2, hy - 1, 4, 9); g.fillStyle = Math.floor(this.t * 10) % 2 ? "#ff4a5a" : "#ffd24a"; g.fillRect(x - 1, hy, 2, 5); g.fillRect(x - 1, hy + 6, 2, 1); }
+    // aturdida: estrellitas que giran
+    if (f & F_STUN) for (let i = 0; i < 3; i++) { const a = this.t * 6 + i * 2.1; g.fillStyle = i % 2 ? "#ffd24a" : "#ffffff"; g.fillRect(Math.round(x + Math.cos(a) * 7), Math.round(y - s.h - 2 + Math.sin(a) * 2), 2, 2); }
+    // marcado por Amanda: mira roja
+    if (f & F_MARK) { const hy = y - s.h - 5; g.strokeStyle = "#ff4a5a"; g.lineWidth = 1; g.strokeRect(x - 3.5, hy - 3.5, 7, 7); g.fillStyle = "#ff4a5a"; g.fillRect(x, hy - 1, 1, 3); g.fillRect(x - 1, hy, 3, 1); }
+    // se rindió: bandera blanca
+    if (f & F_SURR) { g.fillStyle = "#8a6a4a"; g.fillRect(x + 6, y - s.h - 10, 1, 12); g.fillStyle = "#f4f4ee"; g.fillRect(x + 7, y - s.h - 10, 6, 4); }
+    if (f & F_WET) { g.fillStyle = "#7fd0ff"; const k = Math.floor(this.t * 6 + o.id) % 3; g.fillRect(x - 3 + k * 2, y - s.h + k, 1, 2); }
+  }
+  // bolsita de premios para gatos (la tira la caniche)
+  drawPremio(g, o, X, Y) {
+    const x = X(o.x), y = Y(o.y) - Math.round(Math.abs(Math.sin(this.t * 4 + o.id)) * 2);
+    g.fillStyle = "rgba(255,210,74,.25)"; g.beginPath(); g.ellipse(x, Y(o.y), 6, 3, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "#16121c"; g.fillRect(x - 4, y - 8, 8, 9); g.fillStyle = "#2e5fa8"; g.fillRect(x - 3, y - 7, 6, 7); g.fillStyle = "#e1251b"; g.fillRect(x - 3, y - 7, 6, 2); g.fillStyle = "#ffffff"; g.fillRect(x - 1, y - 4, 2, 2); g.fillStyle = "#f2c230"; g.fillRect(x - 2, y - 9, 4, 1);
+  }
+  // ondas del berrinche de la caniche: anillo que crece con dos huecos para escapar
+  drawWaves(g, V, X, Y) {
+    for (const [wx, wy, r, g1, g2] of V.waves || []) {
+      const a1 = g1 / 100, a2 = g2 / 100, gap = 0.45, x = X(wx), y = Y(wy);
+      g.lineWidth = 3; g.strokeStyle = "rgba(22,18,28,.7)";
+      const arcs = []; const norm = a => ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      const cuts = [[norm(a1) - gap, norm(a1) + gap], [norm(a2) - gap, norm(a2) + gap]].sort((p, q) => p[0] - q[0]);
+      arcs.push([cuts[0][1], cuts[1][0]], [cuts[1][1], cuts[0][0] + Math.PI * 2]);
+      for (const [b0, b1] of arcs) { if (b1 <= b0) continue; g.strokeStyle = "rgba(22,18,28,.7)"; g.lineWidth = 4; g.beginPath(); g.ellipse(x, y, r, r * 0.7, 0, b0, b1); g.stroke(); g.strokeStyle = Math.floor(this.t * 12) % 2 ? "#ff8ad8" : "#ffffff"; g.lineWidth = 2; g.beginPath(); g.ellipse(x, y, r, r * 0.7, 0, b0, b1); g.stroke(); }
+    }
+  }
+  // lo que se defiende, a dónde hay que llegar, el rescate y los rastros, dibujado en el piso (historia)
   drawGoalFloor(g, V, X, Y, vis) {
     const G = V.goal, pulse = 1 + Math.sin(this.t * 5) * 0.08;
-    if (G.x !== null && G.r) {
-      const x = X(G.x), y = Y(G.y), r = G.r;
-      g.fillStyle = G.fl ? "rgba(255,74,90,.35)" : "rgba(87,227,160,.16)"; g.beginPath(); g.ellipse(x, y, r * pulse, r * 0.6 * pulse, 0, 0, Math.PI * 2); g.fill();
+    const ring = (x, y, r, pct, col, fl) => {
+      g.fillStyle = fl ? "rgba(255,74,90,.35)" : "rgba(87,227,160,.16)"; g.beginPath(); g.ellipse(x, y, r * pulse, r * 0.6 * pulse, 0, 0, Math.PI * 2); g.fill();
       g.strokeStyle = "#16121c"; g.lineWidth = 3; g.beginPath(); g.ellipse(x, y, r + 3, (r + 3) * 0.6, 0, 0, Math.PI * 2); g.stroke();
-      g.strokeStyle = G.hp > 50 ? "#57e3a0" : G.hp > 25 ? "#ffcf3a" : "#ff4a5a"; g.lineWidth = 2; g.beginPath(); g.ellipse(x, y, r + 3, (r + 3) * 0.6, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (G.hp || 0) / 100); g.stroke();
+      g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.ellipse(x, y, r + 3, (r + 3) * 0.6, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, pct) / 100); g.stroke();
+    };
+    // defender: cada objetivo con su anillo de vida (tachado si se rompió)
+    if (G.T) for (const [tx, ty, r, hp, fl, down] of G.T) {
+      if (!vis(tx, ty)) continue; const x = X(tx), y = Y(ty);
+      if (down) { g.strokeStyle = "#ff4a5a"; g.lineWidth = 2; g.beginPath(); g.moveTo(x - 8, y - 8); g.lineTo(x + 8, y + 2); g.moveTo(x + 8, y - 8); g.lineTo(x - 8, y + 2); g.stroke(); continue; }
+      ring(x, y, r, hp, hp > 50 ? "#57e3a0" : hp > 25 ? "#ffcf3a" : "#ff4a5a", fl);
     }
-    if (G.a !== null && G.k === "protect" && V.allies) { const a = V.allies.find(q => q.id === G.a); if (a) { g.strokeStyle = "rgba(87,227,160,.8)"; g.lineWidth = 1; g.beginPath(); g.ellipse(X(a.x) + 0.5, Y(a.y) + 0.5, 12 * pulse, 7 * pulse, 0, 0, Math.PI * 2); g.stroke(); } }
+    // a quién proteger
+    if (G.a !== null && (G.k === "protect" || G.k === "escort") && V.allies) { const a = V.allies.find(q => q.id === G.a); if (a) { g.strokeStyle = G.k === "escort" && G.hp < 0 ? "rgba(127,208,255,.9)" : "rgba(87,227,160,.8)"; g.lineWidth = 1; g.beginPath(); g.ellipse(X(a.x) + 0.5, Y(a.y) + 0.5, 12 * pulse, 7 * pulse, 0, 0, Math.PI * 2); g.stroke(); } }
+    // a dónde ir: banderita y anillo punteado (con lo que falta si hay que quedarse)
     if (G.to) {
       const x = X(G.to[0]), y = Y(G.to[1]), r = G.r || 24;
       g.strokeStyle = Math.floor(this.t * 4) % 2 ? "#57e3a0" : "#ffffff"; g.lineWidth = 1; g.setLineDash([3, 3]); g.beginPath(); g.ellipse(x + 0.5, y + 0.5, r * pulse, r * 0.6 * pulse, 0, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
+      if (G.hd !== undefined && G.hd !== null) { g.strokeStyle = "#ffd24a"; g.lineWidth = 2; g.beginPath(); g.ellipse(x, y, r + 2, (r + 2) * 0.6, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * G.hd / 100); g.stroke(); }
       g.fillStyle = "#16121c"; g.fillRect(x - 1, y - 18, 3, 18); g.fillStyle = "#57e3a0"; g.fillRect(x + 2, y - 18, 7, 5);
+    }
+    // rescate: anillo que se llena quedándose encima (gris si todavía no se puede)
+    if (G.rs) { const [rx, ry, r, pct] = G.rs; if (vis(rx, ry)) { if (pct < 0) { g.strokeStyle = "rgba(200,200,220,.6)"; g.lineWidth = 1; g.setLineDash([2, 3]); g.beginPath(); g.ellipse(X(rx) + 0.5, Y(ry) + 0.5, r, r * 0.6, 0, 0, Math.PI * 2); g.stroke(); g.setLineDash([]); } else ring(X(rx), Y(ry), r, pct, "#ffffff", 0); } }
+    // rastro actual: huellas que titilan, lo que va llenando y el tiempo que queda
+    if (G.sp) {
+      const [sx, sy, r, pct, left, sat] = G.sp; if (vis(sx, sy)) {
+        const x = X(sx), y = Y(sy), b = Math.floor(this.t * 6) % 3;
+        g.fillStyle = sat ? "rgba(255,74,90,.25)" : "rgba(255,210,74,.25)"; g.beginPath(); g.ellipse(x, y, r * pulse, r * 0.6 * pulse, 0, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = "#16121c"; g.lineWidth = 3; g.beginPath(); g.ellipse(x, y, r + 3, (r + 3) * 0.6, 0, 0, Math.PI * 2); g.stroke();
+        g.strokeStyle = "#ffd24a"; g.lineWidth = 2; g.beginPath(); g.ellipse(x, y, r + 3, (r + 3) * 0.6, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct / 100); g.stroke();
+        for (const [dx, dy] of [[-6, 2], [-2, -2], [3, 1], [7, -3]]) { g.fillStyle = "#ffd24a"; g.fillRect(x + dx, y + dy - (b === 1 ? 1 : 0), 2, 2); }
+        if (left >= 0) drawNum(g, left, x, y - r * 0.6 - 10, left <= 10 ? "#ff4a5a" : "#ffffff");
+      }
     }
     if (G.pts) for (const [px, py] of G.pts) {
       if (!vis(px, py)) continue; const x = X(px), y = Y(py), b = Math.floor(this.t * 6 + px) % 3;
@@ -316,11 +424,12 @@ export class Renderer {
       g.fillStyle = "#ffd24a"; g.fillRect(x - 3, y - 1, 2, 2); g.fillRect(x + 1, y - 1, 2, 2); g.fillRect(x - 1, y + 1, 2, 2); g.fillRect(x - 1, y - 4 - b, 1, 1);
     }
   }
+  // flecha al borde hacia el objetivo (el punto que importa ahora: am), además del rescate y el rastro
   goalArrows(g, V, X, Y) {
     const G = V.goal;
-    if (G.x !== null && G.r) this.edgeArrow(g, X(G.x), Y(G.y) - 6, "#57e3a0");
-    if (G.to) this.edgeArrow(g, X(G.to[0]), Y(G.to[1]) - 6, "#57e3a0");
-    if (G.a !== null && V.allies) { const a = V.allies.find(q => q.id === G.a); if (a) this.edgeArrow(g, X(a.x), Y(a.y) - 6, "#7fffaa"); }
+    if (G.am) this.edgeArrow(g, X(G.am[0]), Y(G.am[1]) - 6, G.k === "boss" ? "#ff5fb0" : "#57e3a0");
+    else if (G.to) this.edgeArrow(g, X(G.to[0]), Y(G.to[1]) - 6, "#57e3a0");
+    if (G.rs && G.rs[3] >= 0 && !(G.am && G.am[0] === G.rs[0] && G.am[1] === G.rs[1])) this.edgeArrow(g, X(G.rs[0]), Y(G.rs[1]) - 6, "#ffffff");
     if (G.pts && G.pts.length) {
       const me = V.players[V.local] || Object.values(V.players)[0]; let best = G.pts[0], bd = Infinity;
       if (me) for (const q of G.pts) { const d = (q[0] - me.x) ** 2 + (q[1] - me.y) ** 2; if (d < bd) { bd = d; best = q; } }
@@ -350,7 +459,7 @@ export class Renderer {
   }
 
   drawPlayer(g, p, isMe, X, Y) {
-    const s = SPR[p.c];
+    const s = (p.sk && SPR[p.sk]) || SPR[p.c]; // sk: skin desbloqueada en la historia
     const fr = p.m && !p.d ? [1, 2, 3, 0][Math.floor(this.t * 9) % 4] : 0;
     g.fillStyle = "rgba(0,0,0,.35)"; g.fillRect(X(p.x) - 5, Y(p.y), 10, 2);
     if (p.d) {
@@ -393,7 +502,8 @@ export class Renderer {
     for (const z of V.hz) { if (z[5]) continue; const cx0 = z[4] > 0 ? z[3] + 30 : z[3] - 30; hole(cx0, z[1], 60, 0.9); }
     for (let i = 0; i < V.enemies.length; i++) { const e = V.enemies[i]; if (e.f & (F_TELE | F_ELITE)) hole(e.x, e.y - 6, 22, 0.6); }
     if (V.allies) for (const a of V.allies) hole(a.x, a.y - 6, 30, 0.8);
-    if (V.goal) { const G = V.goal; if (G.x !== null && G.r) hole(G.x, G.y, G.r * 2.2, 0.9); if (G.to) hole(G.to[0], G.to[1] - 8, 34, 0.8); if (G.pts) for (const [x, y] of G.pts) hole(x, y, 18, 0.7); }
+    if (V.goal) { const G = V.goal; if (G.T) for (const [x, y, r, , , dn] of G.T) if (!dn) hole(x, y, r * 2.2, 0.9); if (G.to) hole(G.to[0], G.to[1] - 8, 34, 0.8); if (G.rs) hole(G.rs[0], G.rs[1] - 6, 40, 0.8); if (G.sp) hole(G.sp[0], G.sp[1], 34, 0.8); if (G.pts) for (const [x, y] of G.pts) hole(x, y, 18, 0.7); }
+    for (const [x, y, r] of V.waves || []) hole(x, y, Math.max(20, r), 0.5);
     lg.globalAlpha = 1;
     this.bg.drawImage(this.lc, 0, 0);
     // tinte cálido de los faroles

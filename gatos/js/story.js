@@ -23,14 +23,15 @@
 // roros y abuela son mapas nuevos: su zona caminable está en NEW_MAPS, al final (igual a GEO de maps.js).
 //
 // Ajustes del runtime (fase B1), lo mínimo para que el guion calce con los mapas rehechos con fotos (GEO de maps.js):
-//   - prólogo: horno y mesa de tortas en el lugar donde están dibujados (GEO.roros.points).
+//   - prólogo: horno y mesa de tortas en el lugar donde están dibujados (GEO.roros.points), con más vida (en el
+//     navegador, jugando solo, el horno se rompía a los 30 s: es el tutorial).
 //   - cap. 1: la catedral quedó arriba (sobre Belgrano) y Balbín abajo: el recorrido de Carmelo sale de la esquina de
 //     Balbín, pasa por Sarmiento, las palomas y los mástiles y termina en la escalinata. Velocidad ajustada por duración.
 //   - cap. 2: el andén de abajo es el 2 y Amanda espera en un refugio del andén 1 (arriba); gatos sentados a su lado.
 //   - cap. 6: el lago no es caminable (GEO.tortugas.b empieza en y = 404): se llega al pie del puente de la torre
 //     blanca, ahí bajan al Chema y ahí acorralan a la gata Linda. La caniche espera en la entrada (cast).
 //   - cap. 5 y 7: la caniche aparece en escena (cast y evento al terminar) para que la cámara tenga a quién mirar.
-//   - cast acepta { id, x, y } además del nombre suelto.
+//   - cast acepta { id, x, y } además del nombre suelto. Cada goal tiene label: el texto corto del HUD.
 //   - allyDown lleva `who` (qué aliado): sin eso, que Corbata se fuera a la cucha hacía perder el capítulo 6.
 //   - duraciones (medidas con tools/bot_historia.mjs para que cada capítulo dure 4 a 6 minutos con la lectura):
 //     Carmelo camina a 12 px/s, rastros más largos con 50 s entre uno y otro, puntos donde hay que quedarse en el
@@ -70,10 +71,10 @@ export const CHAPTERS = [
       d("thomas", "Pará. ¿Eso de la ventana es un gato? Son como veinte gatos.")
     ],
     goal: {
-      kind: "defend", time: 90,
+      kind: "defend", time: 90, label: "Cuidar el horno y la mesa",
       targets: [
-        { id: "horno", name: "El horno", x: 180, y: 244, hp: 300 },
-        { id: "mesa", name: "La mesa de tortas", x: 800, y: 452, hp: 240 }
+        { id: "horno", name: "El horno", x: 180, y: 244, hp: 700 },   // 300 y 240 se rompían a los 30 s jugando solo
+        { id: "mesa", name: "La mesa de tortas", x: 800, y: 452, hp: 560 }
       ],
       targetBias: 0.6,        // 60% de los gatos van a los objetivos y no a los jugadores
       failOnLoss: false       // es el tutorial: si cae uno, se pierde una estrella, no el capítulo
@@ -128,7 +129,7 @@ export const CHAPTERS = [
       d("rocio", "Lo llevamos hasta la escalinata. Y nadie se separa de nadie.")
     ],
     goal: {
-      kind: "escort", ally: "carmelo",
+      kind: "escort", ally: "carmelo", label: "Llevar a Carmelo a la catedral",
       // recorrido: de la esquina de Balbín (abajo) al monumento, las palomas, los mástiles y la catedral (arriba, sobre Belgrano)
       path: [
         { x: 140, y: 880 }, { x: 320, y: 760 },
@@ -197,7 +198,7 @@ export const CHAPTERS = [
       d("thomas", "El Belgrano Norte no frena por gatos. Que pase y nos abra camino.")
     ],
     goal: {
-      kind: "trains", count: 3,
+      kind: "trains", count: 3, label: "Rescatar a Amanda",
       start: { x: 512, y: 640 },                     // andén 2 (abajo)
       // al pasar el segundo tren se limpia la vía: Amanda espera en el refugio del andén de enfrente (andén 1, arriba)
       rescue: { who: "amanda", after: 2, x: 776, y: 420, r: 24, hold: 3, holdPair: 1.5 }
@@ -252,7 +253,7 @@ export const CHAPTERS = [
       d("juli", "Miau. (Juli huele también. Confirma: pollo.)")
     ],
     goal: {
-      kind: "track", count: 3,
+      kind: "track", count: 3, label: "Seguir el rastro de Romero",
       // rastros de a uno: quedarse encima hasta llenarlo; los gatos que se sientan arriba lo frenan
       spots: [{ x: 230, y: 430 }, { x: 820, y: 560 }, { x: 520, y: 880 }],
       r: 26, fill: 24, fillPair: 14, window: 60,
@@ -315,7 +316,7 @@ export const CHAPTERS = [
       d("romero", "¿Quiegue que los muegda, monsieur?"),
       d("amanda", "Los gatos con guantes no pueden agarrar nada. Qué tontos.")
     ],
-    goal: { kind: "survive", time: 300, ring: { x: 690, y: 570, half: 130 } },
+    goal: { kind: "survive", time: 300, label: "Aguantar el sparring", ring: { x: 690, y: 570, half: 130 } },
     dur: 300, rate: 1.0, xpMul: 1.3, hordes: [120], orders: [200],
     mix: [["gato", 7, 0], ["saltarin", 3, 0], ["negro", 4, 40], ["escupidor", 2, 70], ["guantes", 2, 90], ["madre", 2, 130], ["gordo", 2, 180]],
     events: [
@@ -362,7 +363,7 @@ export const CHAPTERS = [
       d("corbata", "Guau. (Lo pensó. Decidió que sí. Se suma.)"),
       d("amanda", "Corbata tiene corbata.")
     ],
-    goal: { kind: "boss", boss: "luz2", spawn: { x: 512, y: 230 }, surrender: true },
+    goal: { kind: "boss", boss: "luz2", label: "Que Luz se rinda", spawn: { x: 512, y: 230 }, surrender: true },
     dur: 280, rate: 1.0, xpMul: 1.5, hz: null, hordes: [], orders: [70],
     mix: [["gato", 8, 0], ["saltarin", 3, 0], ["negro", 4, 30], ["escupidor", 2, 50], ["madre", 2, 80], ["gordo", 1, 100]],
     events: [
@@ -414,7 +415,7 @@ export const CHAPTERS = [
       d("juli", "Miau. (Juli mira la torre como si pudiera saltar hasta allá.)")
     ],
     goal: {
-      kind: "reach",
+      kind: "reach", label: "Llegar a la torre blanca",
       start: { x: 120, y: 820 },
       // por los puentes de madera del lago hasta la torre blanca reticulada
       // por el estacionamiento y el boulevard hasta el pie del puente de la torre blanca (el lago no se camina)
@@ -424,7 +425,7 @@ export const CHAPTERS = [
       // el Chema no se anima a bajar de la torre: hay que quedarse abajo hasta convencerlo
       rescue: { who: "chema", x: 512, y: 424, r: 24, hold: 44, holdPair: 32, holdSolo: 14 },
       // después del rescate llega la gata Linda corrida por sus propios gatos
-      then: { kind: "protect", ally: "gataLinda", x: 560, y: 470, time: 40 }
+      then: { kind: "protect", ally: "gataLinda", label: "Proteger a la gata Linda", x: 560, y: 470, time: 40 }
     },
     dur: 270, rate: 0.95, xpMul: 1.5, hz: { first: 20, every: 15 }, hordes: [], orders: [],
     mix: [["gato", 6, 0], ["saltarin", 3, 0], ["negro", 5, 0], ["escupidor", 2, 40], ["madre", 2, 70], ["gordo", 2, 110]],
@@ -488,7 +489,7 @@ export const CHAPTERS = [
       d("gata", "No me confundan con la otra Linda. Yo soy la mala. Ella es peor."),
       d("thomas", "La perrita con moño. Carmelo nos lo dijo y no le dimos bola.")
     ],
-    goal: { kind: "boss", boss: "canicheBoss", spawn: { x: 512, y: 300 }, surrender: true },
+    goal: { kind: "boss", boss: "canicheBoss", label: "Que la otra Linda se rinda", spawn: { x: 512, y: 300 }, surrender: true },
     dur: 330, rate: 1.0, xpMul: 1.6, hz: { first: 30, every: 26 }, hordes: [], orders: [],
     mix: [["gato", 5, 0], ["negro", 5, 0], ["saltarin", 4, 0], ["escupidor", 2, 0], ["madre", 2, 30], ["gordo", 2, 60]],
     events: [

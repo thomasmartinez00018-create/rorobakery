@@ -12,7 +12,7 @@ for (const f of ["test_perfil.mjs", "test_guion.mjs", "test_historia.mjs"]) res[
 if (process.env.NAV !== "0") {
   const url = process.env.URL || "http://127.0.0.1:8811/";
   const up = await fetch(url + "index.html").then(r => r.ok).catch(() => false);
-  if (up) res["test_navegador.mjs"] = run("test_navegador.mjs");
+  if (up) { res["test_navegador.mjs"] = run("test_navegador.mjs"); res["test_historia_nav.mjs"] = run("test_historia_nav.mjs"); }
   else console.log(`\n== test_navegador.mjs: salteada (no hay servidor en ${url}; python3 -m http.server 8811 dentro de gatos/)`);
 }
 const bad = Object.entries(res).filter(([, v]) => !v).map(([k]) => k);

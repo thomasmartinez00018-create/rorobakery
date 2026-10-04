@@ -196,3 +196,55 @@ body[data-screen="run"] #ui{display:none}
 .caps .mapc small{display:block}
 @media (max-width:560px){.goalhud{top:calc(160px + env(safe-area-inset-top,0px))}}
 @media (prefers-reduced-motion:reduce){.dlgbox{animation:none}}
+/* ---------- modo historia (fase B1): capítulos, HUD del objetivo, cartel, subtítulo, Maitena, cine ---------- */
+.mid.story{background:linear-gradient(180deg,#3a2350,#24183a);border-color:var(--lilac);color:#f3e6ff}
+.unl{margin:0;font:16px/1.25 var(--data);color:var(--muted);text-align:center}
+.unl span{color:var(--lilac)}
+.charwrap{display:flex;flex-direction:column;gap:2px}
+.charwrap .skin{font-size:17px;padding:0}
+.story .caps{display:flex;flex-direction:column;gap:6px}
+.capc{display:grid;grid-template-columns:38px 1fr auto;gap:10px;align-items:center;text-align:left;background:#161a36;border:3px solid var(--line2);clip-path:var(--notch);padding:8px 10px}
+.capc.on{border-color:var(--amber);background:#2a2440}
+.capc.locked{opacity:.55}
+.capc .capn{display:grid;place-items:center;width:38px;height:38px;background:#0e1126;clip-path:var(--notch);font:28px/1 var(--display);color:var(--lilac)}
+.capc.done .capn{color:var(--green)}
+.capc .capt{display:flex;flex-direction:column;min-width:0}
+.capc .capt b{font:24px/1.05 var(--display);color:var(--text)}
+.capc .capt small{font:15px/1.15 var(--data);color:var(--muted)}
+.capc .caps-st{display:flex;flex-direction:column;align-items:flex-end;font:16px/1 var(--data);color:var(--amber)}
+.capc .tick{font-style:normal;color:var(--green);font-size:20px}
+.capc .caps-st em{font-style:normal;letter-spacing:.04em}
+.capsel{background:#161a36;border:3px solid var(--amber);clip-path:var(--notch);padding:8px 12px}
+.capsel b{display:block;font:26px/1 var(--display);color:var(--amber)}
+.capsel small{font:16px var(--data);color:var(--muted)}
+.starsbig{margin:0;font:44px/1 var(--data);color:var(--amber);letter-spacing:.1em;text-align:center}
+.starsbig span{color:#4a4f7e}
+.unlnew{display:flex;flex-direction:column;gap:2px;background:#24183a;border:3px solid var(--lilac);clip-path:var(--notch);padding:8px 12px}
+.unlnew b{font:24px/1 var(--display);color:var(--lilac)}
+.unlnew span{font:18px var(--data)}
+.credits{display:flex;flex-direction:column;gap:4px;text-align:center;font:18px/1.2 var(--data);color:#dfe2ff;padding:6px 0}
+.goalhud{display:flex;flex-direction:column;gap:3px;min-width:180px;max-width:calc(100vw - 24px);white-space:normal;text-align:center}
+.goalhud b{font:20px/1.05 var(--data);font-weight:400}
+.goalhud .gbar{height:5px;background:#16121c;border:1px solid #000}
+.goalhud .gbar i{display:block;height:100%;width:0;background:var(--green);transition:width .2s}
+.goalhud.alert{border-color:#7fd0ff;animation:blink .6s steps(2) infinite}
+.hinthud{position:absolute;left:50%;transform:translateX(-50%);top:calc(140px + env(safe-area-inset-top,0px));width:min(380px,90vw);text-align:center;background:rgba(11,13,28,.82);border:3px solid var(--amber);clip-path:var(--notch);padding:5px 10px;font:19px/1.15 var(--data);color:#fff}
+.hinthud[hidden],.talkhud[hidden],.maibtn[hidden]{display:none}
+.talkhud{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(200px + env(safe-area-inset-bottom,0px));width:min(380px,92vw);display:flex;gap:8px;align-items:center;background:rgba(11,13,28,.86);border:3px solid var(--line);clip-path:var(--notch);padding:5px 8px;font:18px/1.15 var(--data);color:#fff}
+.talkhud img{width:40px;height:40px;image-rendering:pixelated;flex:none}
+.talkhud b{display:block;font:20px/1 var(--display);color:var(--amber)}
+.maibtn{position:absolute;right:calc(18px + env(safe-area-inset-right,0px));bottom:calc(124px + env(safe-area-inset-bottom,0px));width:76px;height:76px;border-radius:50%;
+  background:conic-gradient(var(--lilac) var(--k,0%),rgba(40,44,80,.85) 0);display:grid;place-items:center;border:4px solid #000;box-shadow:0 4px 0 #000;touch-action:none}
+.maibtn span{display:grid;place-items:center;width:58px;height:58px;border-radius:50%;background:#1d1236;font:14px/1 var(--display);color:var(--muted);text-align:center}
+.maibtn.ready{animation:pulse .6s steps(2) infinite}
+.maibtn.ready span{background:#3a1f5a;color:#f3e6ff}
+/* cinemática: franjas negras arriba y abajo mientras hay diálogo; el HUD de juego se esconde */
+body.cine::before,body.cine::after{content:"";position:fixed;left:0;right:0;height:9vh;background:#000;z-index:4;pointer-events:none}
+body.cine::before{top:0}
+body.cine::after{bottom:0}
+body.cine #hud .build,body.cine #hud .ultbtn,body.cine #hud .dashbtn,body.cine #hud .maibtn,body.cine #hud .hps,body.cine #hud .toprow,body.cine #hud .xpbar{visibility:hidden}
+.dlgbox.narr{border-color:#2a2e50;background:rgba(14,16,34,.96)}
+.dlgbox.narr p{font-style:italic;color:#dfe2ff}
+.dlgopts{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.dlgopts .mid{flex:1;min-width:70px;font-size:24px}
+@media (max-width:560px){.hinthud{top:calc(232px + env(safe-area-inset-top,0px))}.maibtn{bottom:calc(118px + env(safe-area-inset-bottom,0px))}}

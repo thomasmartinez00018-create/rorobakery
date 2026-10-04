@@ -3,7 +3,7 @@
 //   python3 -m http.server 8811          (dentro de gatos/)
 //   npx peer --port 9000
 // Uso: node test_navegador.mjs   URL=http://127.0.0.1:8811/  PEER=127.0.0.1:9000  SOLO=1 (sin la parte de a dos)
-// Partes: perfil v1 migrado y código de respaldo; arcade 30 s; capítulo de ejemplo; tope de 60 cuadros con una
+// Partes: perfil v1 migrado y código de respaldo; arcade 30 s; tope de 60 cuadros con una
 // pantalla de 120 Hz simulada; de a dos (dos navegadores separados): sala, diálogo sincronizado, relevo y
 // aviso de versión distinta. Falla si aparece cualquier error en la consola de cualquier página.
 import assert from "assert/strict";
@@ -64,7 +64,7 @@ const browser = await chromium.launch({ executablePath: exe, headless: true });
   await page.context().close();
 }
 
-/* ---------- 2. arcade 30 s y 3. capítulo de ejemplo, jugando solo ---------- */
+/* ---------- 2. arcade 30 s, jugando solo ---------- */
 {
   const page = await newPage(browser, "solo");
   await page.goto(BASE + "?debug");
@@ -80,31 +80,7 @@ const browser = await chromium.launch({ executablePath: exe, headless: true });
   const a = await g(page, () => { const { sim } = window.__g(); return { t: sim.t, st: sim.state, kills: sim.kills, time: document.getElementById("time").textContent, cap: sim.G.id, gems: sim.gems.length }; });
   assert.ok(a.t >= 30, "llegó a 30 s de juego: " + a.t); assert.equal(a.cap, "arcade"); assert.match(a.time, /^00:3\d$/); assert.ok(a.kills > 0);
   pass(`arcade 30 s jugando solo: ${a.kills} gatos, HUD en ${a.time}, estado ${a.st}`);
-  await page.keyboard.press("Escape"); await page.click('[data-act="quit"]');
-  // capítulo de ejemplo (aparece con ?debug)
-  await page.click('[data-act="solo"]');
-  assert.ok(await page.$('[data-act="cap"][data-v="prueba"]'), "la lista de la historia muestra el capítulo de prueba");
-  await page.click('[data-act="cap"][data-v="prueba"]'); await page.click('[data-act="go"]');
-  await page.waitForSelector("#dialog:not([hidden]) .dlgbox", { timeout: 5000 });
-  assert.match(await page.textContent("#dialog b"), /Rocío/);
-  await sleep(2600);
-  assert.match(await page.textContent("#dlgtext"), /capítulo de prueba/);
-  await tapDialog(page);
-  assert.match(await page.textContent("#dialog b"), /Thomas/);
-  await tapDialog(page);
-  assert.equal(await page.isHidden("#dialog"), true);
-  await sleep(300);
-  assert.match(await page.textContent("#goalhud"), /Defender la fuente/);
-  pass("capítulo de ejemplo: intro de 2 líneas con retrato y nombre, se avanza tocando y aparece el objetivo");
-  // jugar hasta el final cuidando la fuente (vida infinita: acá se prueba el flujo, no el balance)
-  await g(page, () => { window.__keep = setInterval(() => { const { sim } = window.__g(); if (!sim) return; for (const p of Object.values(sim.players)) p.hp = p.maxHp; if (sim.goal && sim.goal.target) sim.goal.target.hp = sim.goal.target.maxHp; }, 100); });
-  real = Date.now();
-  while (Date.now() - real < 90000 && (await page.getAttribute("body", "data-screen")) === "run") { await autoPick(page); await sleep(400); }
-  assert.equal(await page.getAttribute("body", "data-screen"), "results");
-  assert.match(await page.textContent(".results h2"), /Capítulo superado/);
-  const prof = await g(page, () => JSON.parse(localStorage.getItem("gdl-profile")));
-  assert.equal(prof.story.done.prueba, true); assert.equal(prof.story.cap, 1);
-  pass("capítulo de ejemplo terminado: pantalla de capítulo superado y progreso guardado en el perfil");
+  // el capítulo de ejemplo se reemplazó por el guion real: el modo historia se prueba en test_historia_nav.mjs
   await page.context().close();
 }
 
@@ -126,11 +102,9 @@ const browser = await chromium.launch({ executablePath: exe, headless: true });
   pass(`tope de 60: con la pantalla a ${hz.toFixed(0)} Hz el juego dibujó ${fps.toFixed(1)} cuadros por segundo`);
   await page.context().close();
 }
-await browser.close();
-
-/* ---------- 5. de a dos con PeerServer local, en dos navegadores separados ---------- */
+/* ---------- 5. de a dos con PeerServer local: dos contextos separados del mismo navegador (la Mac es compartida) ---------- */
 if (!process.env.SOLO) {
-  const bA = await chromium.launch({ executablePath: exe, headless: true }), bB = await chromium.launch({ executablePath: exe, headless: true });
+  const bA = browser, bB = browser;
   const host = await newPage(bA, "anfitrión"), guest = await newPage(bB, "invitado");
   const Q = `?debug&peer=${PEER}`;
   await host.goto(BASE + Q); await host.click('[data-act="start"]'); await host.click('[data-act="who"][data-v="thomas"]'); await host.click('[data-act="create"]');
@@ -140,8 +114,9 @@ if (!process.env.SOLO) {
   await host.waitForSelector(".status.on", { timeout: 15000 });
   assert.match(await host.textContent(".status.on"), /Thomas y Rocío/);
   pass("sala de a dos con PeerServer local (prefijo v2): conectados");
-  await host.click('[data-act="cap"][data-v="prueba"]');
-  await guest.waitForFunction(() => /Capítulo de prueba/.test(document.querySelector(".mapname") ? document.querySelector(".mapname").textContent : ""), null, { timeout: 5000 });
+  // historia: el prólogo (se elige solo al abrir la pantalla de capítulos)
+  await host.click('[data-act="story"]');
+  await guest.waitForFunction(() => /La víspera/.test(document.querySelector(".capsel") ? document.querySelector(".capsel").textContent : ""), null, { timeout: 5000 });
   await host.click('[data-act="go"]');
   await host.waitForSelector("#dialog:not([hidden]) .dlgbox", { timeout: 5000 }); await guest.waitForSelector("#dialog:not([hidden]) .dlgbox", { timeout: 5000 });
   await sleep(2600);
@@ -157,18 +132,19 @@ if (!process.env.SOLO) {
   // segunda línea: toca solo el anfitrión y el invitado no; a los 6 s pasa sola (relevo)
   const t0 = Date.now();
   await tapDialog(host);
-  await host.waitForFunction(() => window.__g().snap.st === "run", null, { timeout: 8000 });
-  await guest.waitForFunction(() => window.__g().snap && window.__g().snap.st === "run", null, { timeout: 3000 });
+  await host.waitForFunction(() => window.__g().sim.dlg && window.__g().sim.dlg.i === 2, null, { timeout: 8000 });
+  await guest.waitForFunction(() => window.__g().snap && window.__g().snap.dlg && window.__g().snap.dlg.i === 2, null, { timeout: 3000 });
   const waited = (Date.now() - t0) / 1000;
   assert.ok(waited > 4 && waited < 7.5, "pasó a los " + waited.toFixed(1) + " s");
   pass(`relevo por tiempo: el invitado no tocó y la línea pasó sola a los ${waited.toFixed(1)} s`);
+  while (await g(host, () => window.__g().snap.st === "dialog")) { await tapDialog(host).catch(() => {}); await tapDialog(guest).catch(() => {}); }
   // jugar 10 s: el invitado se mueve y ve el objetivo
   const gp0 = await g(host, () => ({ ...window.__g().sim.players.guest }));
   for (let i = 0; i < 10; i++) { await guest.keyboard.down(i % 2 ? "a" : "w"); await sleep(500); await guest.keyboard.up(i % 2 ? "a" : "w"); await autoPick(host); await autoPick(guest); await sleep(500); }
   const gp1 = await g(host, () => ({ ...window.__g().sim.players.guest }));
   assert.ok(Math.hypot(gp1.x - gp0.x, gp1.y - gp0.y) > 20, "el anfitrión ve moverse al invitado");
   const gs = await g(guest, () => { const s = window.__g().snap; return { goal: s.goal, A: s.A, cap: s.cap, hud: document.getElementById("goalhud").textContent }; });
-  assert.equal(gs.cap, "prueba"); assert.equal(gs.goal.k, "defend"); assert.ok(Array.isArray(gs.A)); assert.match(gs.hud, /Defender la fuente/);
+  assert.equal(gs.cap, "prologo"); assert.equal(gs.goal.k, "defend"); assert.ok(Array.isArray(gs.A)); assert.match(gs.hud, /Cuidar el horno/);
   pass("de a dos jugando: el invitado se mueve, recibe el objetivo en la foto y lo ve en su HUD");
   await host.keyboard.press("Escape"); await host.click('[data-act="quit"]');
   await guest.waitForFunction(() => document.body.dataset.screen !== "run", null, { timeout: 5000 });
@@ -186,8 +162,8 @@ if (!process.env.SOLO) {
   assert.match(await host2.textContent(".room .err"), /Actualizá la página/);
   assert.equal(await host2.isDisabled('[data-act="go"]'), true);
   pass("versión distinta: el anfitrión ve \"Actualizá la página\" y no puede arrancar");
-  await bA.close(); await bB.close();
 }
+await browser.close();
 
 if (errors.length) { console.error("\nErrores en consola:\n" + errors.join("\n")); process.exit(1); }
 console.log(`\n${ok} pruebas en navegador en verde, sin errores en consola`);
