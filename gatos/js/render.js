@@ -241,6 +241,8 @@ export class Renderer {
     }
     if (V.obj) this.edgeArrow(g, X(V.obj[0]), Y(V.obj[1]) - 6, "#ff5fb0");
     if (V.goal) this.goalArrows(g, V, X, Y);
+    // dinámica 1: un gato que avisa un ataque (!) fuera de cámara y cerca tuyo deja una flecha roja en el borde
+    if (me) for (const e of V.enemies) if ((e.f & F_TELE) && Math.abs(e.x - me.x) + Math.abs(e.y - me.y) < 260) this.edgeArrow(g, X(e.x), Y(e.y) - 8, "#ff4a5a");
     // indicadores de la pareja
     for (const [side, p] of Object.entries(V.players)) {
       if (side === V.local) continue;

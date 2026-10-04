@@ -199,6 +199,14 @@ export class Sim {
   // dentro de la cámara de algún jugador
   onScreen(x, y, m = 0) { for (const p of this.alive()) { const v = this.view[p.side]; if (v && Math.abs(x - p.x) < v.hw + m && Math.abs(y - p.y) < v.hh + m) return true; } return false; }
 
+  // dinámica 1: ¿el jugador p ve el punto (x, y) en su pantalla? Igual que la cámara de render.js: centrada en el
+  // jugador (8 px más arriba) y frenada en los bordes del mundo. m: margen hacia adentro. Sin tamaño de pantalla
+  // conocido (o si p no es un jugador: lo que se defiende en la historia) cuenta como visto.
+  sees(p, x, y, m = 6) {
+    const v = p && p.side && this.view[p.side]; if (!v) return true;
+    const cx = clamp(p.x, v.hw, MAP - v.hw), cy = clamp(p.y - 8, v.hh, MAP - v.hh);
+    return Math.abs(x - cx) < v.hw - m && Math.abs(y - cy) < v.hh - m;
+  }
   alive() { return Object.values(this.players).filter(p => !p.downed); }
   rr(a, b) { return a + this.rnd() * (b - a); }
   inB(x, y, m = 0) { const b = this.cfg.b; return x >= b[0] + m && x <= b[2] - m && y >= b[1] + m && y <= b[3] - m; }
@@ -510,9 +518,10 @@ export class Sim {
         case "escupidor":
           e.cd -= dt;
           if (e.st === 1) { spd = 0; if ((e.stT -= dt) <= 0) { e.st = 0; e.cd = this.rr(2.8, 3.8); const n = e.elite ? 3 : 1; for (let i = 0; i < n; i++) { const a = Math.atan2(tgt.y - e.y, tgt.x - e.x) + (i - (n - 1) / 2) * 0.28; this.eproj.push({ k: 1, x: e.x, y: e.y - 5, vx: Math.cos(a) * 88, vy: Math.sin(a) * 88, life: 2.6, dmg: 9 * dmgScale }); } this.ev.push(["spit", Math.round(e.x), Math.round(e.y)]); } }
-          else if (m < 125 && e.cd <= 0 && this.eproj.length < 48) { e.st = 1; e.stT = 0.6; spd = 0; }
+          // dinámica 1 (escupidor justo): carga a menos de 95 px y solo si su objetivo lo ve en su pantalla
+          else if (m < 95 && e.cd <= 0 && this.eproj.length < 48 && this.sees(tgt, e.x, e.y - 10)) { e.st = 1; e.stT = 0.6; spd = 0; }
           else if (m < 72) { dx = -dx; dy = -dy; spd *= 0.8; }
-          else if (m < 115) spd *= 0.25;
+          else if (m < 92) spd *= 0.25;
           break;
         case "luz":
           e.cd -= dt;
