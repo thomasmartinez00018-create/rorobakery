@@ -1,7 +1,7 @@
 // Render 2D pixel art: mapa pregenerado, entidades ordenadas por altura, luces nocturnas y efectos.
 import { SPR } from "./sprites.js";
 import { MAP, ENEMY_NAME, HAZ_ID, PICKS, ALLY, F_FLASH, F_TELE, F_ELITE, F_RUSH, F_WET, F_LEFT, F_DOWN } from "./engine.js";
-import { THEMES, buildMap } from "./maps.js";
+import { THEMES, AMBIENCE, buildMap } from "./maps.js";
 export { THEMES };
 
 /* ---------- números en pixel ---------- */
@@ -69,12 +69,19 @@ class Pool {
   clear() { this.life.fill(0); }
   count() { let n = 0; for (let i = 0; i < this.n; i++) if (this.life[i] > 0) n++; return n; }
 }
-const FX_N = 600;
+const FX_N = 600, AMB_N = 220;
+// ambiente: tipo de partícula -> número (para el array tipado)
+const AK = { hoja: 0, polvo: 1, vapor: 2, insecto: 3, chispa: 4, harina: 5, luciernaga: 6, gota: 7 };
+const AMB_SCREEN = 230 * 230; // las tasas de AMBIENCE son por segundo en una pantalla de 230 px
+const AMB_DENS = 2;           // en el celu, con la tasa tal cual, las partículas casi no se leían
+const noise1 = n => ((Math.imul((n | 0) ^ 0x9e3779b9, 0x85ebca6b) >>> 0) % 1000) / 1000;
+const rnd = (r) => r[0] + Math.random() * (r[1] - r[0]);
 // golpes de la misma tanda al mismo gato: un solo número (mapa reutilizado entre llamadas)
 const SAME = new Map();
 
 // color del número: crítico ámbar (más grande), crítico muy fuerte naranja; golpes chicos un poco apagados
 const numCol = (n, crit) => crit ? (n >= 100 ? "#ff8a3a" : "#ffd24a") : n < 5 ? "#c8cad8" : "#ffffff";
+const hexRgb = h => { const n = parseInt(h.slice(1, 7), 16); return [n >> 16, n >> 8 & 255, n & 255]; };
 const FUR = { 0: "#8d8f98", 1: "#2b2833", 2: "#8f96a3", 3: "#e08a3a", 4: "#8d8170", 5: "#8a7a66", 6: "#e0822e", 7: "#efe0c4", 8: "#f4f1ea", 9: "#b7b9c2", 10: "#b07a42" };
 const PICK_SPR = { alfajor: "alfajor", moneda: "moneda", caja: "regalo", iman: "iman", manguera: "manguera" };
 // aliados sin sprite propio todavía: se dibujan con uno parecido (y una marca verde arriba)
@@ -93,6 +100,10 @@ export class Renderer {
     this.lastP = null; this.lastA = null; this.bossXY = [];
     // hit-stop: cuadros de render que se congelan (la simulación sigue)
     this.stopF = 0; this.stopAt = -9;
+    // ambiente del mapa (AMBIENCE): partículas en su propio pool, luces que titilan y la capa de noche con viñeta
+    this.amb = new Pool(AMB_N); this.em = []; this.ambCfg = null; this.ambWarm = false; this.tmpL = new Array(16);
+    this.nightC = document.createElement("canvas"); this.nightKey = "";
+    this.q = "alta";
     this.cam = { x: MAP / 2, y: MAP / 2 }; this.shake = 0; this.t = 0;
     this.resize();
     addEventListener("resize", () => this.resize());
@@ -106,7 +117,18 @@ export class Renderer {
     this.cv.style.width = W + "px"; this.cv.style.height = H + "px";
     this.bg.imageSmoothingEnabled = false;
   }
-  setMap(theme) { this.theme = theme; this.map = buildMap(theme); }
+  get hi() { return this.q === "alta"; }
+  setMap(theme) {
+    this.theme = theme; this.map = buildMap(theme);
+    const A = this.ambCfg = AMBIENCE[theme] || null;
+    // emisores: colores a índices de paleta y, si salen de las luces, la lista de luces de ese tipo
+    this.em = A ? (A.particles || []).map(p => ({ ...p, acc: 0, k: AK[p.kind] ?? 1, ci: p.colors.map(ci), lit: p.where === "luces" ? this.map.lights.filter(L => L.kind === p.lightKind) : null, nv: 0, zx0: 0, zy0: 0, zx1: 0, zy1: 0 })) : [];
+    // cada luz: intensidad (su k por el k del mapa), si titila y una semilla propia
+    const LK = A && A.light ? A.light : { k: 1, flicker: { kinds: [], amount: 0, rate: 0 } }, fk = (LK.flicker && LK.flicker.kinds) || [];
+    this.map.lights.forEach((L, i) => { L.kk = (L.k ?? 1) * (LK.k ?? 1); L.fl = fk.includes(L.kind); L.seed = i * 7919 + 13; L.now = L.kk; });
+    this.flk = LK.flicker || { amount: 0, rate: 0 };
+    this.amb.clear(); this.ambWarm = true; this.nightKey = ""; this.ambDim = 1;
+  }
 
   /* efectos a partir de los eventos de la simulación */
   events(ev, localSide) {
@@ -197,6 +219,8 @@ export class Renderer {
     const me = V.players[V.local] || Object.values(V.players)[0];
     // V.cam (opcional, lo manda el anfitrión): la cámara va a ese punto más despacio; si no viene, sigue al jugador
     const focus = V.cam ? { x: V.cam[0], y: V.cam[1] } : me, ck = Math.min(1, dt * (V.cam ? 4 : 8));
+    // al cambiar de mapa la cámara salta directo (el ambiente se precalienta donde vas a estar)
+    if (focus && this.ambWarm) { this.cam.x = focus.x; this.cam.y = focus.y - 8; }
     if (focus) { this.cam.x += (focus.x - this.cam.x) * ck; this.cam.y += (focus.y - 8 - this.cam.y) * ck; }
     this.shake = Math.max(0, this.shake - dt * 14);
     let cx = Math.round(Math.max(bw / 2, Math.min(MAP - bw / 2, this.cam.x)) - bw / 2 + (Math.random() - 0.5) * this.shake);
@@ -287,9 +311,17 @@ export class Renderer {
     this.rings = this.rings.filter(r => r.life > 0);
     this.drawPops(g, dt, X, Y);
     this.drawFx(g, dt, cx, cy);
+    // ambiente del mapa (en Ahorro no se mueve ni se dibuja)
+    const amb = this.hi && this.em.length;
+    if (amb) {
+      if (this.ambWarm) { this.ambWarm = false; for (let i = 0; i < 40; i++) this.ambStep(0.1, cx, cy); }
+      this.ambStep(dt, cx, cy);
+    }
 
     // noche: oscuridad con huecos de luz
     this.lighting(V, cx, cy);
+    // las del ambiente van encima de la noche: las normales un poco apagadas, las que brillan con suma de luz
+    if (amb) { this.ambDim = 1 - THEMES[this.theme].night[3] * 0.45; this.ambDraw(g, 0, cx, cy); this.ambDraw(g, 1, cx, cy); }
 
     // números de daño arriba de todo
     { let j = 0; const ns = this.nums;
@@ -492,19 +524,43 @@ export class Renderer {
     g.fillStyle = k > 0.5 ? "#57e3a0" : k > 0.25 ? "#ffcf3a" : "#ff4a5a"; g.fillRect(x - w / 2, y + 4, Math.round(w * k), 1);
   }
 
+  // intensidad de una luz en este cuadro: su k y, si su tipo titila, bajones cortos al azar más un vaivén suave
+  lightK(L) {
+    let k = L.kk;
+    if (L.fl) { const F = this.flk; if (noise1(Math.floor(this.t * 14) + L.seed) < F.rate) k *= 1 - F.amount; else k *= 1 - F.amount * 0.2 * (0.5 + 0.5 * Math.sin(this.t * 6 + L.seed)); }
+    return k;
+  }
+  // oscuridad de la noche con el tinte del mapa y la viñeta, dibujada una vez por mapa y tamaño de pantalla
+  nightLayer() {
+    const bw = this.bw, bh = this.bh, A = this.ambCfg, key = this.theme + "|" + bw + "|" + bh + "|" + this.q;
+    if (key === this.nightKey) return this.nightC;
+    this.nightKey = key;
+    const c = this.nightC; c.width = bw; c.height = bh; const g = c.getContext("2d");
+    let [r, gC, b, a] = THEMES[this.theme].night;
+    if (A && A.tint && this.hi) { const t = hexRgb(A.tint.color), m = Math.min(0.5, A.tint.alpha * 2.5); r = Math.round(r + (t[0] - r) * m * 0.35); gC = Math.round(gC + (t[1] - gC) * m * 0.35); b = Math.round(b + (t[2] - b) * m * 0.35); }
+    g.clearRect(0, 0, bw, bh); g.fillStyle = `rgba(${r},${gC},${b},${a})`; g.fillRect(0, 0, bw, bh);
+    const v = A && this.hi ? A.vignette || 0 : 0;
+    if (v > 0) {
+      const cx = bw / 2, cy = bh * 0.47, R0 = Math.min(bw, bh) * 0.38, R1 = Math.hypot(bw, bh) * 0.58;
+      const gr = g.createRadialGradient(cx, cy, R0, cx, cy, R1);
+      gr.addColorStop(0, "rgba(4,4,12,0)"); gr.addColorStop(0.6, `rgba(4,4,12,${(v * 0.45).toFixed(3)})`); gr.addColorStop(1, `rgba(4,4,12,${Math.min(0.9, v * 1.4).toFixed(3)})`);
+      g.fillStyle = gr; g.fillRect(0, 0, bw, bh);
+    }
+    return c;
+  }
   lighting(V, cx, cy) {
-    const lg = this.lg, bw = this.bw, bh = this.bh, [r, gC, b, a] = THEMES[this.theme].night;
-    lg.globalCompositeOperation = "source-over";
-    lg.clearRect(0, 0, bw, bh);
-    lg.fillStyle = `rgba(${r},${gC},${b},${a})`; lg.fillRect(0, 0, bw, bh);
+    const lg = this.lg, bw = this.bw, bh = this.bh;
+    // "copy" reemplaza el cuadro anterior entero: noche + tinte + viñeta en un solo drawImage
+    lg.globalCompositeOperation = "copy"; lg.globalAlpha = 1;
+    lg.drawImage(this.nightLayer(), 0, 0);
     lg.globalCompositeOperation = "destination-out";
     const hole = (x, y, rad, k = 1) => {
       const X = x - cx, Y = y - cy; if (X < -rad || X > bw + rad || Y < -rad || Y > bh + rad || k <= 0) return;
       const s = holeSprite(rad), h = s.width >> 1;
       lg.globalAlpha = Math.min(1, k); lg.drawImage(s, X - h, Y - h);
     };
-    const flick = Math.sin(this.t * 13) > 0.96 ? 0.7 : 1;
-    this.map.lights.forEach((L, i) => hole(L.x, L.y, L.r, i === 3 ? flick : 1));
+    const lights = this.map.lights;
+    for (let i = 0; i < lights.length; i++) { const L = lights[i], k = L.now = this.lightK(L); hole(L.x, L.y, k > 1 ? L.r * (1 + (k - 1) * 0.6) : L.r, k); }
     for (const p of Object.values(V.players)) hole(p.x, p.y - 6, 58, 0.95);
     for (const [x, y] of V.pools) hole(x, y, 22, 0.5);
     for (const r of this.rings) hole(r.x, r.y, r.r * 1.3, Math.min(1, r.life * 3));
@@ -517,9 +573,75 @@ export class Renderer {
     if (V.goal) { const G = V.goal; if (G.x !== null && G.r) hole(G.x, G.y, G.r * 2.2, 0.9); if (G.to) hole(G.to[0], G.to[1] - 8, 34, 0.8); if (G.pts) for (const [x, y] of G.pts) hole(x, y, 18, 0.7); }
     lg.globalAlpha = 1;
     this.bg.drawImage(this.lc, 0, 0);
-    // tinte cálido de los faroles
+    // tinte de color de cada luz (aditivo), con su intensidad del cuadro
     const g = this.bg; g.globalCompositeOperation = "lighter";
-    for (const L of this.map.lights) { const X = L.x - cx, Y = L.y - cy; if (X < -L.r || X > bw + L.r || Y < -L.r || Y > bh + L.r) continue; const s = tintSprite(L.c, L.r), h = s.width >> 1; g.drawImage(s, X - h, Y - h); }
-    g.globalCompositeOperation = "source-over";
+    for (const L of lights) { const X = L.x - cx, Y = L.y - cy; if (X < -L.r || X > bw + L.r || Y < -L.r || Y > bh + L.r) continue; const s = tintSprite(L.c, L.r), h = s.width >> 1; g.globalAlpha = Math.min(1, L.now); g.drawImage(s, X - h, Y - h); }
+    g.globalAlpha = 1; g.globalCompositeOperation = "source-over";
   }
+
+  /* ---------- ambiente: partículas del mapa (hojas, polvo, vapor, harina, chispas, insectos, luciérnagas, gotas) ---------- */
+  ambStep(dt, cx, cy) {
+    const bw = this.bw, bh = this.bh, va = bw * bh / AMB_SCREEN;
+    for (const e of this.em) {
+      let rate;
+      if (e.lit) {
+        let n = 0;
+        for (const L of e.lit) if (L.x > cx - 24 && L.x < cx + bw + 24 && L.y > cy - 24 && L.y < cy + bh + 24) { if (n < 16) this.tmpL[n++] = L; }
+        e.nv = n; rate = e.rate * n;
+      } else if (e.where === "zona" && e.zone) {
+        const z = e.zone; e.zx0 = Math.max(z[0], cx - 8); e.zx1 = Math.min(z[2], cx + bw + 8); e.zy0 = Math.max(z[1], cy - 8); e.zy1 = Math.min(z[3], cy + bh + 8);
+        if (e.zx1 <= e.zx0 || e.zy1 <= e.zy0) { e.acc = 0; continue; }
+        rate = e.rate * Math.max(0.35, Math.min(2, (e.zx1 - e.zx0) * (e.zy1 - e.zy0) / AMB_SCREEN));
+      } else rate = e.rate * va;
+      if (!rate) continue;
+      e.acc += rate * dt * AMB_DENS;
+      for (let guard = 0; e.acc >= 1 && guard < 6; guard++) { e.acc -= 1; this.ambSpawn(e, cx, cy); }
+      if (e.acc > 6) e.acc = 0;
+    }
+    // movimiento
+    const P = this.amb, t = this.t;
+    for (let i = 0; i < P.n; i++) {
+      let l = P.life[i]; if (l <= 0) continue;
+      l -= dt; P.life[i] = l; if (l <= 0) continue;
+      const k = P.k[i];
+      if (k === 3) { P.vx[i] = Math.max(-18, Math.min(18, P.vx[i] + (Math.random() - 0.5) * 160 * dt)); P.vy[i] = Math.max(-18, Math.min(18, P.vy[i] + (Math.random() - 0.5) * 160 * dt)); }
+      else if (k === 7) P.vy[i] += 150 * dt;
+      P.x[i] += (P.vx[i] + Math.sin(t * 2.2 + P.ph[i]) * P.sw[i] * 1.6) * dt; P.y[i] += P.vy[i] * dt;
+    }
+  }
+  ambSpawn(e, cx, cy) {
+    const P = this.amb, i = P.take(), R = Math.random;
+    let x, y;
+    if (e.lit) { const L = this.tmpL[(R() * e.nv) | 0]; x = L.x + (R() - 0.5) * L.r * 0.9; y = L.y + (R() - 0.5) * L.r * 0.6 - 4; }
+    else if (e.where === "zona" && e.zone) { x = e.zx0 + R() * (e.zx1 - e.zx0); y = e.zy0 + R() * (e.zy1 - e.zy0); }
+    else { x = cx - 8 + R() * (this.bw + 16); y = cy - 12 + R() * (this.bh + 16); }
+    P.x[i] = x; P.y[i] = y; P.vx[i] = rnd(e.vx); P.vy[i] = rnd(e.vy); P.life[i] = P.max[i] = rnd(e.life);
+    P.s[i] = Math.round(rnd(e.size)); P.c[i] = e.ci[(R() * e.ci.length) | 0]; P.k[i] = e.k; P.b[i] = e.blend === "lighter" ? 1 : 0;
+    P.a[i] = e.alpha ?? 1; P.ph[i] = R() * 6.2832; P.sw[i] = e.sway || 0;
+  }
+  // pass 0: partículas normales (atenuadas según lo oscura que es la noche del mapa); pass 1: las que brillan (suma de luz)
+  ambDraw(g, pass, cx, cy) {
+    const P = this.amb, bw = this.bw, bh = this.bh, t = this.t;
+    let lastC = -1;
+    if (pass) g.globalCompositeOperation = "lighter";
+    for (let i = 0; i < P.n; i++) {
+      const l = P.life[i]; if (l <= 0 || P.b[i] !== pass) continue;
+      const x = Math.round(P.x[i] - cx), y = Math.round(P.y[i] - cy); if (x < -4 || y < -4 || x > bw + 4 || y > bh + 4) continue;
+      const k = P.k[i], m = P.max[i], ph = P.ph[i];
+      let a = P.a[i] * Math.min(1, l * 2, (m - l) * 3) * (pass ? 1 : this.ambDim), w = P.s[i], h = w;
+      switch (k) {
+        case 0: if (Math.sin(t * 5 + ph) > 0) { h = Math.max(1, w - 1); } else { w = Math.max(1, w - 1); } break; // hoja que gira
+        case 1: case 5: a *= 0.6 + 0.4 * Math.sin(t * 3 + ph); break; // polvo y harina que titilan
+        case 2: w = h = P.s[i] + Math.round((1 - l / m) * 3); a *= l / m; break; // vapor que crece y se disuelve
+        case 3: if (Math.sin(t * 24 + ph) < -0.4) continue; break; // insecto que parpadea al pasar por la luz
+        case 6: a *= 0.25 + 0.75 * Math.max(0, Math.sin(t * 2.6 + ph)); if (a > 0.5) this.glow(P.x[i], P.y[i], 5, PAL[P.c[i]], a * 0.6); break; // luciérnaga
+        case 7: h = 2; break; // gota
+      }
+      if (a <= 0.02) continue;
+      if (P.c[i] !== lastC) { lastC = P.c[i]; g.fillStyle = PAL[lastC]; }
+      g.globalAlpha = a; g.fillRect(x, y, w, h);
+    }
+    g.globalAlpha = 1; g.globalCompositeOperation = "source-over";
+  }
+  glow() {}
 }
