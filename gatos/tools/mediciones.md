@@ -141,3 +141,29 @@ Capítulo de ejemplo (`js/story.js`, defender la fuente 60 s) con el bot, que ah
 | `test_guion.mjs` | Arcade idéntico byte a byte al motor sin guion (84 partidas), semilla, mezcla, topes, eventos, victoria por tiempo y por jefe | 8 en verde |
 | `test_historia.mjs` | Diálogo (los dos tocan, relevo a los 6 s, desconexión, saltar, solo, cola con la subida de nivel, epílogo), los 9 objetivos, hitos, aliados (ids, lista A, embestir, área, seguir, levantarse), cámara, capítulo de ejemplo con bots | 28 en verde |
 | `test_navegador.mjs` | Chromium real: perfil v1 migrado y código de respaldo desde el Taller; arcade 30 s; capítulo de ejemplo completo; tope de 60 cuadros con pantalla de 120 Hz simulada (dibujó 60,3 cuadros por segundo con el refresco a 125 Hz); de a dos en dos navegadores con PeerServer local: sala, diálogo que espera a los dos, relevo a los 5,3 s, invitado que se mueve y ve el objetivo, aviso "Actualizá la página" con versión distinta; ningún error en consola | 11 en verde |
+
+## 7. Gráficos (rama gdl/graficos)
+
+Presupuesto: no empeorar el cuadro más de 1 ms a CPU 6x. **Ojo:** se midió con la Mac compartida y cargada (carga entre 7 y 90 según el momento), así que los valores absolutos salen 2 a 3 veces más altos que los de la sección 2. Por eso cada comparación se corrió intercalada (antes, Alta y Ahorro en la misma ronda, con el orden invertido en las rondas pares) y se dan varias rondas.
+
+### Dibujo aislado (`render_harness.html`, R.frame, CPU 6x, 240 cuadros por caso, una sola página que navega entre versiones)
+
+"Antes" es el commit 8bba9e4 servido aparte. Media de las medias de 3 y 4 rondas (dos tandas):
+
+| Caso | Antes | Alta | Ahorro |
+| --- | --- | --- | --- |
+| Plaza 5:00 | 5,93 / 5,89 ms | 5,49 / 5,08 ms | 4,82 / 4,65 ms |
+| Terrazas 5:00 | 5,80 / 5,52 ms | 5,20 / 5,12 ms | 3,57 / 3,90 ms |
+| Estrés (220 gatos) | 6,60 / 6,46 ms | 6,45 / 6,58 ms | 4,10 / 4,59 ms |
+
+Alta queda dentro del ruido respecto de antes (entre -0,8 y +0,1 ms en la media; la mediana de p50 entre -0,1 y +0,5 ms). Ahorro baja entre 0,8 y 2,2 ms.
+
+### Juego real (`app_bench.mjs 6 300`, partida solo con Rocío en Plaza a los 5:10)
+
+Perfil de CPU (`PROF=1`), tiempo inclusivo de `R.frame` en ms por segundo a 60 cuadros, 3 rondas intercaladas: antes 267, 261 y 254 (4,35 ms por cuadro); Alta 244, 248 y 280 (4,29 ms por cuadro). Con la traza (dos corridas por lado, con más carga en la máquina) `FireAnimationFrame` dio 252 y 312 ms/s antes contra 294 y 401 ms/s en Alta, pero en esas corridas también subieron el motor y la música, que no se tocaron: es carga de la máquina, no del dibujo. Falta repetirlo con la Mac libre.
+
+### Qué se recortó para entrar en el presupuesto
+
+- Sombra suave (sprite) solo para jugadores, aliados, jefas y élites; los gatos comunes siguen con el rectángulo (en estrés, la sombra en sprite para 220 gatos costaba cerca de 1 ms).
+- Muerte de gato con 10 partículas como antes.
+- Todo lo de postproceso es precalculado: gradación horneada en el mapa al cargarlo, noche + tinte + viñeta en una capa por mapa y tamaño, brillos con discos cacheados, viñeta roja cacheada. Partículas en pools de arrays tipados (600 de efectos, 220 de ambiente), sin objetos por cuadro.
