@@ -3,7 +3,8 @@
 // Uso: import { runGame } from "./bot.mjs".
 import { pathToFileURL } from "url";
 import { build } from "./make_inst.mjs";
-const { Sim, MAPS, WEAPONS, PASSIVES, EVO_OF } = await import(pathToFileURL(build()).href);
+const ENG = await import(pathToFileURL(build()).href);
+const { Sim, MAPS, WEAPONS, PASSIVES, EVO_OF } = ENG;
 export { Sim, MAPS };
 
 // misma lógica de movimiento que bot_new.mjs: huye ponderado de gatos y proyectiles, junta gemas, va al pedido y a la pareja
@@ -116,10 +117,14 @@ export function runGame({ map = "plaza", duo = true, policy = "builder", meta = 
   }
   const ps = Object.values(sim.players);
   const tier = MAPS[map].tier;
-  const earned = Math.round((sim.coins + Math.floor(sim.kills / 12) + Math.floor(sim.t / 20) + (sim.state === "win" ? 60 : 0)) * (1 + tier * 0.12));
+  // monedas: con la fórmula del motor si la tiene (dinámica 9), si no la de antes
+  const S2 = sim.stats || {};
+  const earned = ENG.coinsFor ? ENG.coinsFor({ co: sim.coins, kl: sim.kills, t: sim.t, win: sim.state === "win" || !!S2.won, tier, second: !!S2.second, hot: !!sim.hot })
+    : Math.round((sim.coins + Math.floor(sim.kills / 12) + Math.floor(sim.t / 20) + (sim.state === "win" ? 60 : 0)) * (1 + tier * 0.12));
   return {
     map, duo, policy, state: sim.state, t: Math.round(sim.t), lv: sim.level, kills: sim.kills, coinsRun: sim.coins, earned,
     downs, dmgBy, dmgBySide, taken, picks, evos, S, ults: sim._ults || 0, tele: sim._tl || {},
+    stats: sim.stats || null, metas: sim.metas ? sim.metas() : null,
     build: ps.map(p => ({ c: p.char, w: { ...p.weapons }, pa: { ...p.passives }, evo: Object.keys(p.evo) }))
   };
 }

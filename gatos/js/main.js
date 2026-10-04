@@ -1,5 +1,5 @@
 // Gatos de Linda — menús, salas, bucle de juego y sincronización entre los dos celus.
-import { Sim, WEAPONS, PASSIVES, MAPS, EVO_OF, chapterGuion, MID_IDS } from "./engine.js";
+import { Sim, WEAPONS, PASSIVES, MAPS, EVO_OF, chapterGuion, MID_IDS, coinsFor, METAS_TXT, ALCANCIA } from "./engine.js";
 import { buildSprites, SPR, portrait as portraitPng } from "./sprites.js";
 import { Renderer, THEMES } from "./render.js";
 import { Net, makeCode, cleanCode, PROTO } from "./net.js";
@@ -18,7 +18,11 @@ const NAME = { thomas: "Thomas", rocio: "Rocío" };
 const ICON = { patada: "thomas", medialuna: "medialuna", juli: "juli", romero: "romero", mate: "mate", bondi: "bus", rodillo: "rodillo", torta: "torta", guantes: "guante", zapatillas: "zapa", termo: "termo", iman: "iman", amargo: "mate", abrazo: "corazon", delantal: "delantal", vendas: "vendas", alfajor: "alfajor" };
 const HZ_BANNER = { tren: ["¡Viene el tren!", "Salgan de las vías"], fletero: ["¡El fletero!", "Pasa la camioneta sin frenar"], cortadora: ["¡La cortadora!", "El canchero no mira"], carritos: ["¡Carritos!", "Se soltó una fila del súper"], autos: ["¡Auto!", "Cuidado en el estacionamiento"], trote: ["¡Entrada en calor!", "Pasa la fila trotando"] };
 const UPG = { hp: ["Vida", "+10 de vida"], dmg: ["Fuerza", "+8% de daño"], spd: ["Velocidad", "+5% de velocidad"], mag: ["Imán", "+15% de alcance"] };
-const UPG_COST = [15, 35, 70, 120, 200];
+const UPG_COST = [25, 50, 100, 180, 300]; // dinámica 9: x1,5 porque ganar ahora paga x1,5 (el Taller dura lo mismo)
+// dinámica 9: premios de primera victoria por mapa y por meta nueva (x el multiplicador del mapa)
+const FIRST_WIN = 150, NEW_META = 40;
+const alcOn = id => { const a = ALCANCIA.find(x => x.id === id); return !!a && prof.arcade.alc >= a.at; };
+const optOn = id => alcOn(id) && !!prof.arcade.opt[id];
 // dinámica 3: carteles del evento de mitad de partida (inicio, fin, y fin ganado para el sparring)
 const MID_BANNER = {
   corbata: [["¡Corbata se escapó!", "El perro de la abuela los ayuda 30 segundos"], ["Corbata volvió a su casa", "Gracias, Corbata"]],
@@ -161,7 +165,7 @@ function startRun(m, chars, cap) {
   if (me.side === "host") {
     // dinámica 4: desde la segunda partida de arcade de la sesión, arranque rápido (reloj en 0:30 y una mejora)
     const fast = !chapter(cap) && arcadeRuns > 0; if (!chapter(cap)) arcadeRuns++;
-    sim = new Sim(map, chapter(cap) ? chapterGuion(curCap) : undefined, { fast });
+    sim = new Sim(map, chapter(cap) ? chapterGuion(curCap) : undefined, { fast, picante: !chapter(cap) && optOn("picante"), sinfin: !chapter(cap) && optOn("sinfin") }); // dinámica 9: opciones de la alcancía
     sim.addPlayer("host", chars.host || "thomas", prof.up);
     if (chars.guest) sim.addPlayer("guest", chars.guest, me.partnerMeta || {});
     snap = sim.snapshot();
@@ -204,6 +208,7 @@ function onEvents(ev) {
     // dinámica 5: combos de pareja (un cartel por combo cada 15 s)
     if (e[0] === "combo" && performance.now() - (comboMsgAt[e[1]] || -1e9) > 15000) { comboMsgAt[e[1]] = performance.now(); const c = COMBO_BANNER[e[1]]; if (c) banner(c[0], c[1]); }
     if (e[0] === "second") banner("¡Pedido de Roro's de emergencia!", snap && Object.keys(snap.P).length === 1 ? "Te levantás. Linda se distrae 5 segundos" : "Se levantan los dos. Linda se distrae 5 segundos"); // dinámica 8
+    if (e[0] === "endless") banner("¡Linda cayó!", "Sin fin: ya es victoria. Aguanten todo lo que puedan"); // dinámica 9
     if (e[0] === "fast") banner("Arranque rápido", "Revancha: arrancan en 0:30 con una mejora");
     if (e[0] === "ladron") banner("¡Gato ladrón!", "Se roba la experiencia del piso: agárrenlo antes de que escape");
     if (e[0] === "steal" && performance.now() - stealAt > 8000) { stealAt = performance.now(); banner("¡Se escapó un ladrón!", `Se llevó ${e[3]} de experiencia`); }
@@ -476,16 +481,29 @@ function renderLevelUp(s, of) {
 function finish(s) {
   const win = s.st === "win";
   if (win && s.cap) { saveChapter(s.cap); if (me.side === "host" && me.net && me.net.connected) me.net.send({ t: "cap", id: s.cap, n: curCap ? curCap.n | 0 : 0 }); }
-  earned = Math.round((s.co + Math.floor(s.kl / 12) + Math.floor(s.t / 20) + (win ? 60 : 0)) * (1 + (MAPS[s.map] || MAPS.plaza).tier * 0.12));
+  // dinámica 9: victoria x1,5 (x1,25 con la segunda chance), bonus de primera victoria por mapa, metas y alcancía
+  const tierK = 1 + (MAPS[s.map] || MAPS.plaza).tier * 0.12, A = prof.arcade, duo = Object.keys(s.P).length > 1;
+  const won = win || !!s.won;
+  earned = coinsFor({ co: s.co, kl: s.kl, t: s.t, win: won, tier: (MAPS[s.map] || MAPS.plaza).tier, second: !!s.sc, hot: !!s.hot });
+  const extra = [];
+  let metas = null, alcAdd = 0;
+  if (!s.cap) {
+    if (won && !A.win1[s.map]) { A.win1[s.map] = 1; const b = Math.round(FIRST_WIN * tierK); earned += b; extra.push(`primera victoria acá +${b}`); }
+    const had = A.metas[s.map] || [0, 0, 0], got = s.mt || [0, 0, 0];
+    metas = METAS_TXT(s.map).map((txt, i) => ({ txt, ok: !!got[i], nueva: !!got[i] && !had[i], antes: !!had[i] }));
+    const nuevas = metas.filter(m => m.nueva).length; if (nuevas) { const b = Math.round(NEW_META * tierK) * nuevas; earned += b; extra.push(`${nuevas === 1 ? "meta nueva" : nuevas + " metas nuevas"} +${b}`); }
+    A.metas[s.map] = had.map((v, i) => v || got[i] ? 1 : 0);
+    if (duo) { alcAdd = earned; A.alc += earned; }
+  }
   prof.coins += earned; prof.runs++;
   // los récords y las victorias son del arcade; un capítulo solo guarda su progreso
   const newBest = !s.cap && s.t > prof.best.t;
-  if (!s.cap) { if (win) prof.wins++; prof.best = { t: Math.max(prof.best.t, s.t), k: Math.max(prof.best.k, s.kl), lv: Math.max(prof.best.lv, s.lv) }; }
+  if (!s.cap) { if (won) prof.wins++; prof.best = { t: Math.max(prof.best.t, s.t), k: Math.max(prof.best.k, s.kl), lv: Math.max(prof.best.lv, s.lv) }; }
   save();
   hud.hidden = true; $("#levelup").hidden = true; keepAwake(false); setPaused(false);
   screen = "results"; music.set("menu");
   const duel = Object.values(s.P).map(p => ({ c: p.c, k: p.k })).sort((a, b) => b.k - a.k);
-  draw({ win, t: s.t, k: s.kl, lv: s.lv, newBest, duel, cap: curCap });
+  draw({ win: won, t: s.t, k: s.kl, lv: s.lv, newBest, duel, cap: curCap, metas, extra, alcAdd, second: !!s.sc, endless: !!s.won && !win });
 }
 
 /* ---------------- pantallas ---------------- */
@@ -504,6 +522,20 @@ function mapCards() {
 function capCards() {
   const list = [{ id: "", title: "Arcade", sub: "Aguantar hasta que aparezca Linda" }, ...STORY.CHAPTERS];
   return `<p class="label">Historia</p><div class="maps caps">${list.map(c => { const on = (capSel || "") === c.id; return `<button class="mapc ${on ? "on" : ""}" data-act="cap" data-v="${esc(c.id)}"><div><b>${esc(c.title || c.id)}</b><small>${esc(c.sub || "")}${prof.story.done[c.id] ? " · hecho" : ""}</small></div><span>${on ? "Elegido" : "Elegir"}</span></button>`; }).join("")}</div>`;
+}
+// dinámica 9: alcancía de la pareja, metas por mapa y opciones de la sala
+function alcText() {
+  const a = prof.arcade.alc, next = ALCANCIA.find(x => a < x.at);
+  return next ? `Alcancía de la pareja: ${a} de ${next.at} para ${next.name}` : `Alcancía de la pareja: ${a} · todo desbloqueado`;
+}
+function metasBlock(m) {
+  const had = prof.arcade.metas[m] || [0, 0, 0];
+  return `<p class="hint">Metas: ${METAS_TXT(m).map((t, i) => `${had[i] ? "★" : "☆"} ${esc(t)}`).join(" · ")}</p>`;
+}
+function alcOptions() {
+  const on = ALCANCIA.filter(x => alcOn(x.id)); if (!on.length) return "";
+  return `<div class="toggles">${on.map(x => `<button class="mid ${prof.arcade.opt[x.id] ? "" : "ghost"}" data-act="alcopt" data-v="${x.id}">${esc(x.name)}: ${prof.arcade.opt[x.id] ? "sí" : "no"}</button>`).join("")}</div>
+    <p class="hint">${on.map(x => `${esc(x.name)}: ${esc(x.desc)}`).join(" ")}</p>`;
 }
 let lastResult = null;
 function draw(result) {
@@ -531,6 +563,7 @@ function draw(result) {
         <button class="mid ghost" data-act="shop">Taller de mejoras</button>
       </div>`}
       <p class="rec">Récord: ${fmt(prof.best.t)} · ${prof.best.k} gatos · ${prof.wins} victorias</p>
+      <p class="rec">${alcText()}</p>
       <button class="link" data-act="snd">${sfx.muted ? "Sonido: apagado" : "Sonido: prendido"}</button>
     </section>`;
     return;
@@ -546,6 +579,8 @@ function draw(result) {
       ${me.connected && me.protoBad ? `<p class="err">${esc(PROTO_MSG)}</p>` : ""}`}
       <p class="label">Mapa</p>
       ${me.side === "host" && !capSel ? mapCards() : `<p class="mapname">${THEMES[map].name}${capSel ? " · " + esc((chapter(capSel) || { title: "Capítulo" }).title) : ""}</p>`}
+      ${!capSel ? metasBlock(map) : ""}
+      ${me.side === "host" && !capSel ? alcOptions() : ""}
       ${me.side === "host" && STORY ? capCards() : ""}
       ${me.side === "host" ? `<button class="big" data-act="go" ${solo || (me.connected && !me.protoBad) ? "" : "disabled"}>¡A jugar!</button>` : me.protoBad ? "" : `<p class="busy">Esperando que arranque ${partner || "tu pareja"}</p>`}
       <button class="link" data-act="back">Volver</button>
@@ -560,6 +595,9 @@ function draw(result) {
       <p>${r.win ? "El barrio está a salvo. Por esta noche." : "Linda se quedó con el barrio. Revancha."}</p>`}
       ${r.duel && r.duel.length > 1 ? `<div class="duel">${r.duel.map((d, i) => `<div class="${i === 0 ? "mvp" : ""}"><img src="${portrait(d.c, 3)}" alt=""><b>${NAME[d.c]}</b><span>${d.k} gatos</span>${i === 0 ? "<em>MVP</em>" : ""}</div>`).join("")}</div>` : ""}
       <div class="stats"><div><b>${fmt(r.t)}</b><span>tiempo${r.newBest ? " · ¡récord!" : ""}</span></div><div><b>${r.k}</b><span>gatos</span></div><div><b>${r.lv}</b><span>nivel</span></div><div><b>+${earned}</b><span>monedas</span></div></div>
+      ${r.metas ? `<p class="label">Metas de ${esc(THEMES[map].name)}</p>${r.metas.map(m => `<p class="hint">${m.ok || m.antes ? "★" : "☆"} ${esc(m.txt)}${m.nueva ? " · ¡nueva!" : ""}</p>`).join("")}` : ""}
+      ${r.win && !r.cap ? `<p class="hint">Ganar paga x${r.second ? "1,25 (usaron la segunda chance)" : "1,5"}${r.extra.length ? " · " + esc(r.extra.join(" · ")) : ""}</p>` : r.extra && r.extra.length ? `<p class="hint">${esc(r.extra.join(" · "))}</p>` : ""}
+      ${r.alcAdd ? `<p class="hint">Alcancía de la pareja +${r.alcAdd}. ${esc(alcText())}</p>` : ""}
       ${me.side === "host" ? `<button class="big" data-act="again">Revancha</button>` : `<p class="busy">Esperando la revancha</p>`}
       <button class="mid ghost" data-act="shop">Taller (${COIN()}${prof.coins})</button>
       <button class="link" data-act="menu">Menú</button>
@@ -655,6 +693,7 @@ document.addEventListener("click", e => {
     case "share": { const url = location.origin + location.pathname + "?sala=" + me.code; if (navigator.share) navigator.share({ title: "Gatos de Linda", text: "Entrá a mi sala", url }).catch(() => {}); else navigator.clipboard && navigator.clipboard.writeText(url).then(() => banner("Link copiado", "")).catch(() => {}); break; }
     case "pick": { if (performance.now() - lvShownAt < 350) break; const i = +b.dataset.i; if (me.side === "host") sim && sim.pick("host", i); else me.net && me.net.send({ t: "pick", i }); sfx.play("coin"); break; }
 
+    case "alcopt": if (alcOn(v)) { prof.arcade.opt[v] = prof.arcade.opt[v] ? 0 : 1; save(); } draw(); break; // dinámica 9
     case "cap": { capSel = v || null; const ch = chapter(capSel); if (ch && THEMES[ch.map]) { map = ch.map; R.setMap(map); newDemo(); } sendLobby(); draw(); break; }
     case "adv": advDialog(false); break;
     case "advskip": advDialog(true); break;
